@@ -158,7 +158,7 @@
     },
     {
       "path": "scripts/audit_community_release.py",
-      "sha256": "62c2ab517e8131a4b1ba72b58d919481dfdcae2b1e633e0888ffbe4b569f8b16"
+      "sha256": "096547c4d074b20af11abff3a9406333632d56e06c163f9727c5517af4476ceb"
     },
     {
       "path": "scripts/check-community-boundary.sh",

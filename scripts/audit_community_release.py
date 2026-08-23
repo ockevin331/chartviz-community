@@ -134,6 +134,8 @@ def _regular_files(root: Path) -> tuple[list[Path], list[AuditFinding]]:
     findings: list[AuditFinding] = []
     for directory, names, filenames in os.walk(root, followlinks=False):
         directory_path = Path(directory)
+        if directory_path == root and ".git" in names:
+            names.remove(".git")
         for name in list(names):
             child = directory_path / name
             if child.is_symlink():
