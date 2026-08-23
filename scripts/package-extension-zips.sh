@@ -18,8 +18,8 @@ pnpm zip:edge
 
 chrome_source="dist/chrome/chartviz-v${version}-community.zip"
 edge_source="dist/edge/chartviz-v${version}-community.zip"
-chrome_target="$output_directory/chartviz-community-v${version}-chrome.zip"
-edge_target="$output_directory/chartviz-community-v${version}-edge.zip"
+chrome_target="$output_directory/chartviz-community-extension-v${version}-chrome.zip"
+edge_target="$output_directory/chartviz-community-extension-v${version}-edge.zip"
 
 for source in "$chrome_source" "$edge_source"; do
   if [[ ! -f "$source" || -L "$source" ]]; then

@@ -26,16 +26,17 @@ jobs:
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Verify source and build products
         run: bash scripts/verify-release.sh --container
-      - name: Package extension and Python distributions
+      - name: Package browser extensions
         run: |
           mkdir -p artifacts
           bash scripts/package-extension-zips.sh artifacts
-          uv build --project services/community/core --out-dir artifacts
-          uv build --project services/community --out-dir artifacts
-          cp api/openapi-v1.json THIRD_PARTY_LICENSES.json artifacts/
-          cd artifacts
-          sha256sum * > SHA256SUMS
-      - name: Publish GitHub release assets
+      - name: Publish browser extension assets
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" artifacts/* --generate-notes --verify-tag
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" \
+            "artifacts/chartviz-community-extension-v${version}-chrome.zip" \
+            "artifacts/chartviz-community-extension-v${version}-edge.zip" \
+            --generate-notes \
+            --verify-tag

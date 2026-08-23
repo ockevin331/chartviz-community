@@ -97,8 +97,8 @@ for your network in front of the service before exposing it remotely.
 Download the archive for your browser from the
 [`v1.0.0` GitHub release](https://github.com/ockevin331/chartviz-community/releases/tag/v1.0.0):
 
-- Chrome: `chartviz-community-v1.0.0-chrome.zip`
-- Edge: `chartviz-community-v1.0.0-edge.zip`
+- Chrome extension: `chartviz-community-extension-v1.0.0-chrome.zip`
+- Edge extension: `chartviz-community-extension-v1.0.0-edge.zip`
 
 The browser cannot load the ZIP directly. Extract it first, then install the
 unpacked directory:
