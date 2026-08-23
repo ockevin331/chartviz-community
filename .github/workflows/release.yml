@@ -28,10 +28,8 @@ jobs:
         run: bash scripts/verify-release.sh --container
       - name: Package extension and Python distributions
         run: |
-          pnpm zip
-          pnpm zip:edge
           mkdir -p artifacts
-          find dist -type f -name '*.zip' -exec cp '{}' artifacts/ \;
+          bash scripts/package-extension-zips.sh artifacts
           uv build --project services/community/core --out-dir artifacts
           uv build --project services/community --out-dir artifacts
           cp api/openapi-v1.json THIRD_PARTY_LICENSES.json artifacts/

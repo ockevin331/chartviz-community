@@ -10,7 +10,7 @@
     },
     {
       "path": ".github/workflows/release.yml",
-      "sha256": "420382b46dff4e98ef4ba4892dfc21e6392ec1fc861b6dcc439a6dfbe8b73eae"
+      "sha256": "6e9114d2924f6a8ca64488a51954e3b5b2f7a410b49bc8379e6e251d072f3033"
     },
     {
       "path": ".gitignore",
@@ -50,7 +50,7 @@
     },
     {
       "path": "README.md",
-      "sha256": "fd085c663d3f39cf90a423cc60ffb435f085861b3bbfe601bab56096106494d8"
+      "sha256": "4f0af6e863e6ea678f1463ec6a390fe0db3ad034edb17a40ff4342fc94c871da"
     },
     {
       "path": "SECURITY.md",
@@ -175,6 +175,10 @@
     {
       "path": "scripts/generate_community_openapi.py",
       "sha256": "6d9d5d12f0ed1587e7e5ea27cbf7f0b0730ad3a0af5cac7bb22761ead498178a"
+    },
+    {
+      "path": "scripts/package-extension-zips.sh",
+      "sha256": "0b5d19d550250be664e032b62eb96e462eb647ff06c7818a53a7970755447613"
     },
     {
       "path": "scripts/verify-release.sh",

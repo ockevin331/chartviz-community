@@ -92,6 +92,29 @@ podman compose up --build
 The examples bind to loopback. Put TLS and authentication controls appropriate
 for your network in front of the service before exposing it remotely.
 
+## Install the extension
+
+Download the archive for your browser from the
+[`v1.0.0` GitHub release](https://github.com/ockevin331/chartviz-community/releases/tag/v1.0.0):
+
+- Chrome: `chartviz-community-v1.0.0-chrome.zip`
+- Edge: `chartviz-community-v1.0.0-edge.zip`
+
+The browser cannot load the ZIP directly. Extract it first, then install the
+unpacked directory:
+
+1. Open `chrome://extensions` in Chrome or `edge://extensions` in Edge.
+2. Enable **Developer mode**.
+3. Select **Load unpacked**.
+4. Select the extracted directory that directly contains `manifest.json`.
+5. Pin ChartViz Community from the browser extensions menu.
+6. Open a supported chart page and open the extension.
+7. Enter your Community server URL and the same `CHARTVIZ_LOCAL_API_TOKEN`
+   configured on the server.
+
+The downloaded archives include no provider API key. Keep
+`CHARTVIZ_LLM_API_KEY` on the server only.
+
 ## Build the extension
 
 Public package scripts always select Community mode:
@@ -100,6 +123,8 @@ Public package scripts always select Community mode:
 pnpm install --frozen-lockfile
 pnpm build
 pnpm build:edge
+pnpm zip
+pnpm zip:edge
 ```
 
 Load the unpacked Chrome directory below `dist/chrome` or the Edge directory
