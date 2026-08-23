@@ -1,0 +1,43 @@
+name: Community Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pnpm
+        uses: pnpm/action-setup@008330803749db0355799c700092d9a85fd074e9 # v6.0.9
+        with:
+          version: 11.20.0
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: pnpm
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Verify source and build products
+        run: bash scripts/verify-release.sh --container
+      - name: Package extension and Python distributions
+        run: |
+          pnpm zip
+          pnpm zip:edge
+          mkdir -p artifacts
+          find dist -type f -name '*.zip' -exec cp '{}' artifacts/ \;
+          uv build --project services/community/core --out-dir artifacts
+          uv build --project services/community --out-dir artifacts
+          cp api/openapi-v1.json THIRD_PARTY_LICENSES.json artifacts/
+          cd artifacts
+          sha256sum * > SHA256SUMS
+      - name: Publish GitHub release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" artifacts/* --generate-notes --verify-tag

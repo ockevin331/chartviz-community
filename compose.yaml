@@ -1,0 +1,15 @@
+services:
+  chartviz-community:
+    build:
+      context: ./services/community
+      dockerfile: Containerfile
+    env_file:
+      - ./services/community/.env
+    ports:
+      - 127.0.0.1:8000:8000
+    volumes:
+      - chartviz-data:/data/chartviz
+    restart: unless-stopped
+
+volumes:
+  chartviz-data:

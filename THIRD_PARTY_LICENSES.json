@@ -1,0 +1,1202 @@
+{
+  "packages": [
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@1natsu/wait-element",
+      "source": "https://github.com/1natsu172/wait-element",
+      "version": "4.2.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@aklinker1/rollup-plugin-visualizer",
+      "source": "https://github.com/btd/rollup-plugin-visualizer",
+      "version": "5.12.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@aklinker1/zero-zip",
+      "source": "https://github.com/aklinker1/zero-zip#readme",
+      "version": "1.0.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@babel/helper-string-parser",
+      "source": "https://babel.dev/docs/en/next/babel-helper-string-parser",
+      "version": "7.29.7"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@babel/helper-validator-identifier",
+      "source": "https://github.com/babel/babel#readme",
+      "version": "7.29.7"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@babel/parser",
+      "source": "https://babel.dev/docs/en/next/babel-parser",
+      "version": "7.29.8"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@babel/types",
+      "source": "https://babel.dev/docs/en/next/babel-types",
+      "version": "7.29.8"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@jridgewell/gen-mapping",
+      "source": "https://github.com/jridgewell/sourcemaps/tree/main/packages/gen-mapping",
+      "version": "0.3.13"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@jridgewell/remapping",
+      "source": "https://github.com/jridgewell/sourcemaps/tree/main/packages/remapping",
+      "version": "2.3.5"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@jridgewell/resolve-uri",
+      "source": "https://github.com/jridgewell/resolve-uri#readme",
+      "version": "3.1.2"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@jridgewell/sourcemap-codec",
+      "source": "https://github.com/jridgewell/sourcemaps/tree/main/packages/sourcemap-codec",
+      "version": "1.5.5"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@jridgewell/trace-mapping",
+      "source": "https://github.com/jridgewell/sourcemaps/tree/main/packages/trace-mapping",
+      "version": "0.3.31"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@oxc-project/types",
+      "source": "https://oxc.rs",
+      "version": "0.142.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@rolldown/binding-darwin-arm64",
+      "source": "https://rolldown.rs/",
+      "version": "1.2.2"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@rolldown/pluginutils",
+      "source": "https://github.com/rolldown/plugins/tree/main/packages/pluginutils#readme",
+      "version": "1.0.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "ISC",
+      "name": "@topcli/prompts",
+      "source": "https://github.com/TopCli/prompts#readme",
+      "version": "4.0.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@types/estree",
+      "source": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/estree",
+      "version": "1.0.9"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@types/filesystem",
+      "source": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/filesystem",
+      "version": "0.0.36"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@types/filewriter",
+      "source": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/filewriter",
+      "version": "0.0.33"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@types/har-format",
+      "source": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/har-format",
+      "version": "1.2.16"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@types/node",
+      "source": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node",
+      "version": "26.1.2"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "Apache-2.0",
+      "name": "@typescript/typescript-darwin-arm64",
+      "source": "https://www.typescriptlang.org/",
+      "version": "7.0.2"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@vitejs/plugin-react",
+      "source": "https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#readme",
+      "version": "6.0.5"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@webext-core/fake-browser",
+      "source": "https://github.com/aklinker1/webext-core/tree/main/packages/fake-browser",
+      "version": "2.0.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@webext-core/isolated-element",
+      "source": "https://github.com/aklinker1/webext-core/tree/main/packages/isolated-element",
+      "version": "3.0.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@webext-core/match-patterns",
+      "source": "https://github.com/aklinker1/webext-core/tree/main/packages/match-patterns",
+      "version": "2.0.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@wxt-dev/browser",
+      "source": "https://github.com/wxt-dev/wxt#readme",
+      "version": "0.2.5"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@wxt-dev/module-react",
+      "source": "https://github.com/wxt-dev/wxt/blob/main/packages/module-react/README.md",
+      "version": "1.2.2"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@wxt-dev/storage",
+      "source": "https://wxt.dev/storage.html",
+      "version": "1.2.9"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "acorn",
+      "source": "https://github.com/acornjs/acorn",
+      "version": "8.18.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "ansi-regex",
+      "source": "https://github.com/chalk/ansi-regex#readme",
+      "version": "5.0.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "ansi-styles",
+      "source": "https://github.com/chalk/ansi-styles#readme",
+      "version": "4.3.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "ISC",
+      "name": "boolbase",
+      "source": "https://github.com/fb55/boolbase",
+      "version": "2.0.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "c12",
+      "source": "https://github.com/unjs/c12#readme",
+      "version": "3.3.4"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "cac",
+      "source": "https://github.com/cacjs/cac#readme",
+      "version": "7.0.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "chokidar",
+      "source": "https://github.com/paulmillr/chokidar",
+      "version": "5.0.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "citty",
+      "source": "https://github.com/unjs/citty#readme",
+      "version": "0.2.2"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "ISC",
+      "name": "cliui",
+      "source": "https://github.com/yargs/cliui#readme",
+      "version": "8.0.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "color-convert",
+      "source": "https://github.com/Qix-/color-convert#readme",
+      "version": "2.0.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "color-name",
+      "source": "https://github.com/colorjs/color-name",
+      "version": "1.1.4"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "confbox",
+      "source": "https://github.com/unjs/confbox#readme",
+      "version": "0.1.8"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "confbox",
+      "source": "https://github.com/unjs/confbox#readme",
+      "version": "0.2.4"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "consola",
+      "source": "https://github.com/unjs/consola#readme",
+      "version": "3.4.2"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "BSD-2-Clause",
+      "name": "css-select",
+      "source": "https://github.com/fb55/css-select#readme",
+      "version": "7.0.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "BSD-2-Clause",
+      "name": "css-what",
+      "source": "https://github.com/fb55/css-what#readme",
+      "version": "8.0.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "cssom",
+      "source": "https://github.com/NV/CSSOM#readme",
+      "version": "0.5.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "define-lazy-prop",
+      "source": "https://github.com/sindresorhus/define-lazy-prop#readme",
+      "version": "2.0.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "defu",
+      "source": "https://github.com/unjs/defu#readme",
+      "version": "6.1.7"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "destr",
+      "source": "https://github.com/unjs/destr#readme",
+      "version": "2.0.5"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "Apache-2.0",
+      "name": "detect-libc",
+      "source": "https://github.com/lovell/detect-libc#readme",
+      "version": "2.1.2"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "dom-serializer",
+      "source": "https://github.com/cheeriojs/dom-serializer#readme",
+      "version": "2.0.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "dom-serializer",
+      "source": "https://github.com/cheeriojs/dom-serializer#readme",
+      "version": "3.1.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "BSD-2-Clause",
+      "name": "domelementtype",
+      "source": "https://github.com/fb55/domelementtype#readme",
+      "version": "2.3.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "BSD-2-Clause",
+      "name": "domelementtype",
+      "source": "https://github.com/fb55/domelementtype#readme",
+      "version": "3.0.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "BSD-2-Clause",
+      "name": "domhandler",
+      "source": "https://github.com/fb55/domhandler#readme",
+      "version": "5.0.3"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "BSD-2-Clause",
+      "name": "domhandler",
+      "source": "https://github.com/fb55/domhandler#readme",
+      "version": "6.0.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "BSD-2-Clause",
+      "name": "domutils",
+      "source": "https://github.com/fb55/domutils#readme",
+      "version": "3.2.2"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "BSD-2-Clause",
+      "name": "domutils",
+      "source": "https://github.com/fb55/domutils#readme",
+      "version": "4.0.2"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "BSD-2-Clause",
+      "name": "dotenv",
+      "source": "https://github.com/motdotla/dotenv#readme",
+      "version": "17.4.2"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "BSD-2-Clause",
+      "name": "dotenv-expand",
+      "source": "https://github.com/motdotla/dotenv-expand#readme",
+      "version": "13.0.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "emoji-regex",
+      "source": "https://mths.be/emoji-regex",
+      "version": "8.0.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "BSD-2-Clause",
+      "name": "entities",
+      "source": "https://github.com/fb55/entities#readme",
+      "version": "4.5.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "BSD-2-Clause",
+      "name": "entities",
+      "source": "https://github.com/fb55/entities#readme",
+      "version": "7.0.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "BSD-2-Clause",
+      "name": "entities",
+      "source": "https://github.com/fb55/entities#readme",
+      "version": "8.0.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "escalade",
+      "source": "https://github.com/lukeed/escalade#readme",
+      "version": "3.2.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "escape-string-regexp",
+      "source": "https://github.com/sindresorhus/escape-string-regexp#readme",
+      "version": "5.0.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "estree-walker",
+      "source": "https://github.com/Rich-Harris/estree-walker#readme",
+      "version": "3.0.3"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "exsolve",
+      "source": "https://github.com/unjs/exsolve#readme",
+      "version": "1.1.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "fdir",
+      "source": "https://github.com/thecodrr/fdir#readme",
+      "version": "6.5.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "BSD-3-Clause",
+      "name": "filesize",
+      "source": "https://filesizejs.com",
+      "version": "11.0.22"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "fsevents",
+      "source": "https://github.com/fsevents/fsevents",
+      "version": "2.3.3"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "ISC",
+      "name": "get-caller-file",
+      "source": "https://github.com/stefanpenner/get-caller-file#readme",
+      "version": "2.0.5"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "get-port-please",
+      "source": "https://github.com/unjs/get-port-please#readme",
+      "version": "3.2.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "giget",
+      "source": "https://github.com/unjs/giget#readme",
+      "version": "3.3.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "hookable",
+      "source": "https://github.com/unjs/hookable#readme",
+      "version": "6.1.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "html-escaper",
+      "source": "https://github.com/WebReflection/html-escaper",
+      "version": "3.0.3"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "htmlparser2",
+      "source": "https://github.com/fb55/htmlparser2#readme",
+      "version": "10.1.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "is-docker",
+      "source": "https://github.com/sindresorhus/is-docker#readme",
+      "version": "2.2.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "is-docker",
+      "source": "https://github.com/sindresorhus/is-docker#readme",
+      "version": "3.0.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "is-fullwidth-code-point",
+      "source": "https://github.com/sindresorhus/is-fullwidth-code-point#readme",
+      "version": "3.0.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "is-inside-container",
+      "source": "https://github.com/sindresorhus/is-inside-container#readme",
+      "version": "1.0.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "is-potential-custom-element-name",
+      "source": "https://github.com/mathiasbynens/is-potential-custom-element-name",
+      "version": "1.0.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "is-wsl",
+      "source": "https://github.com/sindresorhus/is-wsl#readme",
+      "version": "2.2.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "is-wsl",
+      "source": "https://github.com/sindresorhus/is-wsl#readme",
+      "version": "3.1.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "jiti",
+      "source": "https://github.com/unjs/jiti#readme",
+      "version": "2.7.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "js-tokens",
+      "source": "https://github.com/lydell/js-tokens#readme",
+      "version": "10.0.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "json5",
+      "source": "http://json5.org/",
+      "version": "2.2.3"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MPL-2.0",
+      "name": "lightningcss",
+      "source": "https://github.com/parcel-bundler/lightningcss#readme",
+      "version": "1.33.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MPL-2.0",
+      "name": "lightningcss-darwin-arm64",
+      "source": "https://github.com/parcel-bundler/lightningcss#readme",
+      "version": "1.33.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "ISC",
+      "name": "linkedom",
+      "source": "https://github.com/WebReflection/linkedom#readme",
+      "version": "0.18.13"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "local-pkg",
+      "source": "https://github.com/antfu-collective/local-pkg#readme",
+      "version": "1.2.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "lodash.merge",
+      "source": "https://lodash.com/",
+      "version": "4.6.2"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "magic-string",
+      "source": "https://github.com/Rich-Harris/magic-string#readme",
+      "version": "1.1.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "magicast",
+      "source": "https://github.com/unjs/magicast#readme",
+      "version": "0.5.4"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "many-keys-map",
+      "source": "https://github.com/fregante/many-keys-map#readme",
+      "version": "3.0.3"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "mlly",
+      "source": "https://github.com/unjs/mlly#readme",
+      "version": "1.8.2"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "nano-spawn",
+      "source": "https://github.com/sindresorhus/nano-spawn#readme",
+      "version": "2.1.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "nanoid",
+      "source": "https://github.com/ai/nanoid#readme",
+      "version": "3.3.17"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "nanospinner",
+      "source": "https://github.com/usmanyunusov/nanospinner#readme",
+      "version": "1.2.2"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "normalize-path",
+      "source": "https://github.com/jonschlinkert/normalize-path",
+      "version": "3.0.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "BSD-2-Clause",
+      "name": "nth-check",
+      "source": "https://github.com/fb55/nth-check",
+      "version": "3.0.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "nypm",
+      "source": "https://github.com/unjs/nypm#readme",
+      "version": "0.6.9"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "ohash",
+      "source": "https://github.com/unjs/ohash#readme",
+      "version": "2.0.11"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "open",
+      "source": "https://github.com/sindresorhus/open#readme",
+      "version": "8.4.2"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "pathe",
+      "source": "https://github.com/unjs/pathe#readme",
+      "version": "2.0.3"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "perfect-debounce",
+      "source": "https://github.com/unjs/perfect-debounce#readme",
+      "version": "2.1.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "ISC",
+      "name": "picocolors",
+      "source": "https://github.com/alexeyraspopov/picocolors#readme",
+      "version": "1.1.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "picomatch",
+      "source": "https://github.com/micromatch/picomatch",
+      "version": "2.3.2"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "picomatch",
+      "source": "https://github.com/micromatch/picomatch",
+      "version": "4.0.5"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "pkg-types",
+      "source": "https://github.com/unjs/pkg-types#readme",
+      "version": "1.3.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "pkg-types",
+      "source": "https://github.com/unjs/pkg-types#readme",
+      "version": "2.3.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "postcss",
+      "source": "https://postcss.org/",
+      "version": "8.5.25"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "publish-browser-extension",
+      "source": "https://github.com/aklinker1/publish-browser-extension#readme",
+      "version": "6.0.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "quansync",
+      "source": "https://github.com/quansync-dev/quansync#readme",
+      "version": "0.2.11"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "rc9",
+      "source": "https://github.com/unjs/rc9#readme",
+      "version": "3.0.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "react",
+      "source": "https://react.dev/",
+      "version": "19.2.8"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "react-dom",
+      "source": "https://react.dev/",
+      "version": "19.2.8"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "readdirp",
+      "source": "https://github.com/paulmillr/readdirp",
+      "version": "5.0.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "require-directory",
+      "source": "https://github.com/troygoode/node-require-directory/",
+      "version": "2.1.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "rolldown",
+      "source": "https://rolldown.rs/",
+      "version": "1.2.2"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "scheduler",
+      "source": "https://react.dev/",
+      "version": "0.27.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "scule",
+      "source": "https://github.com/unjs/scule#readme",
+      "version": "1.3.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "BSD-3-Clause",
+      "name": "source-map",
+      "source": "https://github.com/mozilla/source-map",
+      "version": "0.7.6"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "BSD-3-Clause",
+      "name": "source-map-js",
+      "source": "https://github.com/7rulnik/source-map-js",
+      "version": "1.2.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "string-width",
+      "source": "https://github.com/sindresorhus/string-width#readme",
+      "version": "4.2.3"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "strip-ansi",
+      "source": "https://github.com/chalk/strip-ansi#readme",
+      "version": "6.0.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "strip-literal",
+      "source": "https://github.com/antfu/strip-literal#readme",
+      "version": "4.0.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "superlock",
+      "source": "https://github.com/Kikobeats/superlock",
+      "version": "1.3.4"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "tasuku",
+      "source": "https://github.com/privatenumber/tasuku#readme",
+      "version": "2.3.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "tiny-open",
+      "source": "https://github.com/fabiospampinato/tiny-open#readme",
+      "version": "1.3.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "tinyexec",
+      "source": "https://github.com/tinylibs/tinyexec#readme",
+      "version": "1.3.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "tinyglobby",
+      "source": "https://superchupu.dev/tinyglobby",
+      "version": "0.2.17"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "Apache-2.0",
+      "name": "typescript",
+      "source": "https://www.typescriptlang.org/",
+      "version": "7.0.2"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "ufo",
+      "source": "https://github.com/unjs/ufo#readme",
+      "version": "1.6.4"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "ISC",
+      "name": "uhyphen",
+      "source": "https://github.com/WebReflection/uhyphen#readme",
+      "version": "0.2.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "undici-types",
+      "source": "https://undici.nodejs.org",
+      "version": "8.3.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "unimport",
+      "source": "https://github.com/unjs/unimport#readme",
+      "version": "6.4.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "unplugin",
+      "source": "https://unplugin.unjs.io",
+      "version": "3.3.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "unplugin-utils",
+      "source": "https://github.com/sxzz/unplugin-utils#readme",
+      "version": "0.3.2"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "vite",
+      "source": "https://vite.dev",
+      "version": "8.2.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "webpack-virtual-modules",
+      "source": "https://github.com/sysgears/webpack-virtual-modules#readme",
+      "version": "0.6.2"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "wrap-ansi",
+      "source": "https://github.com/chalk/wrap-ansi#readme",
+      "version": "7.0.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "wxt",
+      "source": "https://wxt.dev",
+      "version": "0.21.3"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "ISC",
+      "name": "y18n",
+      "source": "https://github.com/yargs/y18n",
+      "version": "5.0.8"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "yargs",
+      "source": "https://yargs.js.org/",
+      "version": "17.7.3"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "ISC",
+      "name": "yargs-parser",
+      "source": "https://github.com/yargs/yargs-parser#readme",
+      "version": "21.1.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "zod",
+      "source": "https://zod.dev",
+      "version": "4.4.3"
+    },
+    {
+      "ecosystem": "pypi",
+      "license": "MIT",
+      "name": "annotated-doc",
+      "source": "https://pypi.org/project/annotated-doc/0.0.5/",
+      "version": "0.0.5"
+    },
+    {
+      "ecosystem": "pypi",
+      "license": "MIT",
+      "name": "annotated-types",
+      "source": "https://pypi.org/project/annotated-types/0.8.0/",
+      "version": "0.8.0"
+    },
+    {
+      "ecosystem": "pypi",
+      "license": "MIT",
+      "name": "anyio",
+      "source": "https://pypi.org/project/anyio/4.14.2/",
+      "version": "4.14.2"
+    },
+    {
+      "ecosystem": "pypi",
+      "license": "MPL-2.0",
+      "name": "certifi",
+      "source": "https://pypi.org/project/certifi/2026.7.22/",
+      "version": "2026.7.22"
+    },
+    {
+      "ecosystem": "pypi",
+      "license": "BSD-3-Clause",
+      "name": "click",
+      "source": "https://pypi.org/project/click/8.4.2/",
+      "version": "8.4.2"
+    },
+    {
+      "ecosystem": "pypi",
+      "license": "MIT",
+      "name": "fastapi",
+      "source": "https://pypi.org/project/fastapi/0.141.1/",
+      "version": "0.141.1"
+    },
+    {
+      "ecosystem": "pypi",
+      "license": "MIT",
+      "name": "h11",
+      "source": "https://pypi.org/project/h11/0.16.0/",
+      "version": "0.16.0"
+    },
+    {
+      "ecosystem": "pypi",
+      "license": "BSD-3-Clause",
+      "name": "httpcore",
+      "source": "https://pypi.org/project/httpcore/1.0.9/",
+      "version": "1.0.9"
+    },
+    {
+      "ecosystem": "pypi",
+      "license": "MIT",
+      "name": "httptools",
+      "source": "https://pypi.org/project/httptools/0.8.0/",
+      "version": "0.8.0"
+    },
+    {
+      "ecosystem": "pypi",
+      "license": "BSD-3-Clause",
+      "name": "httpx",
+      "source": "https://pypi.org/project/httpx/0.28.1/",
+      "version": "0.28.1"
+    },
+    {
+      "ecosystem": "pypi",
+      "license": "BSD-3-Clause",
+      "name": "idna",
+      "source": "https://pypi.org/project/idna/3.19/",
+      "version": "3.19"
+    },
+    {
+      "ecosystem": "pypi",
+      "license": "MIT-CMU",
+      "name": "pillow",
+      "source": "https://pypi.org/project/pillow/12.3.0/",
+      "version": "12.3.0"
+    },
+    {
+      "ecosystem": "pypi",
+      "license": "MIT",
+      "name": "pydantic",
+      "source": "https://pypi.org/project/pydantic/2.13.4/",
+      "version": "2.13.4"
+    },
+    {
+      "ecosystem": "pypi",
+      "license": "MIT",
+      "name": "pydantic_core",
+      "source": "https://pypi.org/project/pydantic_core/2.46.4/",
+      "version": "2.46.4"
+    },
+    {
+      "ecosystem": "pypi",
+      "license": "BSD-3-Clause",
+      "name": "python-dotenv",
+      "source": "https://pypi.org/project/python-dotenv/1.2.3/",
+      "version": "1.2.3"
+    },
+    {
+      "ecosystem": "pypi",
+      "license": "Apache-2.0",
+      "name": "python-multipart",
+      "source": "https://pypi.org/project/python-multipart/0.0.32/",
+      "version": "0.0.32"
+    },
+    {
+      "ecosystem": "pypi",
+      "license": "MIT",
+      "name": "PyYAML",
+      "source": "https://pypi.org/project/PyYAML/6.0.3/",
+      "version": "6.0.3"
+    },
+    {
+      "ecosystem": "pypi",
+      "license": "BSD-3-Clause",
+      "name": "starlette",
+      "source": "https://pypi.org/project/starlette/1.6.0/",
+      "version": "1.6.0"
+    },
+    {
+      "ecosystem": "pypi",
+      "license": "MIT",
+      "name": "typing-inspection",
+      "source": "https://pypi.org/project/typing-inspection/0.4.4/",
+      "version": "0.4.4"
+    },
+    {
+      "ecosystem": "pypi",
+      "license": "PSF-2.0",
+      "name": "typing_extensions",
+      "source": "https://pypi.org/project/typing_extensions/4.16.0/",
+      "version": "4.16.0"
+    },
+    {
+      "ecosystem": "pypi",
+      "license": "BSD-3-Clause",
+      "name": "uvicorn",
+      "source": "https://pypi.org/project/uvicorn/0.52.4/",
+      "version": "0.52.4"
+    },
+    {
+      "ecosystem": "pypi",
+      "license": "MIT",
+      "name": "uvloop",
+      "source": "https://pypi.org/project/uvloop/0.22.1/",
+      "version": "0.22.1"
+    },
+    {
+      "ecosystem": "pypi",
+      "license": "MIT",
+      "name": "watchfiles",
+      "source": "https://pypi.org/project/watchfiles/1.2.0/",
+      "version": "1.2.0"
+    },
+    {
+      "ecosystem": "pypi",
+      "license": "BSD-3-Clause",
+      "name": "websockets",
+      "source": "https://pypi.org/project/websockets/17.0.1/",
+      "version": "17.0.1"
+    }
+  ],
+  "schemaVersion": 1
+}

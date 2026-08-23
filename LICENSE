@@ -1,0 +1,9 @@
+ChartViz Community uses multiple open-source licenses.
+
+Browser-extension files at the repository root are licensed under the Mozilla
+Public License 2.0. The self-hosted server below `services/community/` is
+licensed under GNU Affero General Public License v3.0 only, except for
+`services/community/core/`, which is licensed under Apache License 2.0.
+
+See `LICENSES/README.md` for the exact directory map and `LICENSES/` for the
+complete canonical license texts.

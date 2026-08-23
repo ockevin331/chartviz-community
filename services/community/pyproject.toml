@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "chartviz-community"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "chartviz-community-core==0.1.0",
+  "fastapi>=0.116,<1",
+  "httpx>=0.28,<1",
+  "pillow>=11,<13",
+  "pydantic>=2.11,<3",
+  "python-multipart>=0.0.20,<1",
+  "uvicorn[standard]>=0.35,<1",
+]
+
+[tool.uv.sources]
+chartviz-community-core = { path = "core", editable = true }
+
+[project.optional-dependencies]
+test = ["pytest>=8.4,<10"]
+
+[project.scripts]
+chartviz-community = "chartviz_community.api:run"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/chartviz_community"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

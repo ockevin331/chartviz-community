@@ -1,0 +1,2771 @@
+{
+  "components": {
+    "schemas": {
+      "AnalysisConclusion": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "counterEvidence": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Counterevidence",
+            "type": "array"
+          },
+          "drawingRefs": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Drawingrefs",
+            "type": "array"
+          },
+          "figureRefs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Figurerefs",
+            "type": "array"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "reasoning": {
+            "minLength": 1,
+            "title": "Reasoning",
+            "type": "string"
+          },
+          "strength": {
+            "enum": [
+              "strong",
+              "moderate",
+              "weak",
+              "unclear"
+            ],
+            "title": "Strength",
+            "type": "string"
+          },
+          "timeAnchor": {
+            "minLength": 1,
+            "title": "Timeanchor",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "verdict": {
+            "minLength": 1,
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "timeAnchor",
+          "title",
+          "verdict",
+          "strength",
+          "reasoning",
+          "counterEvidence",
+          "drawingRefs",
+          "figureRefs",
+          "confidence"
+        ],
+        "title": "AnalysisConclusion",
+        "type": "object"
+      },
+      "AnalysisContextV13": {
+        "additionalProperties": false,
+        "properties": {
+          "capturedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capturedat"
+          },
+          "dataSources": {
+            "items": {
+              "enum": [
+                "screenshot",
+                "exchange_api",
+                "calculated",
+                "user_context"
+              ],
+              "type": "string"
+            },
+            "title": "Datasources",
+            "type": "array"
+          },
+          "instrument": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instrument"
+          },
+          "latestCandleClosed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latestcandleclosed"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "timeframes": {
+            "items": {
+              "$ref": "#/components/schemas/TimeframeRole"
+            },
+            "maxItems": 3,
+            "title": "Timeframes",
+            "type": "array"
+          },
+          "venue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue"
+          }
+        },
+        "title": "AnalysisContextV13",
+        "type": "object"
+      },
+      "AnalysisProgressEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "enum": [
+              "preparing",
+              "reading_chart",
+              "reviewing_clues",
+              "checking_signals",
+              "preparing_result"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "createdAt"
+        ],
+        "title": "AnalysisProgressEvent",
+        "type": "object"
+      },
+      "AnalysisReport": {
+        "additionalProperties": false,
+        "properties": {
+          "analysisContext": {
+            "$ref": "#/components/schemas/AnalysisContextV13"
+          },
+          "bearishEvidence": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Bearishevidence",
+            "type": "array"
+          },
+          "bullishEvidence": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Bullishevidence",
+            "type": "array"
+          },
+          "conclusions": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisConclusion"
+            },
+            "maxItems": 6,
+            "title": "Conclusions",
+            "type": "array"
+          },
+          "conflicts": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Conflicts",
+            "type": "array"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/Decision"
+          },
+          "dominantBias": {
+            "enum": [
+              "bullish",
+              "bearish",
+              "neutral",
+              "unclear"
+            ],
+            "title": "Dominantbias",
+            "type": "string"
+          },
+          "drawings": {
+            "items": {
+              "$ref": "#/components/schemas/DrawingInstruction"
+            },
+            "maxItems": 24,
+            "title": "Drawings",
+            "type": "array"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceReferenceV13"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "imageQuality": {
+            "$ref": "#/components/schemas/ImageQuality"
+          },
+          "indicatorReadings": {
+            "items": {
+              "$ref": "#/components/schemas/IndicatorReading"
+            },
+            "maxItems": 8,
+            "title": "Indicatorreadings",
+            "type": "array"
+          },
+          "insights": {
+            "items": {
+              "$ref": "#/components/schemas/Insight"
+            },
+            "maxItems": 6,
+            "title": "Insights",
+            "type": "array"
+          },
+          "keyLevels": {
+            "items": {
+              "$ref": "#/components/schemas/KeyLevel"
+            },
+            "maxItems": 8,
+            "title": "Keylevels",
+            "type": "array"
+          },
+          "marketReading": {
+            "$ref": "#/components/schemas/MarketReading"
+          },
+          "marketState": {
+            "$ref": "#/components/schemas/MarketStateV13"
+          },
+          "overallConfidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Overallconfidence",
+            "type": "number"
+          },
+          "patterns": {
+            "items": {
+              "$ref": "#/components/schemas/Pattern"
+            },
+            "maxItems": 3,
+            "title": "Patterns",
+            "type": "array"
+          },
+          "positioningEvidence": {
+            "items": {
+              "$ref": "#/components/schemas/PositioningEvidence"
+            },
+            "maxItems": 8,
+            "title": "Positioningevidence",
+            "type": "array"
+          },
+          "riskNotice": {
+            "minLength": 1,
+            "title": "Risknotice",
+            "type": "string"
+          },
+          "scenarios": {
+            "$ref": "#/components/schemas/Scenarios"
+          },
+          "schemaVersion": {
+            "const": "1.3",
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/MarketSegment"
+            },
+            "maxItems": 8,
+            "title": "Segments",
+            "type": "array"
+          },
+          "setupEvaluation": {
+            "$ref": "#/components/schemas/SetupEvaluationV13"
+          },
+          "timeframeAnalyses": {
+            "items": {
+              "$ref": "#/components/schemas/TimeframeAnalysis"
+            },
+            "maxItems": 6,
+            "title": "Timeframeanalyses",
+            "type": "array"
+          },
+          "tradeSignals": {
+            "items": {
+              "$ref": "#/components/schemas/TradeSignal"
+            },
+            "maxItems": 6,
+            "title": "Tradesignals",
+            "type": "array"
+          },
+          "volumeAnalysis": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VolumeAnalysis"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "zones": {
+            "items": {
+              "$ref": "#/components/schemas/DecisionZoneV13"
+            },
+            "maxItems": 5,
+            "title": "Zones",
+            "type": "array"
+          }
+        },
+        "required": [
+          "imageQuality",
+          "marketReading",
+          "bullishEvidence",
+          "bearishEvidence",
+          "conflicts",
+          "dominantBias",
+          "overallConfidence",
+          "decision",
+          "insights",
+          "keyLevels",
+          "patterns",
+          "scenarios",
+          "drawings",
+          "conclusions",
+          "segments",
+          "indicatorReadings",
+          "volumeAnalysis",
+          "positioningEvidence",
+          "timeframeAnalyses",
+          "tradeSignals",
+          "riskNotice",
+          "schemaVersion",
+          "analysisContext",
+          "evidence",
+          "marketState",
+          "zones",
+          "setupEvaluation"
+        ],
+        "title": "AnalysisReport",
+        "type": "object"
+      },
+      "AnalysisTask": {
+        "additionalProperties": false,
+        "properties": {
+          "context": {
+            "additionalProperties": true,
+            "title": "Context",
+            "type": "object"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "errorCode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "CV_IMAGE_INVALID",
+                  "CV_PROVIDER_TIMEOUT",
+                  "CV_PROVIDER_ERROR",
+                  "CV_RESPONSE_INVALID",
+                  "CV_CANCELLED",
+                  "CV_INTERNAL_ERROR"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errorcode"
+          },
+          "progressEvents": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisProgressEvent"
+            },
+            "title": "Progressevents",
+            "type": "array"
+          },
+          "report": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requestId": {
+            "title": "Requestid",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "processing",
+              "awaiting_confirmation",
+              "cancel_requested",
+              "cancelled",
+              "completed",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requestId",
+          "status",
+          "context"
+        ],
+        "title": "AnalysisTask",
+        "type": "object"
+      },
+      "Body_create_analysis_v1_analyses_post": {
+        "properties": {
+          "context": {
+            "default": "{}",
+            "title": "Context",
+            "type": "string"
+          },
+          "image": {
+            "items": {
+              "contentMediaType": "application/octet-stream",
+              "type": "string"
+            },
+            "title": "Image",
+            "type": "array"
+          }
+        },
+        "required": [
+          "image"
+        ],
+        "title": "Body_create_analysis_v1_analyses_post",
+        "type": "object"
+      },
+      "Capabilities": {
+        "additionalProperties": false,
+        "properties": {
+          "apiVersion": {
+            "const": "1",
+            "title": "Apiversion",
+            "type": "string"
+          },
+          "edition": {
+            "enum": [
+              "community",
+              "cloud"
+            ],
+            "title": "Edition",
+            "type": "string"
+          },
+          "features": {
+            "$ref": "#/components/schemas/CapabilityFeatures"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/CapabilityLimits"
+          },
+          "reportSchemaVersion": {
+            "const": "1.3",
+            "title": "Reportschemaversion",
+            "type": "string"
+          }
+        },
+        "required": [
+          "edition",
+          "apiVersion",
+          "reportSchemaVersion",
+          "limits",
+          "features"
+        ],
+        "title": "Capabilities",
+        "type": "object"
+      },
+      "CapabilityFeatures": {
+        "additionalProperties": false,
+        "properties": {
+          "advancedAnnotations": {
+            "title": "Advancedannotations",
+            "type": "boolean"
+          },
+          "billing": {
+            "title": "Billing",
+            "type": "boolean"
+          },
+          "cloudAuthentication": {
+            "title": "Cloudauthentication",
+            "type": "boolean"
+          },
+          "marketDataFusion": {
+            "title": "Marketdatafusion",
+            "type": "boolean"
+          },
+          "multiTimeframe": {
+            "title": "Multitimeframe",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "multiTimeframe",
+          "marketDataFusion",
+          "advancedAnnotations",
+          "cloudAuthentication",
+          "billing"
+        ],
+        "title": "CapabilityFeatures",
+        "type": "object"
+      },
+      "CapabilityLimits": {
+        "additionalProperties": false,
+        "properties": {
+          "maxImages": {
+            "minimum": 1.0,
+            "title": "Maximages",
+            "type": "integer"
+          },
+          "maxTimeframes": {
+            "minimum": 1.0,
+            "title": "Maxtimeframes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "maxImages",
+          "maxTimeframes"
+        ],
+        "title": "CapabilityLimits",
+        "type": "object"
+      },
+      "Decision": {
+        "additionalProperties": false,
+        "properties": {
+          "direction": {
+            "enum": [
+              "long",
+              "short",
+              "wait"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "primaryRisk": {
+            "minLength": 1,
+            "title": "Primaryrisk",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "waiting_trigger",
+              "waiting_confirmation",
+              "conditions_met",
+              "invalidated"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "direction",
+          "status",
+          "summary",
+          "primaryRisk"
+        ],
+        "title": "Decision",
+        "type": "object"
+      },
+      "DecisionZoneV13": {
+        "additionalProperties": false,
+        "properties": {
+          "band": {
+            "$ref": "#/components/schemas/PriceBandV13"
+          },
+          "evidenceRefs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidencerefs",
+            "type": "array"
+          },
+          "id": {
+            "pattern": "^Z\\d{2}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "score": {
+            "maximum": 8.0,
+            "minimum": -4.0,
+            "title": "Score",
+            "type": "integer"
+          },
+          "scoreFactors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scorefactors",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "holding",
+              "testing",
+              "broken",
+              "flip_candidate"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tier": {
+            "enum": [
+              "nearest",
+              "secondary",
+              "major"
+            ],
+            "title": "Tier",
+            "type": "string"
+          },
+          "timeframe": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeframe"
+          },
+          "type": {
+            "enum": [
+              "support",
+              "resistance",
+              "invalidation"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "tier",
+          "status",
+          "band",
+          "timeframe",
+          "score",
+          "scoreFactors",
+          "evidenceRefs"
+        ],
+        "title": "DecisionZoneV13",
+        "type": "object"
+      },
+      "DrawingInstruction": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "evidenceIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidenceids",
+            "type": "array"
+          },
+          "figureId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Figureid"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/DrawingPoint"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Points",
+            "type": "array"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "renderBounds": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PricePanelBounds"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "signalDirection": {
+            "anyOf": [
+              {
+                "enum": [
+                  "long",
+                  "short"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signaldirection"
+          },
+          "tool": {
+            "enum": [
+              "support_line",
+              "resistance_line",
+              "support_zone",
+              "resistance_zone",
+              "trend_line",
+              "breakout_marker",
+              "rejection_marker",
+              "time_marker",
+              "entry_line",
+              "stop_line",
+              "target_line",
+              "note"
+            ],
+            "title": "Tool",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tool",
+          "label",
+          "points",
+          "reason",
+          "evidenceIds",
+          "confidence",
+          "figureId",
+          "signalDirection",
+          "renderBounds"
+        ],
+        "title": "DrawingInstruction",
+        "type": "object"
+      },
+      "DrawingPoint": {
+        "additionalProperties": false,
+        "properties": {
+          "price": {
+            "title": "Price",
+            "type": "number"
+          },
+          "timeLabel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timelabel"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          },
+          "xRatio": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xratio"
+          },
+          "yRatio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Yratio",
+            "type": "number"
+          }
+        },
+        "required": [
+          "timestamp",
+          "price",
+          "timeLabel",
+          "xRatio",
+          "yRatio"
+        ],
+        "title": "DrawingPoint",
+        "type": "object"
+      },
+      "EffectiveRiskRewardV13": {
+        "additionalProperties": false,
+        "properties": {
+          "feeAssumption": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feeassumption"
+          },
+          "gross": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gross"
+          },
+          "net": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net"
+          },
+          "slippageAssumption": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slippageassumption"
+          }
+        },
+        "title": "EffectiveRiskRewardV13",
+        "type": "object"
+      },
+      "Evidence": {
+        "additionalProperties": false,
+        "properties": {
+          "claim": {
+            "minLength": 1,
+            "title": "Claim",
+            "type": "string"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "visualEvidence": {
+            "minLength": 1,
+            "title": "Visualevidence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "claim",
+          "visualEvidence",
+          "confidence"
+        ],
+        "title": "Evidence",
+        "type": "object"
+      },
+      "EvidenceReferenceV13": {
+        "additionalProperties": false,
+        "properties": {
+          "claim": {
+            "minLength": 1,
+            "title": "Claim",
+            "type": "string"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "id": {
+            "pattern": "^NE\\d{3}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "observationClass": {
+            "enum": [
+              "direct",
+              "estimated",
+              "calculated"
+            ],
+            "title": "Observationclass",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "screenshot",
+              "exchange_api",
+              "calculated",
+              "user_context"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "timeAnchor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeanchor"
+          },
+          "timeframe": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeframe"
+          }
+        },
+        "required": [
+          "id",
+          "claim",
+          "source",
+          "observationClass",
+          "confidence"
+        ],
+        "title": "EvidenceReferenceV13",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "ImageQuality": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "quality": {
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Quality",
+            "type": "string"
+          }
+        },
+        "required": [
+          "quality",
+          "limitations",
+          "confidence"
+        ],
+        "title": "ImageQuality",
+        "type": "object"
+      },
+      "IndicatorReading": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "drawingIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Drawingids",
+            "type": "array"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "enum": [
+              "RSI",
+              "MACD",
+              "OTHER"
+            ],
+            "title": "Name",
+            "type": "string"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Signals",
+            "type": "array"
+          },
+          "state": {
+            "minLength": 1,
+            "title": "State",
+            "type": "string"
+          },
+          "timeAnchor": {
+            "minLength": 1,
+            "title": "Timeanchor",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "state",
+          "signals",
+          "timeAnchor",
+          "drawingIds",
+          "confidence"
+        ],
+        "title": "IndicatorReading",
+        "type": "object"
+      },
+      "Insight": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "evidence": {
+            "minLength": 1,
+            "title": "Evidence",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "trend",
+              "structure",
+              "volatility",
+              "volume",
+              "momentum",
+              "indicator"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "value": {
+            "minLength": 1,
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "label",
+          "value",
+          "evidence",
+          "confidence"
+        ],
+        "title": "Insight",
+        "type": "object"
+      },
+      "KeyLevel": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "drawingId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drawingid"
+          },
+          "priceLabel": {
+            "minLength": 1,
+            "title": "Pricelabel",
+            "type": "string"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "holding",
+              "testing",
+              "broken",
+              "flip_candidate"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tier": {
+            "enum": [
+              "nearest",
+              "secondary",
+              "major"
+            ],
+            "title": "Tier",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "support",
+              "resistance",
+              "breakout_trigger",
+              "breakdown_trigger",
+              "trigger",
+              "invalidation",
+              "target"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "tier",
+          "status",
+          "priceLabel",
+          "reason",
+          "confidence",
+          "drawingId"
+        ],
+        "title": "KeyLevel",
+        "type": "object"
+      },
+      "MarketReading": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "structure": {
+            "enum": [
+              "hh-hl",
+              "lh-ll",
+              "range",
+              "transition",
+              "unclear"
+            ],
+            "title": "Structure",
+            "type": "string"
+          },
+          "trend": {
+            "enum": [
+              "bullish",
+              "bearish",
+              "sideways",
+              "unclear"
+            ],
+            "title": "Trend",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trend",
+          "structure",
+          "evidence",
+          "confidence"
+        ],
+        "title": "MarketReading",
+        "type": "object"
+      },
+      "MarketSegment": {
+        "additionalProperties": false,
+        "properties": {
+          "amplitude": {
+            "$ref": "#/components/schemas/SegmentAmplitude"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "drawingId": {
+            "title": "Drawingid",
+            "type": "string"
+          },
+          "duration": {
+            "$ref": "#/components/schemas/SegmentDuration"
+          },
+          "end": {
+            "$ref": "#/components/schemas/SegmentEndpoint"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "figureRef": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Figureref"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "indicatorSignals": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Indicatorsignals",
+            "type": "array"
+          },
+          "parentTrend": {
+            "enum": [
+              "bullish",
+              "bearish",
+              "range",
+              "transition"
+            ],
+            "title": "Parenttrend",
+            "type": "string"
+          },
+          "priceAction": {
+            "minLength": 1,
+            "title": "Priceaction",
+            "type": "string"
+          },
+          "start": {
+            "$ref": "#/components/schemas/SegmentEndpoint"
+          },
+          "strength": {
+            "enum": [
+              "strong",
+              "moderate",
+              "weak",
+              "unclear"
+            ],
+            "title": "Strength",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "impulse_up",
+              "pullback_down",
+              "consolidation",
+              "breakout_up",
+              "impulse_down",
+              "rebound_up",
+              "breakdown",
+              "transition"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "volumeBehavior": {
+            "minLength": 1,
+            "title": "Volumebehavior",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "parentTrend",
+          "start",
+          "end",
+          "amplitude",
+          "duration",
+          "strength",
+          "priceAction",
+          "volumeBehavior",
+          "indicatorSignals",
+          "evidence",
+          "drawingId",
+          "figureRef",
+          "confidence"
+        ],
+        "title": "MarketSegment",
+        "type": "object"
+      },
+      "MarketStateV13": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "currentLocation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentlocation"
+          },
+          "directionalBias": {
+            "enum": [
+              "bullish",
+              "bearish",
+              "neutral",
+              "unclear"
+            ],
+            "title": "Directionalbias",
+            "type": "string"
+          },
+          "opposingEvidenceRefs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Opposingevidencerefs",
+            "type": "array"
+          },
+          "regime": {
+            "enum": [
+              "trend",
+              "range",
+              "transition",
+              "insufficient"
+            ],
+            "title": "Regime",
+            "type": "string"
+          },
+          "structure": {
+            "enum": [
+              "hh-hl",
+              "lh-ll",
+              "range",
+              "transition",
+              "unclear"
+            ],
+            "title": "Structure",
+            "type": "string"
+          },
+          "supportingEvidenceRefs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Supportingevidencerefs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "regime",
+          "directionalBias",
+          "structure",
+          "currentLocation",
+          "supportingEvidenceRefs",
+          "opposingEvidenceRefs",
+          "confidence"
+        ],
+        "title": "MarketStateV13",
+        "type": "object"
+      },
+      "Pattern": {
+        "additionalProperties": false,
+        "properties": {
+          "bias": {
+            "enum": [
+              "bullish",
+              "bearish",
+              "neutral"
+            ],
+            "title": "Bias",
+            "type": "string"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "confirmation": {
+            "minLength": 1,
+            "title": "Confirmation",
+            "type": "string"
+          },
+          "drawingRefs": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Drawingrefs",
+            "type": "array"
+          },
+          "evidence": {
+            "minLength": 1,
+            "title": "Evidence",
+            "type": "string"
+          },
+          "figureRefs": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 4,
+            "title": "Figurerefs",
+            "type": "array"
+          },
+          "invalidation": {
+            "minLength": 1,
+            "title": "Invalidation",
+            "type": "string"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "forming",
+              "confirmed",
+              "invalidated"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "timeRange": {
+            "minLength": 1,
+            "title": "Timerange",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "status",
+          "bias",
+          "timeRange",
+          "evidence",
+          "confirmation",
+          "invalidation",
+          "drawingRefs",
+          "figureRefs",
+          "confidence"
+        ],
+        "title": "Pattern",
+        "type": "object"
+      },
+      "PositioningEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "kind": {
+            "enum": [
+              "cost_concentration",
+              "liquidation_cluster"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "marketImplication": {
+            "minLength": 1,
+            "title": "Marketimplication",
+            "type": "string"
+          },
+          "observation": {
+            "minLength": 1,
+            "title": "Observation",
+            "type": "string"
+          },
+          "priceLabel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricelabel"
+          },
+          "side": {
+            "enum": [
+              "long",
+              "short",
+              "mixed",
+              "neutral"
+            ],
+            "title": "Side",
+            "type": "string"
+          },
+          "timeAnchor": {
+            "minLength": 1,
+            "title": "Timeanchor",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "side",
+          "priceLabel",
+          "timeAnchor",
+          "observation",
+          "marketImplication",
+          "confidence"
+        ],
+        "title": "PositioningEvidence",
+        "type": "object"
+      },
+      "PriceBandV13": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "lower": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lower"
+          },
+          "precision": {
+            "enum": [
+              "exact",
+              "estimated",
+              "spatial"
+            ],
+            "title": "Precision",
+            "type": "string"
+          },
+          "upper": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upper"
+          }
+        },
+        "required": [
+          "lower",
+          "upper",
+          "label",
+          "precision"
+        ],
+        "title": "PriceBandV13",
+        "type": "object"
+      },
+      "PricePanelBounds": {
+        "additionalProperties": false,
+        "properties": {
+          "bottomRatio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Bottomratio",
+            "type": "number"
+          },
+          "leftRatio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Leftratio",
+            "type": "number"
+          },
+          "rightRatio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Rightratio",
+            "type": "number"
+          },
+          "topRatio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Topratio",
+            "type": "number"
+          }
+        },
+        "required": [
+          "leftRatio",
+          "topRatio",
+          "rightRatio",
+          "bottomRatio"
+        ],
+        "title": "PricePanelBounds",
+        "type": "object"
+      },
+      "Scenario": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmation": {
+            "minLength": 1,
+            "title": "Confirmation",
+            "type": "string"
+          },
+          "invalidation": {
+            "minLength": 1,
+            "title": "Invalidation",
+            "type": "string"
+          },
+          "mainRisk": {
+            "minLength": 1,
+            "title": "Mainrisk",
+            "type": "string"
+          },
+          "targetLogic": {
+            "minLength": 1,
+            "title": "Targetlogic",
+            "type": "string"
+          },
+          "trigger": {
+            "minLength": 1,
+            "title": "Trigger",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trigger",
+          "confirmation",
+          "invalidation",
+          "targetLogic",
+          "mainRisk"
+        ],
+        "title": "Scenario",
+        "type": "object"
+      },
+      "Scenarios": {
+        "additionalProperties": false,
+        "properties": {
+          "long": {
+            "$ref": "#/components/schemas/Scenario"
+          },
+          "short": {
+            "$ref": "#/components/schemas/Scenario"
+          },
+          "wait": {
+            "$ref": "#/components/schemas/WaitScenario"
+          }
+        },
+        "required": [
+          "long",
+          "short",
+          "wait"
+        ],
+        "title": "Scenarios",
+        "type": "object"
+      },
+      "SegmentAmplitude": {
+        "additionalProperties": false,
+        "properties": {
+          "absolute": {
+            "title": "Absolute",
+            "type": "number"
+          },
+          "percent": {
+            "title": "Percent",
+            "type": "number"
+          }
+        },
+        "required": [
+          "absolute",
+          "percent"
+        ],
+        "title": "SegmentAmplitude",
+        "type": "object"
+      },
+      "SegmentDuration": {
+        "additionalProperties": false,
+        "properties": {
+          "bars": {
+            "minimum": 1.0,
+            "title": "Bars",
+            "type": "integer"
+          },
+          "timeLabel": {
+            "minLength": 1,
+            "title": "Timelabel",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bars",
+          "timeLabel"
+        ],
+        "title": "SegmentDuration",
+        "type": "object"
+      },
+      "SegmentEndpoint": {
+        "additionalProperties": false,
+        "properties": {
+          "price": {
+            "title": "Price",
+            "type": "number"
+          },
+          "timeLabel": {
+            "minLength": 1,
+            "title": "Timelabel",
+            "type": "string"
+          },
+          "timePrecision": {
+            "enum": [
+              "visible",
+              "interpolated",
+              "relative"
+            ],
+            "title": "Timeprecision",
+            "type": "string"
+          },
+          "xRatio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Xratio",
+            "type": "number"
+          },
+          "yRatio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Yratio",
+            "type": "number"
+          }
+        },
+        "required": [
+          "timeLabel",
+          "timePrecision",
+          "price",
+          "xRatio",
+          "yRatio"
+        ],
+        "title": "SegmentEndpoint",
+        "type": "object"
+      },
+      "SetupEvaluationV13": {
+        "additionalProperties": false,
+        "properties": {
+          "actionability": {
+            "enum": [
+              "TRADE",
+              "WAIT",
+              "NO_TRADE"
+            ],
+            "title": "Actionability",
+            "type": "string"
+          },
+          "confirmation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation"
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "enum": [
+                  "long",
+                  "short"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "effectiveRToT1": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EffectiveRiskRewardV13"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "entry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceBandV13"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidenceRefs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidencerefs",
+            "type": "array"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "opposingEvidenceRefs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Opposingevidencerefs",
+            "type": "array"
+          },
+          "pendingConditions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Pendingconditions",
+            "type": "array"
+          },
+          "playbook": {
+            "enum": [
+              "trend_pullback",
+              "range_breakout",
+              "failed_breakout",
+              "none"
+            ],
+            "title": "Playbook",
+            "type": "string"
+          },
+          "premise": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Premise"
+          },
+          "state": {
+            "enum": [
+              "preparing",
+              "triggered",
+              "invalidated"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "structuralStop": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StructuralStopV13"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/SetupTargetV13"
+            },
+            "maxItems": 3,
+            "title": "Targets",
+            "type": "array"
+          },
+          "trigger": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger"
+          },
+          "triggerCandleClosed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Triggercandleclosed"
+          },
+          "vetoes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Vetoes",
+            "type": "array"
+          },
+          "whatChangesDecision": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Whatchangesdecision",
+            "type": "array"
+          }
+        },
+        "required": [
+          "playbook",
+          "state",
+          "actionability"
+        ],
+        "title": "SetupEvaluationV13",
+        "type": "object"
+      },
+      "SetupTargetV13": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "band": {
+            "$ref": "#/components/schemas/PriceBandV13"
+          },
+          "invalidation": {
+            "minLength": 1,
+            "title": "Invalidation",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "structure",
+              "measured_move",
+              "extension"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "tier": {
+            "enum": [
+              "T1",
+              "T2",
+              "T3"
+            ],
+            "title": "Tier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tier",
+          "band",
+          "source",
+          "active",
+          "invalidation"
+        ],
+        "title": "SetupTargetV13",
+        "type": "object"
+      },
+      "StructuralStopV13": {
+        "additionalProperties": false,
+        "properties": {
+          "band": {
+            "$ref": "#/components/schemas/PriceBandV13"
+          },
+          "buffer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buffer"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "band",
+          "reason",
+          "buffer"
+        ],
+        "title": "StructuralStopV13",
+        "type": "object"
+      },
+      "TimeframeAnalysis": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "decision": {
+            "enum": [
+              "long",
+              "short",
+              "wait"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Evidence",
+            "type": "array"
+          },
+          "structure": {
+            "enum": [
+              "hh-hl",
+              "lh-ll",
+              "range",
+              "transition",
+              "unclear"
+            ],
+            "title": "Structure",
+            "type": "string"
+          },
+          "summary": {
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          },
+          "timeframe": {
+            "minLength": 1,
+            "title": "Timeframe",
+            "type": "string"
+          },
+          "trend": {
+            "enum": [
+              "bullish",
+              "bearish",
+              "sideways",
+              "unclear"
+            ],
+            "title": "Trend",
+            "type": "string"
+          }
+        },
+        "required": [
+          "timeframe",
+          "trend",
+          "structure",
+          "summary",
+          "evidence",
+          "decision",
+          "confidence"
+        ],
+        "title": "TimeframeAnalysis",
+        "type": "object"
+      },
+      "TimeframeRole": {
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "enum": [
+              "context",
+              "setup",
+              "trigger",
+              "setup_and_trigger",
+              "supplemental"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "timeframe": {
+            "minLength": 1,
+            "title": "Timeframe",
+            "type": "string"
+          }
+        },
+        "required": [
+          "timeframe",
+          "role"
+        ],
+        "title": "TimeframeRole",
+        "type": "object"
+      },
+      "TradeSignal": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "cutoffPoint": {
+            "minLength": 1,
+            "title": "Cutoffpoint",
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "long",
+              "short"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "drawingRefs": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 4,
+            "title": "Drawingrefs",
+            "type": "array"
+          },
+          "entry": {
+            "minLength": 1,
+            "title": "Entry",
+            "type": "string"
+          },
+          "evidenceAtSignal": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Evidenceatsignal",
+            "type": "array"
+          },
+          "figureRefs": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 4,
+            "title": "Figurerefs",
+            "type": "array"
+          },
+          "id": {
+            "pattern": "^S\\d{2}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "invalidation": {
+            "minLength": 1,
+            "title": "Invalidation",
+            "type": "string"
+          },
+          "riskReward": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Riskreward"
+          },
+          "signalTime": {
+            "minLength": 1,
+            "title": "Signaltime",
+            "type": "string"
+          },
+          "signalType": {
+            "minLength": 1,
+            "title": "Signaltype",
+            "type": "string"
+          },
+          "stopLoss": {
+            "minLength": 1,
+            "title": "Stoploss",
+            "type": "string"
+          },
+          "takeProfits": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 3,
+            "minItems": 1,
+            "title": "Takeprofits",
+            "type": "array"
+          },
+          "thesisAtSignal": {
+            "minLength": 1,
+            "title": "Thesisatsignal",
+            "type": "string"
+          },
+          "timeframe": {
+            "minLength": 1,
+            "title": "Timeframe",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "timeframe",
+          "direction",
+          "signalType",
+          "signalTime",
+          "cutoffPoint",
+          "thesisAtSignal",
+          "evidenceAtSignal",
+          "entry",
+          "stopLoss",
+          "takeProfits",
+          "invalidation",
+          "riskReward",
+          "drawingRefs",
+          "figureRefs",
+          "confidence"
+        ],
+        "title": "TradeSignal",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VolumeAnalysis": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "conflictZones": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Conflictzones",
+            "type": "array"
+          },
+          "observations": {
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            },
+            "title": "Observations",
+            "type": "array"
+          },
+          "priceVolumeRelation": {
+            "enum": [
+              "confirming",
+              "bullish_divergence",
+              "bearish_divergence",
+              "mixed",
+              "unclear"
+            ],
+            "title": "Pricevolumerelation",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "expanding",
+              "contracting",
+              "mixed",
+              "steady",
+              "unclear"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "priceVolumeRelation",
+          "observations",
+          "conflictZones",
+          "confidence"
+        ],
+        "title": "VolumeAnalysis",
+        "type": "object"
+      },
+      "WaitScenario": {
+        "additionalProperties": false,
+        "properties": {
+          "conditions": {
+            "minLength": 1,
+            "title": "Conditions",
+            "type": "string"
+          },
+          "resolution": {
+            "minLength": 1,
+            "title": "Resolution",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conditions",
+          "resolution"
+        ],
+        "title": "WaitScenario",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "ChartViz Community API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/v1/analyses": {
+      "post": {
+        "operationId": "create_analysis_v1_analyses_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_analysis_v1_analyses_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisTask"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Analysis"
+      }
+    },
+    "/v1/analyses/{analysis_id}": {
+      "delete": {
+        "operationId": "cancel_analysis_v1_analyses__analysis_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisTask"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Analysis"
+      },
+      "get": {
+        "operationId": "get_analysis_v1_analyses__analysis_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisTask"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Analysis"
+      }
+    },
+    "/v1/capabilities": {
+      "get": {
+        "operationId": "capabilities_v1_capabilities_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Capabilities"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Capabilities"
+      }
+    },
+    "/v1/models": {
+      "get": {
+        "operationId": "models_v1_models_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "items": {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "title": "Response Models V1 Models Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Models"
+      }
+    }
+  }
+}
