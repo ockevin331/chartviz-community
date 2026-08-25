@@ -26,9 +26,13 @@ const excludedExtensionPaths = [
   'extension/fixtures/',
 ];
 const approvedOpenRouterTransportPath = 'extension/src/providers/openrouter-provider.ts';
+const approvedOpenAiTransportPath = 'extension/src/providers/openai-provider.ts';
+const approvedGeminiTransportPath = 'extension/src/providers/gemini-provider.ts';
 const approvedStage3RuntimePaths = new Set([
   'extension/assets/provider-test-card.png?inline',
   approvedOpenRouterTransportPath,
+  approvedOpenAiTransportPath,
+  approvedGeminiTransportPath,
   'extension/src/providers/model-catalog.ts',
   'extension/src/providers/provider-errors.ts',
   'extension/src/providers/provider-registry.ts',
@@ -180,6 +184,34 @@ function networkPrimitiveFromExpression(expression) {
     return networkPrimitives.has(property) ? property : null;
   }
   return null;
+}
+
+function isDirectGlobalFetch(expression) {
+  const target = unwrapExpression(expression);
+  return typeScriptAst.isPropertyAccessExpression(target)
+    && target.questionDotToken === undefined
+    && typeScriptAst.isIdentifier(target.expression)
+    && target.expression.text === 'globalThis'
+    && target.name.text === 'fetch';
+}
+
+function isExactGeminiEndpoint(expression) {
+  const target = unwrapExpression(expression);
+  if (!typeScriptAst.isTemplateExpression(target)
+    || target.head.text !== 'https://generativelanguage.googleapis.com/v1beta/models/'
+    || target.templateSpans.length !== 1
+    || target.templateSpans[0].literal.text !== ':generateContent') return false;
+  const encodedModel = unwrapExpression(target.templateSpans[0].expression);
+  if (!typeScriptAst.isCallExpression(encodedModel)
+    || encodedModel.arguments.length !== 1
+    || !typeScriptAst.isIdentifier(encodedModel.expression)
+    || encodedModel.expression.text !== 'encodeURIComponent') return false;
+  const model = unwrapExpression(encodedModel.arguments[0]);
+  return typeScriptAst.isPropertyAccessExpression(model)
+    && model.questionDotToken === undefined
+    && typeScriptAst.isIdentifier(model.expression)
+    && model.expression.text === 'config'
+    && model.name.text === 'model';
 }
 
 function isDirectNetworkCallReference(node) {
@@ -449,6 +481,13 @@ function inspectScriptSyntax(source, file) {
       return null;
     };
 
+    const hasRuntimeBinding = (node, name) => {
+      for (let current = node?.parent; current; current = current.parent) {
+        if (isLexicalScopeNode(current) && bindingsByScope.get(current)?.has(name)) return true;
+      }
+      return false;
+    };
+
     const visit = (node) => {
       if (typeScriptAst.isIdentifier(node)) {
         if (!isModuleSyntaxIdentifier(node, sourceFile)) identifiers.add(node.text);
@@ -496,7 +535,14 @@ function inspectScriptSyntax(source, file) {
         }
         const primitive = networkPrimitiveFromExpression(node.expression);
         if (primitive !== null) {
-          networkCalls.push({ primitive, target: resolvedStaticText(node.arguments[0]) });
+          networkCalls.push({
+            primitive,
+            target: resolvedStaticText(node.arguments[0]),
+            directGlobalFetch: primitive === 'fetch' && isDirectGlobalFetch(node.expression),
+            exactGeminiEndpoint: primitive === 'fetch'
+              && isExactGeminiEndpoint(node.arguments[0])
+              && !hasRuntimeBinding(node.arguments[0], 'encodeURIComponent'),
+          });
         }
       }
 
@@ -558,7 +604,26 @@ export function findForbiddenCapabilities(source, file = '') {
     && syntax.networkCalls.length === 1
     && syntax.networkCalls[0].primitive === 'fetch'
     && syntax.networkCalls[0].target === 'https://openrouter.ai/api/v1/chat/completions';
-  if (syntax.networkBehavior && !approvedOpenRouterNetwork) matches.push('network behavior');
+  const approvedOpenAiNetwork = normalizedFile === approvedOpenAiTransportPath
+    && syntax.networkBehavior
+    && !syntax.dynamicImport
+    && !syntax.networkReferenceOutsideCalls
+    && syntax.networkCalls.length === 1
+    && syntax.networkCalls[0].primitive === 'fetch'
+    && syntax.networkCalls[0].directGlobalFetch
+    && syntax.networkCalls[0].target === 'https://api.openai.com/v1/responses';
+  const approvedGeminiNetwork = normalizedFile === approvedGeminiTransportPath
+    && syntax.networkBehavior
+    && !syntax.dynamicImport
+    && !syntax.networkReferenceOutsideCalls
+    && syntax.networkCalls.length === 1
+    && syntax.networkCalls[0].primitive === 'fetch'
+    && syntax.networkCalls[0].directGlobalFetch
+    && syntax.networkCalls[0].exactGeminiEndpoint;
+  if (syntax.networkBehavior
+    && !approvedOpenRouterNetwork
+    && !approvedOpenAiNetwork
+    && !approvedGeminiNetwork) matches.push('network behavior');
   const forbiddenFilePath = hasForbiddenModuleSegment(normalizedFile)
     && !isApprovedStage3ModulePath(normalizedFile);
   const forbiddenSpecifier = syntax.moduleSpecifiers.some((specifier) => (

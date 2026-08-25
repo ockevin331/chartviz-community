@@ -1,9 +1,13 @@
+import { geminiProvider } from './gemini-provider';
+import { openAiProvider } from './openai-provider';
 import { openRouterProvider } from './openrouter-provider';
 import { ProviderError } from './provider-errors';
 import type { ProviderKind, VisionProvider } from './provider-types';
 
 const providers = new Map<ProviderKind, VisionProvider>([
   ['openrouter', openRouterProvider],
+  ['openai', openAiProvider],
+  ['gemini', geminiProvider],
 ]);
 
 export const providerRegistry = Object.freeze({

@@ -672,10 +672,8 @@ test('erases ambient import bindings without weakening static module gates', () 
 
 test('keeps provider and storage path gates closed outside the exact Stage 3 allowlist', () => {
   const cases = [
-    ['extension/src/providers/openai-provider.ts', 'export class OpenAiProvider {}'],
     ['extension/src/providers/openrouter-provider-copy.ts', 'export class OpenRouterProvider {}'],
     ['extension/src/storage/provider-local.ts', 'export const store = {};'],
-    ['extension/src/future/consumer.ts', 'import "../providers/openai-provider";'],
     ['extension/src/future/consumer.ts', 'import "../storage/provider-local";'],
   ];
 
@@ -683,6 +681,99 @@ test('keeps provider and storage path gates closed outside the exact Stage 3 all
     assert.ok(
       findForbiddenCapabilities(source, file).includes('forbidden module/import'),
       `unapproved Stage 3 path/import must remain closed: ${file} ${source}`,
+    );
+  }
+});
+
+test('allows only the exact Stage 4 adapter paths with their approved endpoint shapes', () => {
+  const approvedSources = [
+    [
+      'extension/src/providers/openai-provider.ts',
+      'const endpoint = "https://api.openai.com/v1/responses"; globalThis.fetch(endpoint, init);',
+    ],
+    [
+      'extension/src/providers/gemini-provider.ts',
+      'globalThis.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`, init);',
+    ],
+  ];
+  for (const [file, source] of approvedSources) {
+    assert.deepEqual(findForbiddenCapabilities(source, file), [], `${file} must allow its one exact endpoint shape`);
+  }
+
+  const productionFiles = approvedSources.map(([file]) => file);
+  for (const file of productionFiles) {
+    const source = readFileSync(path.join(repositoryRoot, file), 'utf8');
+    assert.deepEqual(findForbiddenCapabilities(source, file), [], `${file} production source must pass the narrow exception`);
+  }
+
+  assert.deepEqual(
+    findForbiddenCapabilities(
+      'import { openAiProvider } from "../providers/openai-provider"; import { geminiProvider } from "../providers/gemini-provider";',
+      'extension/src/future/consumer.ts',
+    ),
+    [],
+  );
+  for (const file of [
+    'extension/src/providers/openai-provider-copy.ts',
+    'extension/src/providers/gemini-provider-copy.ts',
+    'extension/src/future/openai-provider.ts',
+    'extension/src/future/gemini-provider.ts',
+  ]) {
+    assert.ok(
+      findForbiddenCapabilities('globalThis.fetch("https://example.test", init);', file).includes('network behavior'),
+      `renamed adapter path must not receive network capability: ${file}`,
+    );
+  }
+});
+
+test('rejects every OpenAI endpoint and transport mutation inside its approved adapter', () => {
+  const file = 'extension/src/providers/openai-provider.ts';
+  const cases = [
+    'globalThis.fetch("https://api.openai.com/v1/chat/completions", init);',
+    'globalThis.fetch("https://api.openai.com/v1/responses?key=secret", init);',
+    'globalThis.fetch(config.endpoint, init);',
+    'globalThis.fetch(endpoint, init);',
+    'window.fetch("https://api.openai.com/v1/responses", init);',
+    'transport.fetch("https://api.openai.com/v1/responses", init);',
+    'const request = globalThis.fetch; request("https://api.openai.com/v1/responses", init);',
+    'globalThis.fetch("https://api.openai.com/v1/responses", init); globalThis.fetch("https://api.openai.com/v1/responses", init);',
+    'globalThis.fetch("https://api.openai.com/v1/responses", init); new WebSocket(socketUrl);',
+    'globalThis.fetch("https://api.openai.com/v1/responses", init); import("./helper");',
+  ];
+
+  for (const source of cases) {
+    assert.ok(
+      findForbiddenCapabilities(source, file).includes('network behavior'),
+      `OpenAI transport mutation must fail: ${source}`,
+    );
+  }
+});
+
+test('requires Gemini fixed template boundaries and exact model encoding', () => {
+  const file = 'extension/src/providers/gemini-provider.ts';
+  const cases = [
+    'globalThis.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent`, init);',
+    'globalThis.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURI(config.model)}:generateContent`, init);',
+    'globalThis.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(other.model)}:generateContent`, init);',
+    'globalThis.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config["model"])}:generateContent`, init);',
+    'const encodeURIComponent = (value) => value; globalThis.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`, init);',
+    'function send(encodeURIComponent) { globalThis.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`, init); }',
+    'import { encodeURIComponent } from "./provider-types"; globalThis.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`, init);',
+    'globalThis.fetch(`${config.origin}/v1beta/models/${encodeURIComponent(config.model)}:generateContent`, init);',
+    'globalThis.fetch(`https://evil.test/v1beta/models/${encodeURIComponent(config.model)}:generateContent`, init);',
+    'globalThis.fetch(`https://generativelanguage.googleapis.com/v1/models/${encodeURIComponent(config.model)}:generateContent`, init);',
+    'globalThis.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:streamGenerateContent`, init);',
+    'globalThis.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent?key=secret`, init);',
+    'const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`; globalThis.fetch(endpoint, init);',
+    'window.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`, init);',
+    'globalThis.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`, init); globalThis.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`, init);',
+    'globalThis.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`, init); navigator.sendBeacon(beaconUrl, body);',
+  ];
+
+  for (const source of cases) {
+    assert.ok(
+      findForbiddenCapabilities(source, file).includes('network behavior'),
+      `Gemini transport mutation must fail: ${source}`,
     );
   }
 });
