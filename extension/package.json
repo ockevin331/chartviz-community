@@ -1,0 +1,29 @@
+{
+  "name": "chartviz-community-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.20.0",
+  "scripts": {
+    "dev": "wxt",
+    "prepare": "wxt prepare",
+    "compile": "wxt prepare && tsc --noEmit",
+    "test": "wxt prepare && vitest run",
+    "build": "wxt build",
+    "build:edge": "wxt build -b edge",
+    "zip": "wxt zip",
+    "zip:edge": "wxt zip -b edge"
+  },
+  "dependencies": {
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.8",
+    "@types/react-dom": "19.2.3",
+    "@wxt-dev/module-react": "1.2.1",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10",
+    "wxt": "0.21.3"
+  }
+}
