@@ -120,6 +120,46 @@ test('detects executable exchange-data flows in approved policy paths across sim
   }
 });
 
+test('normalizes prefixed and suffixed identifiers before auditing local fetch flows', () => {
+  const cases = [
+    'const latestExchangeData = await fetch(endpoint);',
+    'const cached_market_feed = await fetch(endpoint);',
+    'const normalizedExternalFeed = await load(endpoint);',
+    'const ProviderClientCache = await request(endpoint);',
+    'const liveBinanceDataSnapshot = await fetch(endpoint);',
+    'const cachedExchange2Data = await load(endpoint);',
+    'const cachedDataFromExchange = await request(endpoint);',
+    'const latestOkx2FeedSnapshot = await fetch(endpoint);',
+    'const latestExchange = await fetch(dataFeed);',
+  ];
+
+  const missed = cases.filter((source) => !findForbiddenCapabilities(
+    source,
+    'extension/src/analysis/source-policy.ts',
+  ).includes('exchange data'));
+
+  assert.deepEqual(missed, []);
+});
+
+test('does not combine partial semantics across ordinary identifiers or unrelated statements', () => {
+  const allowed = [
+    'const latestData = await fetch(endpoint);',
+    'const marketLabel = await load(endpoint);',
+    'const exchangeName = await request(endpoint);',
+    'const providerName = await fetch(endpoint);',
+    'const exchangeName = label; const latestData = value; const result = await fetch(endpoint);',
+    'const policy = "latest-exchange-data must never be fetched";',
+  ];
+
+  for (const source of allowed) {
+    assert.deepEqual(
+      findForbiddenCapabilities(source, 'extension/src/analysis/source-policy.ts'),
+      [],
+      `ordinary executable source must remain allowed: ${source}`,
+    );
+  }
+});
+
 test('rejects prohibited behavior without erasing matching tokens in approved files', () => {
   assert.ok(
     findForbiddenCapabilities(

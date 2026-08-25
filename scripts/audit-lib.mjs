@@ -27,7 +27,7 @@ const forbiddenCapabilities = [
   { capability: 'news search', pattern: /news[-\s]?(?:search(?:es)?|reports?)|web[-\s]?search(?:es)?/i, allowedLiteralPaths: approvedPolicyLiteralPaths },
   { capability: 'news search', pattern: /\b(?:fetch|search|query|load|request|retrieve)[-_]?(?:news|web)[-_]?(?:data|feed|reports?|results?)?\b/i, sourceView: 'executable' },
   { capability: 'exchange data', pattern: /\b(?:binance|okx|hyperliquid|exchange[-\s]?(?:apis?|data|feeds?)|calculated[-\s]?(?:data|feeds?)|external[-\s]?data)\b/i, allowedLiteralPaths: approvedPolicyLiteralPaths },
-  { capability: 'exchange data', pattern: /\b(?:exchange|external|calculated|market)[-_]?(?:apis?|data|feeds?)\b|\b(?:fetch|load|get|request|query|download|retrieve)[-_]?(?:exchange|external|calculated|market)[-_]?(?:data|feed|ohlcv)\b|\b(?:binance|okx|hyperliquid)(?:client|data|feed|api|ohlcv)\b/i, sourceView: 'executable' },
+  { capability: 'exchange data', test: hasExecutableExchangeDataFlow, sourceView: 'executable' },
   { capability: 'exchange data', pattern: /\bohlcv\b|https?:\/\/[^\s'"`]*(?:binance|okx|hyperliquid)[^\s'"`]*/i },
   { capability: 'local model', pattern: /local[-\s]?models?/i },
   { capability: 'compatibility adapter', pattern: /compatib(?:ility|le)[-\s]?(?:adapter|report)|legacy[-\s]?(?:adapter|report)|\b(?:communityreport|analysisreport)(?:adapter|adaptor)\b/i },
@@ -182,6 +182,95 @@ function maskNonExecutableJavaScript(source) {
   return output.join('');
 }
 
+const exchangeSourceWords = new Set([
+  'exchange',
+  'exchanges',
+  'external',
+  'market',
+  'markets',
+  'calculated',
+  'provider',
+  'providers',
+  'binance',
+  'okx',
+  'hyperliquid',
+]);
+const exchangeDataWords = new Set([
+  'data',
+  'dataset',
+  'datasets',
+  'api',
+  'apis',
+  'feed',
+  'feeds',
+  'client',
+  'clients',
+  'ohlcv',
+  'history',
+  'histories',
+]);
+const executableOperationWords = new Set([
+  'fetch',
+  'fetcher',
+  'load',
+  'loader',
+  'get',
+  'getter',
+  'request',
+  'requester',
+  'query',
+  'download',
+  'downloader',
+  'retrieve',
+  'retriever',
+  'search',
+  'searcher',
+]);
+
+function normalizedIdentifierWords(identifier) {
+  return identifier
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([A-Za-z])(\d)/g, '$1 $2')
+    .replace(/(\d)([A-Za-z])/g, '$1 $2')
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map((word) => word.toLowerCase());
+}
+
+function executableIdentifiers(segment) {
+  return [...segment.matchAll(/[$A-Z_a-z][$\w]*/g)].map((match) => ({
+    end: match.index + match[0].length,
+    words: normalizedIdentifierWords(match[0]),
+  }));
+}
+
+function hasExecutableExchangeDataFlow(executableSource) {
+  const localSegments = executableSource.split(/[;\n\r{}]+/);
+  for (const segment of localSegments) {
+    const identifiers = executableIdentifiers(segment);
+    if (identifiers.length === 0) continue;
+
+    const hasOperationCall = identifiers.some(({ end, words }) => (
+      words.some((word) => executableOperationWords.has(word))
+      && /^\s*\(/.test(segment.slice(end))
+    ));
+    const hasCombinedBehaviorIdentifier = identifiers.some(({ words }) => (
+      words.some((word) => executableOperationWords.has(word))
+      && words.some((word) => exchangeSourceWords.has(word))
+      && words.some((word) => exchangeDataWords.has(word))
+    ));
+    if (!hasOperationCall && !hasCombinedBehaviorIdentifier) continue;
+
+    const localWords = identifiers.flatMap(({ words }) => words);
+    if (localWords.some((word) => exchangeSourceWords.has(word))
+      && localWords.some((word) => exchangeDataWords.has(word))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function classifyRuntimeFile(file) {
   const normalized = file.replaceAll('\\', '/');
   if (!normalized.startsWith('extension/')) return false;
@@ -193,9 +282,10 @@ export function findForbiddenCapabilities(source, file = '') {
   const normalizedFile = file.replaceAll('\\', '/');
   const executableSource = maskNonExecutableJavaScript(source);
   const matches = forbiddenCapabilities
-    .filter(({ pattern, allowedLiteralPaths, sourceView }) => {
+    .filter(({ pattern, test, allowedLiteralPaths, sourceView }) => {
       const inspectedSource = sourceView === 'executable' ? executableSource : source;
-      return pattern.test(inspectedSource) && !allowedLiteralPaths?.has(normalizedFile);
+      const matched = test ? test(inspectedSource) : pattern.test(inspectedSource);
+      return matched && !allowedLiteralPaths?.has(normalizedFile);
     })
     .map(({ capability }) => capability);
   return [...new Set(matches)];
