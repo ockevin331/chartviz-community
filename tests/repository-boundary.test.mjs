@@ -34,17 +34,13 @@ test('recursively scans every tracked extension runtime or config file', () => {
   }
 });
 
-test('rejects every prohibited capability category in extension runtime code', () => {
+test('rejects deterministic Stage 1 capability gates in extension runtime code', () => {
   const cases = [
     ['cloud token or account', 'const token = "ChartViz Cloud token";'],
-    ['server or history behavior', 'const endpoint = "backend history";'],
     ['multi-timeframe', 'const view = "multi-timeframe";'],
-    ['news search', 'const query = "news-search";'],
-    ['exchange data', 'const feed = "Binance OHLCV";'],
-    ['local model', 'const model = "local model";'],
-    ['compatibility adapter', 'const adapter = "compatibility adapter";'],
+    ['compatibility adapter', 'class CommunityReportAdapter {}'],
     ['remote JavaScript', 'import "https://example.test/runtime.js";'],
-    ['analytics', 'const client = "analytics";'],
+    ['analytics', 'const analytics = {};'],
     ['report behavior', 'class AnalysisReport {}'],
     ['provider behavior', 'class VisionProvider {}'],
     ['capture behavior', 'function captureVisibleTab() {}'],
@@ -90,10 +86,10 @@ test('allows legitimate Stage 2 report identifiers and source-policy literals', 
 test('ignores raw policy phrases in strings, templates, comments, and policy regexes', () => {
   const policySource = [
     'const quoted = "Do not use exchange APIs or calculated feeds";',
-    'const template = `Reject exchangeData and fetchExternalData claims`;',
-    '// fetchExternalData and marketFeed are prohibited',
-    '/* Never use exchange data from external feeds. */',
-    'const prohibited = /exchange api|external data|news reports/i;',
+    'const template = `Reject fetch, XMLHttpRequest, WebSocket, EventSource, sendBeacon, and dynamic import claims`;',
+    '// fetch(endpoint), new WebSocket(url), and import("../backend/client") are prohibited',
+    '/* Never call navigator.sendBeacon or window.fetch. */',
+    'const prohibited = /fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|import[(]/i;',
   ].join('\n');
 
   assert.deepEqual(
@@ -102,80 +98,124 @@ test('ignores raw policy phrases in strings, templates, comments, and policy reg
   );
 });
 
-test('detects executable exchange-data flows in approved policy paths across simple renames', () => {
+test('rejects every Stage 2 network primitive reference, construction, or call', () => {
   const cases = [
-    'async function analyze(endpoint) { const exchangeData = await fetch(endpoint); return exchangeData; }',
-    'async function inspect(endpoint) { const externalData = await load(endpoint); return externalData; }',
-    'async function inspect(endpoint) { const marketFeed = await request(endpoint); return marketFeed; }',
-    'async function inspect(endpoint) { const exchange_data = await fetch(endpoint); return exchange_data; }',
-    'async function inspect(endpoint) { const binanceData = await fetch(endpoint); return binanceData; }',
-    'async function inspect(endpoint) { const note = `policy ${await fetch(endpoint)} ${exchangeData}`; return note; }',
+    'const latestExchangeData =\n  await\n  fetch(endpoint);',
+    'const response = await globalThis.fetch(endpoint);',
+    'const response = await window.fetch(endpoint);',
+    'const response = await transport.fetch(endpoint);',
+    'const request = fetch;\nconst response = await request(endpoint);',
+    'const request = globalThis.fetch;\nconst response = await request(endpoint);',
+    'const { fetch: request } = globalThis;\nconst response = await request(endpoint);',
+    'const request = globalThis["fetch"];\nconst response = await request(endpoint);',
+    "const Socket = window['WebSocket'];\nconst socket = new Socket(endpoint);",
+    'const socket = new WebSocket(endpoint);',
+    'const request = new XMLHttpRequest();',
+    'const stream = new EventSource(endpoint);',
+    'navigator.sendBeacon(endpoint, payload);',
+    'navigator["sendBeacon"](endpoint, payload);',
+    'const NativeSocket = globalThis.WebSocket;\nconst socket = new NativeSocket(endpoint);',
+    'const transport = import("./future/provider-transport");',
+    'const note = `policy text ${await fetch(endpoint)}`;',
   ];
 
   for (const source of cases) {
     assert.ok(
-      findForbiddenCapabilities(source, 'extension/src/analysis/source-policy.ts').includes('exchange data'),
-      `approved policy path must reject executable flow: ${source}`,
+      findForbiddenCapabilities(source, 'extension/src/analysis/source-policy.ts').includes('network behavior'),
+      `Stage 2 runtime must reject network behavior: ${source}`,
     );
   }
 });
 
-test('normalizes prefixed and suffixed identifiers before auditing local fetch flows', () => {
-  const cases = [
-    'const latestExchangeData = await fetch(endpoint);',
-    'const cached_market_feed = await fetch(endpoint);',
-    'const normalizedExternalFeed = await load(endpoint);',
-    'const ProviderClientCache = await request(endpoint);',
-    'const liveBinanceDataSnapshot = await fetch(endpoint);',
-    'const cachedExchange2Data = await load(endpoint);',
-    'const cachedDataFromExchange = await request(endpoint);',
-    'const latestOkx2FeedSnapshot = await fetch(endpoint);',
-    'const latestExchange = await fetch(dataFeed);',
+test('rejects forbidden runtime module paths independent of source naming', () => {
+  const files = [
+    'extension/src/cloud/client.ts',
+    'extension/src/backend/client.ts',
+    'extension/src/features/server/runtime.ts',
+    'extension/src/history/store.ts',
+    'extension/src/services/chart-history.ts',
+    'extension/src/news/search.ts',
+    'extension/src/services/runtime-news-client.ts',
+    'extension/src/data/exchange-api.ts',
+    'extension/src/data/runtime_exchange_api_client.ts',
+    'extension/src/models/local_model/runner.ts',
+    'extension/src/models/embedded-local-model.ts',
+    'extension/src/compatibility/adapter.ts',
+    'extension/src/analytics/client.ts',
+    'extension/src/providers/openai/transport.ts',
+    'extension/src/storage/session.ts',
+    'extension/src/capture/service.ts',
+    'extension/src/annotations/renderer.ts',
+    'extension\\src\\features\\news-feed\\runtime.ts',
   ];
 
-  const missed = cases.filter((source) => !findForbiddenCapabilities(
-    source,
-    'extension/src/analysis/source-policy.ts',
-  ).includes('exchange data'));
-
-  assert.deepEqual(missed, []);
+  for (const file of files) {
+    assert.ok(
+      findForbiddenCapabilities('export const value = 1;', file).includes('forbidden module/import'),
+      `Stage 2 runtime path must be rejected: ${file}`,
+    );
+  }
 });
 
-test('does not combine partial semantics across ordinary identifiers or unrelated statements', () => {
+test('rejects static imports and re-exports from forbidden runtime modules', () => {
+  const sources = [
+    'import { client } from "../backend/client";',
+    'import "../news/search";',
+    'import {\n  loadHistory,\n} from "../../history/store.js";',
+    'import { history } from "../services/chart-history";',
+    'import { news } from "../services/runtime-news-client";',
+    'export { analyze } from "@/exchange-api/client";',
+    'export { analyze } from "@/services/runtime_exchange_api_client";',
+    'export type { LocalModel } from "../local_model/runtime";',
+    'export type { LocalModel } from "../models/embedded-local-model";',
+    'import analytics from "@chartviz/analytics/client";',
+    'import { transport } from "../providers/openai/transport";',
+    'const store = require("../storage/session");',
+    'import { capture } from "../capture/service";',
+    'import { render } from "../annotations/renderer";',
+  ];
+
+  for (const source of sources) {
+    assert.ok(
+      findForbiddenCapabilities(source, 'extension/src/analysis/community-report.ts').includes('forbidden module/import'),
+      `Stage 2 import boundary must reject: ${source}`,
+    );
+  }
+});
+
+test('allows non-network identifiers and non-executable policy or module text', () => {
   const allowed = [
-    'const latestData = await fetch(endpoint);',
-    'const marketLabel = await load(endpoint);',
-    'const exchangeName = await request(endpoint);',
-    'const providerName = await fetch(endpoint);',
-    'const exchangeName = label; const latestData = value; const result = await fetch(endpoint);',
-    'const policy = "latest-exchange-data must never be fetched";',
+    'const latestExchangeData = cachedValue;',
+    'const cached_market_feed = snapshot;',
+    'const normalizedExternalFeed = localFixture;',
+    'const liveBinanceDataSnapshot = screenshotLabel;',
+    'const latestData = value; const marketLabel = label; const exchangeName = visibleName;',
+    'function fetchExternalData() { return cachedValue; }',
+    'const moduleExample = "import ../backend/client and ../news/search";',
+    'const architecture = `backend history exchange-api local-model compatibility analytics`;',
+    '// import "../providers/openai/transport"; fetch(endpoint);',
+    'const modulePattern = /import.*backend|fetch\(endpoint\)/;',
+    'import type { CommunityReport } from "../analysis/community-report";',
   ];
 
   for (const source of allowed) {
-    assert.deepEqual(
-      findForbiddenCapabilities(source, 'extension/src/analysis/source-policy.ts'),
-      [],
-      `ordinary executable source must remain allowed: ${source}`,
-    );
+    assert.deepEqual(findForbiddenCapabilities(
+      source,
+      'extension/src/analysis/source-policy.ts',
+    ), [], `non-network source must remain allowed: ${source}`);
   }
 });
 
-test('rejects prohibited behavior without erasing matching tokens in approved files', () => {
-  assert.ok(
-    findForbiddenCapabilities(
-      'const policy = "Binance API";',
-      'extension/src/providers/binance.ts',
-    ).includes('exchange data'),
-  );
+test('retains legacy symbol stage gates while network behavior is structural', () => {
 
   const prohibitedInsideApprovedFiles = [
     ['extension/src/analysis/community-report.ts', 'class VisionProvider {}', 'provider behavior'],
     ['extension/src/analysis/community-report.ts', 'type AnalysisReport = {}', 'report behavior'],
     ['extension/src/analysis/community-report.ts', 'class CommunityReportAdapter {}', 'compatibility adapter'],
-    ['extension/src/analysis/source-policy.ts', 'async function fetchExternalData() {}', 'exchange data'],
-    ['extension/src/analysis/source-policy.ts', 'fetch("https://api.binance.com/api/v3/ticker/price")', 'exchange data'],
-    ['extension/src/analysis/source-policy.ts', 'const candles = "OHLCV history";', 'exchange data'],
-    ['extension/src/analysis/community-prompt.ts', 'const endpoint = "backend history";', 'server or history behavior'],
+    ['extension/src/analysis/source-policy.ts', 'async function fetchExternalData() { return fetch(endpoint); }', 'network behavior'],
+    ['extension/src/analysis/source-policy.ts', 'fetch("https://api.binance.com/api/v3/ticker/price")', 'network behavior'],
+    ['extension/src/analysis/community-prompt.ts', 'function captureVisibleTab() {}', 'capture behavior'],
+    ['extension/src/analysis/community-prompt.ts', 'function renderAnnotations() {}', 'annotation behavior'],
   ];
 
   for (const [file, source, category] of prohibitedInsideApprovedFiles) {

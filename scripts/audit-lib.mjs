@@ -16,27 +16,15 @@ const excludedExtensionPaths = [
   'extension/__fixtures__/',
   'extension/fixtures/',
 ];
-const approvedPolicyLiteralPaths = new Set([
-  'extension/src/analysis/community-prompt.ts',
-  'extension/src/analysis/source-policy.ts',
-]);
 const forbiddenCapabilities = [
   { capability: 'cloud token or account', pattern: /chartviz\s*cloud|cloud\s*(?:token|account|auth)|\b(?:login|accounts?|quotas?|payments?)\b/i },
-  { capability: 'server or history behavior', pattern: /\b(?:server|backend|history)\b/i },
   { capability: 'multi-timeframe', pattern: /multi[-\s]?timeframe/i },
-  { capability: 'news search', pattern: /news[-\s]?(?:search(?:es)?|reports?)|web[-\s]?search(?:es)?/i, allowedLiteralPaths: approvedPolicyLiteralPaths },
-  { capability: 'news search', pattern: /\b(?:fetch|search|query|load|request|retrieve)[-_]?(?:news|web)[-_]?(?:data|feed|reports?|results?)?\b/i, sourceView: 'executable' },
-  { capability: 'exchange data', pattern: /\b(?:binance|okx|hyperliquid|exchange[-\s]?(?:apis?|data|feeds?)|calculated[-\s]?(?:data|feeds?)|external[-\s]?data)\b/i, allowedLiteralPaths: approvedPolicyLiteralPaths },
-  { capability: 'exchange data', test: hasExecutableExchangeDataFlow, sourceView: 'executable' },
-  { capability: 'exchange data', pattern: /\bohlcv\b|https?:\/\/[^\s'"`]*(?:binance|okx|hyperliquid)[^\s'"`]*/i },
-  { capability: 'local model', pattern: /local[-\s]?models?/i },
-  { capability: 'compatibility adapter', pattern: /compatib(?:ility|le)[-\s]?(?:adapter|report)|legacy[-\s]?(?:adapter|report)|\b(?:communityreport|analysisreport)(?:adapter|adaptor)\b/i },
-  { capability: 'remote JavaScript', pattern: /https?:\/\/[^\s'"`]+\.js(?:[?#][^\s'"`]*)?|import\s*(?:\(|[^;]*?from\s*)['"]https?:\/\//i },
-  { capability: 'analytics', pattern: /\b(?:analytics|telemetry)\b/i },
-  { capability: 'report behavior', pattern: /\banalysisreport\b/i },
-  { capability: 'provider behavior', pattern: /\b(?:visionprovider|providerregistry|providerconfig)\b/i },
-  { capability: 'capture behavior', pattern: /\b(?:capturevisibletab|tradingviewcapture|captureservice)\b/i },
-  { capability: 'annotation behavior', pattern: /\b(?:renderannotations|annotationrenderer|annotatedimage)\b/i },
+  { capability: 'compatibility adapter', pattern: /compatib(?:ility|le)[-\s]?(?:adapter|report)|legacy[-\s]?(?:adapter|report)|\b(?:communityreport|analysisreport)(?:adapter|adaptor)\b/i, sourceView: 'executable' },
+  { capability: 'analytics', pattern: /\b(?:analytics|telemetry)\b/i, sourceView: 'executable' },
+  { capability: 'report behavior', pattern: /\banalysisreport\b/i, sourceView: 'executable' },
+  { capability: 'provider behavior', pattern: /\b(?:visionprovider|providerregistry|providerconfig)\b/i, sourceView: 'executable' },
+  { capability: 'capture behavior', pattern: /\b(?:capturevisibletab|tradingviewcapture|captureservice)\b/i, sourceView: 'executable' },
+  { capability: 'annotation behavior', pattern: /\b(?:renderannotations|annotationrenderer|annotatedimage)\b/i, sourceView: 'executable' },
 ];
 
 function maskNonExecutableJavaScript(source) {
@@ -182,93 +170,90 @@ function maskNonExecutableJavaScript(source) {
   return output.join('');
 }
 
-const exchangeSourceWords = new Set([
-  'exchange',
-  'exchanges',
-  'external',
-  'market',
-  'markets',
-  'calculated',
+// Stage 2 is network-free. Stage 3 may narrow this blanket gate only for a
+// separately approved provider-transport module; manifest origins alone never grant runtime behavior.
+const networkPrimitivePattern = /\b(?:fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon)\b|\bimport\s*\(/;
+const computedNetworkMemberPattern = /\b([$A-Z_a-z][$\w]*)\s*(?:\?\.)?\[\s*(['"])(fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon)\2\s*\]/g;
+const forbiddenModuleTokens = new Set([
+  'cloud',
+  'backend',
+  'server',
+  'history',
+  'news',
+  'compatibility',
+  'analytics',
+  'telemetry',
   'provider',
   'providers',
-  'binance',
-  'okx',
-  'hyperliquid',
+  'storage',
+  'capture',
+  'annotation',
+  'annotations',
+  'network',
+  'transport',
+  'http',
+  'https',
+  'axios',
+  'got',
+  'ky',
 ]);
-const exchangeDataWords = new Set([
-  'data',
-  'dataset',
-  'datasets',
-  'api',
-  'apis',
-  'feed',
-  'feeds',
-  'client',
-  'clients',
-  'ohlcv',
-  'history',
-  'histories',
-]);
-const executableOperationWords = new Set([
-  'fetch',
-  'fetcher',
-  'load',
-  'loader',
-  'get',
-  'getter',
-  'request',
-  'requester',
-  'query',
-  'download',
-  'downloader',
-  'retrieve',
-  'retriever',
-  'search',
-  'searcher',
-]);
+const forbiddenModuleTokenPairs = [
+  ['exchange', 'api'],
+  ['local', 'model'],
+];
 
-function normalizedIdentifierWords(identifier) {
-  return identifier
-    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/([A-Za-z])(\d)/g, '$1 $2')
-    .replace(/(\d)([A-Za-z])/g, '$1 $2')
-    .split(/[^A-Za-z0-9]+/)
-    .filter(Boolean)
-    .map((word) => word.toLowerCase());
+function hasNetworkBehavior(source, executableSource) {
+  if (networkPrimitivePattern.test(executableSource)) return true;
+  return [...source.matchAll(computedNetworkMemberPattern)].some((match) => (
+    executableKeywordAt(executableSource, match.index, match[1])
+  ));
 }
 
-function executableIdentifiers(segment) {
-  return [...segment.matchAll(/[$A-Z_a-z][$\w]*/g)].map((match) => ({
-    end: match.index + match[0].length,
-    words: normalizedIdentifierWords(match[0]),
-  }));
+function moduleTokens(value) {
+  return value
+    .replaceAll('\\', '/')
+    .toLowerCase()
+    .split(/[/:._-]+/)
+    .filter(Boolean);
 }
 
-function hasExecutableExchangeDataFlow(executableSource) {
-  const localSegments = executableSource.split(/[;\n\r{}]+/);
-  for (const segment of localSegments) {
-    const identifiers = executableIdentifiers(segment);
-    if (identifiers.length === 0) continue;
+function hasForbiddenModuleSegment(value) {
+  const tokens = moduleTokens(value);
+  if (tokens.some((token) => forbiddenModuleTokens.has(token))) return true;
+  return forbiddenModuleTokenPairs.some(([first, second]) => tokens.some((token, index) => (
+    token === first && tokens[index + 1] === second
+  )));
+}
 
-    const hasOperationCall = identifiers.some(({ end, words }) => (
-      words.some((word) => executableOperationWords.has(word))
-      && /^\s*\(/.test(segment.slice(end))
-    ));
-    const hasCombinedBehaviorIdentifier = identifiers.some(({ words }) => (
-      words.some((word) => executableOperationWords.has(word))
-      && words.some((word) => exchangeSourceWords.has(word))
-      && words.some((word) => exchangeDataWords.has(word))
-    ));
-    if (!hasOperationCall && !hasCombinedBehaviorIdentifier) continue;
+function executableKeywordAt(executableSource, index, keyword) {
+  return executableSource.slice(index, index + keyword.length) === keyword;
+}
 
-    const localWords = identifiers.flatMap(({ words }) => words);
-    if (localWords.some((word) => exchangeSourceWords.has(word))
-      && localWords.some((word) => exchangeDataWords.has(word))) {
-      return true;
+function staticModuleSpecifiers(source, executableSource) {
+  const specifiers = new Set();
+  const patterns = [
+    {
+      pattern: /\b(import|export)\b[^;]{0,2000}?\bfrom\s*(['"])([^'"\r\n]+)\2/g,
+      specifierGroup: 3,
+    },
+    {
+      pattern: /\b(import)\s*(['"])([^'"\r\n]+)\2/g,
+      specifierGroup: 3,
+    },
+    {
+      pattern: /\b(require)\s*\(\s*(['"])([^'"\r\n]+)\2\s*\)/g,
+      specifierGroup: 3,
+    },
+  ];
+
+  for (const { pattern, specifierGroup } of patterns) {
+    for (const match of source.matchAll(pattern)) {
+      if (executableKeywordAt(executableSource, match.index, match[1])) {
+        specifiers.add(match[specifierGroup]);
+      }
     }
   }
-  return false;
+  return [...specifiers];
 }
 
 export function classifyRuntimeFile(file) {
@@ -281,13 +266,24 @@ export function classifyRuntimeFile(file) {
 export function findForbiddenCapabilities(source, file = '') {
   const normalizedFile = file.replaceAll('\\', '/');
   const executableSource = maskNonExecutableJavaScript(source);
-  const matches = forbiddenCapabilities
-    .filter(({ pattern, test, allowedLiteralPaths, sourceView }) => {
+  const moduleSpecifiers = staticModuleSpecifiers(source, executableSource);
+  const matches = [];
+
+  if (hasNetworkBehavior(source, executableSource)) matches.push('network behavior');
+  if (hasForbiddenModuleSegment(normalizedFile)
+    || moduleSpecifiers.some(hasForbiddenModuleSegment)) {
+    matches.push('forbidden module/import');
+  }
+  if (moduleSpecifiers.some((specifier) => /^https?:\/\//i.test(specifier))) {
+    matches.push('remote JavaScript');
+  }
+
+  matches.push(...forbiddenCapabilities
+    .filter(({ pattern, sourceView }) => {
       const inspectedSource = sourceView === 'executable' ? executableSource : source;
-      const matched = test ? test(inspectedSource) : pattern.test(inspectedSource);
-      return matched && !allowedLiteralPaths?.has(normalizedFile);
+      return pattern.test(inspectedSource);
     })
-    .map(({ capability }) => capability);
+    .map(({ capability }) => capability));
   return [...new Set(matches)];
 }
 
