@@ -13,7 +13,9 @@ function structuredAssistantContent(payload: unknown): string {
   if (choice === null || typeof choice !== 'object' || Array.isArray(choice)) return invalidResponse();
   const message = (choice as Record<string, unknown>).message;
   if (message === null || typeof message !== 'object' || Array.isArray(message)) return invalidResponse();
-  const content = (message as Record<string, unknown>).content;
+  const messageRecord = message as Record<string, unknown>;
+  if (messageRecord.role !== 'assistant') return invalidResponse();
+  const content = messageRecord.content;
   if (typeof content !== 'string') return invalidResponse();
   return content;
 }

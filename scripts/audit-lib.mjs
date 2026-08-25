@@ -204,11 +204,33 @@ function isModuleSyntaxIdentifier(node, sourceFile) {
 
 function isLexicalScopeNode(node) {
   return typeScriptAst.isBlock(node)
+    || typeScriptAst.isFunctionLikeDeclaration(node)
+    || typeScriptAst.isCatchClause(node)
+    || typeScriptAst.isClassLikeDeclaration(node)
     || node.kind === typeScriptAst.SyntaxKind.SourceFile
     || node.kind === typeScriptAst.SyntaxKind.CaseBlock
     || node.kind === typeScriptAst.SyntaxKind.ForStatement
     || node.kind === typeScriptAst.SyntaxKind.ForInStatement
     || node.kind === typeScriptAst.SyntaxKind.ForOfStatement;
+}
+
+function nearestVarScope(node) {
+  for (let current = node; current; current = current.parent) {
+    if (typeScriptAst.isFunctionLikeDeclaration(current)
+      || current.kind === typeScriptAst.SyntaxKind.SourceFile) return current;
+  }
+  return null;
+}
+
+function bindingNames(name) {
+  if (typeScriptAst.isIdentifier(name)) return [name.text];
+  if (typeScriptAst.isObjectBindingPattern(name)
+    || typeScriptAst.isArrayBindingPattern(name)) {
+    return name.elements.flatMap((element) => (
+      typeScriptAst.isBindingElement(element) ? bindingNames(element.name) : []
+    ));
+  }
+  return [];
 }
 
 function nearestLexicalScope(node) {
@@ -317,7 +339,7 @@ function inspectScriptSyntax(source, file) {
 
     const moduleSpecifiers = new Set();
     const identifiers = new Set();
-    const staticStringsByScope = new Map();
+    const bindingsByScope = new Map();
     const networkCalls = [];
     let networkBehavior = false;
     let networkReferenceOutsideCalls = false;
@@ -328,22 +350,59 @@ function inspectScriptSyntax(source, file) {
       if (specifier !== null) moduleSpecifiers.add(specifier);
     };
 
-    const collectStaticStrings = (node) => {
+    const addBinding = (scope, name, staticText = null) => {
+      if (scope === null) return;
+      const bindings = bindingsByScope.get(scope) ?? new Map();
+      bindings.set(name, bindings.has(name) ? null : staticText);
+      bindingsByScope.set(scope, bindings);
+    };
+
+    const collectBindings = (node) => {
       if (typeScriptAst.isVariableDeclaration(node)
-        && typeScriptAst.isIdentifier(node.name)
-        && node.initializer
-        && (node.parent.flags & typeScriptAst.NodeFlags.Const) !== 0) {
-        const value = literalText(node.initializer);
-        const scope = nearestLexicalScope(node.parent);
-        if (value !== null && scope !== null) {
-          const bindings = staticStringsByScope.get(scope) ?? new Map();
-          bindings.set(node.name.text, value);
-          staticStringsByScope.set(scope, bindings);
+        && typeScriptAst.isVariableDeclarationList(node.parent)) {
+        const flags = node.parent.flags;
+        const isConst = (flags & typeScriptAst.NodeFlags.Const) !== 0;
+        const isVar = (flags & (typeScriptAst.NodeFlags.Const | typeScriptAst.NodeFlags.Let)) === 0;
+        const scope = isVar ? nearestVarScope(node.parent) : nearestLexicalScope(node.parent);
+        const staticText = isConst && typeScriptAst.isIdentifier(node.name) && node.initializer
+          ? literalText(node.initializer)
+          : null;
+        for (const name of bindingNames(node.name)) addBinding(scope, name, staticText);
+      }
+
+      if (typeScriptAst.isFunctionLikeDeclaration(node)) {
+        for (const parameter of node.parameters) {
+          for (const name of bindingNames(parameter.name)) addBinding(node, name);
+        }
+        if (typeScriptAst.isFunctionExpression(node) && node.name) addBinding(node, node.name.text);
+      }
+
+      if (typeScriptAst.isFunctionDeclaration(node) && node.name) {
+        addBinding(nearestLexicalScope(node.parent), node.name.text);
+      }
+      if (typeScriptAst.isClassDeclaration(node) && node.name) {
+        addBinding(nearestLexicalScope(node.parent), node.name.text);
+      }
+      if (typeScriptAst.isClassExpression(node) && node.name) addBinding(node, node.name.text);
+
+      if (typeScriptAst.isCatchClause(node) && node.variableDeclaration) {
+        for (const name of bindingNames(node.variableDeclaration.name)) addBinding(node, name);
+      }
+
+      if (typeScriptAst.isImportDeclaration(node) && node.importClause) {
+        if (node.importClause.name) addBinding(sourceFile, node.importClause.name.text);
+        const namedBindings = node.importClause.namedBindings;
+        if (namedBindings && typeScriptAst.isNamespaceImport(namedBindings)) {
+          addBinding(sourceFile, namedBindings.name.text);
+        } else if (namedBindings && typeScriptAst.isNamedImports(namedBindings)) {
+          for (const element of namedBindings.elements) addBinding(sourceFile, element.name.text);
         }
       }
-      node.forEachChild(collectStaticStrings);
+      if (typeScriptAst.isImportEqualsDeclaration(node)) addBinding(sourceFile, node.name.text);
+
+      node.forEachChild(collectBindings);
     };
-    collectStaticStrings(sourceFile);
+    collectBindings(sourceFile);
 
     const resolvedStaticText = (node) => {
       const direct = literalText(node);
@@ -352,8 +411,8 @@ function inspectScriptSyntax(source, file) {
       if (!typeScriptAst.isIdentifier(expression)) return null;
       for (let current = expression.parent; current; current = current.parent) {
         if (isLexicalScopeNode(current)) {
-          const value = staticStringsByScope.get(current)?.get(expression.text);
-          if (value !== undefined) return value;
+          const bindings = bindingsByScope.get(current);
+          if (bindings?.has(expression.text)) return bindings.get(expression.text);
         }
       }
       return null;

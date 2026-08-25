@@ -48,7 +48,14 @@ function request(signal = new AbortController().signal): VisionRequest {
 }
 
 function successfulResponse(content: unknown): Response {
-  return new Response(JSON.stringify({ choices: [{ message: { content } }] }), {
+  return new Response(JSON.stringify({ choices: [{ message: { role: 'assistant', content } }] }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+function envelopeResponse(envelope: unknown): Response {
+  return new Response(JSON.stringify(envelope), {
     status: 200,
     headers: { 'content-type': 'application/json' },
   });
@@ -150,6 +157,42 @@ describe('OpenRouter analyze', () => {
     controller.abort();
 
     await expect(operation).rejects.toMatchObject({ code: 'cancelled' });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['missing role', { content: JSON.stringify(validReport) }],
+    ['user role', { role: 'user', content: JSON.stringify(validReport) }],
+    ['system role', { role: 'system', content: JSON.stringify(validReport) }],
+    ['tool role', { role: 'tool', content: JSON.stringify(validReport) }],
+    ['developer role', { role: 'developer', content: JSON.stringify(validReport) }],
+  ])('rejects a structured report with %s', async (_name, message) => {
+    const fetchImpl = vi.fn(async () => envelopeResponse({ choices: [{ message }] }));
+    const provider = providerWithFetch(fetchImpl);
+
+    await expect(provider.analyze(config, request())).rejects.toMatchObject({ code: 'invalid_response' });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects extra choices and redacts the rejected envelope', async () => {
+    const upstreamContent = 'upstream-role-content-sentinel';
+    const fetchImpl = vi.fn(async () => envelopeResponse({
+      choices: [
+        { message: { role: 'assistant', content: JSON.stringify(validReport) } },
+        { message: { role: 'tool', content: upstreamContent } },
+      ],
+    }));
+    const provider = providerWithFetch(fetchImpl);
+    let caught: unknown;
+
+    try {
+      await provider.analyze(config, request());
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toMatchObject({ code: 'invalid_response' });
+    expect(`${String(caught)} ${JSON.stringify(caught)} ${(caught as Error).stack}`).not.toContain(upstreamContent);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
@@ -276,5 +319,22 @@ describe('OpenRouter connection test card', () => {
       });
       expect(fetchImpl).toHaveBeenCalledTimes(1);
     }
+  });
+
+  it.each([
+    ['missing role', [{ message: { content: '{"seenImage":true}' } }]],
+    ['user role', [{ message: { role: 'user', content: '{"seenImage":true}' } }]],
+    ['extra choice', [
+      { message: { role: 'assistant', content: '{"seenImage":true}' } },
+      { message: { role: 'assistant', content: '{"seenImage":true}' } },
+    ]],
+  ])('rejects connection content with %s through the shared envelope parser', async (_name, choices) => {
+    const fetchImpl = vi.fn(async () => envelopeResponse({ choices }));
+    const provider = providerWithFetch(fetchImpl);
+
+    await expect(provider.testConnection(config, new AbortController().signal)).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 });

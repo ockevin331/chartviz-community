@@ -465,6 +465,53 @@ test('rejects every non-approved transport mutation inside the OpenRouter file',
   }
 });
 
+test('stops exact-origin resolution at every nearer runtime binding', () => {
+  const file = 'extension/src/providers/openrouter-provider.ts';
+  const approved = 'https://openrouter.ai/api/v1/chat/completions';
+  const shadowedSources = [
+    `const openRouterUrl = "${approved}"; function send(openRouterUrl) { fetch(openRouterUrl); }`,
+    `const openRouterUrl = "${approved}"; const send = (openRouterUrl) => fetch(openRouterUrl);`,
+    `const openRouterUrl = "${approved}"; function send(openRouterUrl = "${approved}") { fetch(openRouterUrl); }`,
+    `const openRouterUrl = "${approved}"; function send({ openRouterUrl }) { fetch(openRouterUrl); }`,
+    `const openRouterUrl = "${approved}"; function send(...openRouterUrl) { fetch(openRouterUrl); }`,
+    `const openRouterUrl = "${approved}"; { let openRouterUrl = endpoint; fetch(openRouterUrl); }`,
+    `const openRouterUrl = "${approved}"; function send() { fetch(openRouterUrl); var openRouterUrl = endpoint; }`,
+    `const openRouterUrl = "${approved}"; function send() { if (ready) { var openRouterUrl = endpoint; } fetch(openRouterUrl); }`,
+    `const openRouterUrl = "${approved}"; try { run(); } catch (openRouterUrl) { fetch(openRouterUrl); }`,
+    `const openRouterUrl = "${approved}"; for (let openRouterUrl = endpoint; ready;) { fetch(openRouterUrl); }`,
+    `const openRouterUrl = "${approved}"; for (const openRouterUrl in endpoints) { fetch(openRouterUrl); }`,
+    `const openRouterUrl = "${approved}"; for (const openRouterUrl of endpoints) { fetch(openRouterUrl); }`,
+    `const openRouterUrl = "${approved}"; { const openRouterUrl = endpoint; fetch(openRouterUrl); }`,
+    'import { openRouterUrl } from "./provider-types"; fetch(openRouterUrl);',
+    `const openRouterUrl = "${approved}"; { class openRouterUrl {} fetch(openRouterUrl); }`,
+    `const openRouterUrl = "${approved}"; { function openRouterUrl() {} fetch(openRouterUrl); }`,
+  ];
+
+  for (const source of shadowedSources) {
+    assert.ok(
+      findForbiddenCapabilities(source, file).includes('network behavior'),
+      `nearer runtime binding must stop fixed-origin resolution: ${source}`,
+    );
+  }
+
+  const allowedSources = [
+    `const openRouterUrl = "${approved}"; fetch(openRouterUrl);`,
+    `const openRouterUrl = "${approved}"; { fetch(openRouterUrl); }`,
+    `const openRouterUrl = "${approved}"; try { run(); } catch (openRouterUrl) { consume(openRouterUrl); } fetch(openRouterUrl);`,
+    `const openRouterUrl = "https://evil.test/api"; { const openRouterUrl = "${approved}"; fetch(openRouterUrl); }`,
+  ];
+  for (const source of allowedSources) {
+    assert.deepEqual(findForbiddenCapabilities(source, file), [], `provable nearest const must pass: ${source}`);
+  }
+
+  assert.ok(
+    findForbiddenCapabilities(
+      `const openRouterUrl = "${approved}"; { const openRouterUrl = "https://evil.test/api"; fetch(openRouterUrl); }`,
+      file,
+    ).includes('network behavior'),
+  );
+});
+
 test('keeps provider and storage path gates closed outside the exact Stage 3 allowlist', () => {
   const cases = [
     ['extension/src/providers/openai-provider.ts', 'export class OpenAiProvider {}'],
