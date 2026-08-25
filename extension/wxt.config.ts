@@ -26,7 +26,7 @@ export function createManifest(): ExtensionManifest {
     permissions: [...approvedPermissions],
     host_permissions: [...approvedOrigins],
     action: {
-      default_popup: 'panel/index.html',
+      default_popup: 'panel.html',
       default_icon: {
         16: 'icons/chartviz-16.png',
         32: 'icons/chartviz-32.png',

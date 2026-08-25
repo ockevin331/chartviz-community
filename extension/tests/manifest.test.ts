@@ -11,6 +11,7 @@ describe('extension manifest', () => {
       'https://api.openai.com/v1/*',
       'https://generativelanguage.googleapis.com/*',
     ]);
+    expect(manifest.action.default_popup).toBe('panel.html');
     expect(JSON.stringify(manifest)).not.toContain('<all_urls>');
     expect(manifest.optional_host_permissions).toBeUndefined();
   });
