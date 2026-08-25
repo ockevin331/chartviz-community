@@ -17,19 +17,44 @@ const excludedExtensionPaths = [
   'extension/fixtures/',
 ];
 const forbiddenCapabilities = [
-  ['cloud token or account', /chartviz\s*cloud|cloud\s*(?:token|account|auth)|\b(?:login|accounts?|quotas?|payments?)\b/i],
-  ['server or history behavior', /\b(?:server|backend|history)\b/i],
-  ['multi-timeframe', /multi[-\s]?timeframe/i],
-  ['news search', /news[-\s]?search/i],
-  ['exchange data', /\b(?:binance|okx|hyperliquid|ohlcv|exchange[-\s]?data)\b/i],
-  ['local model', /local[-\s]?models?/i],
-  ['compatibility adapter', /compatib(?:ility|le)[-\s]?(?:adapter|report)|legacy[-\s]?(?:adapter|report)/i],
-  ['remote JavaScript', /https?:\/\/[^\s'"`]+\.js(?:[?#][^\s'"`]*)?|import\s*(?:\(|[^;]*?from\s*)['"]https?:\/\//i],
-  ['analytics', /\b(?:analytics|telemetry)\b/i],
-  ['report behavior', /\b(?:communityreport|analysisreport)\b/i],
-  ['provider behavior', /\b(?:visionprovider|providerregistry|providerconfig)\b/i],
-  ['capture behavior', /\b(?:capturevisibletab|tradingviewcapture|captureservice)\b/i],
-  ['annotation behavior', /\b(?:renderannotations|annotationrenderer|annotatedimage)\b/i],
+  { capability: 'cloud token or account', pattern: /chartviz\s*cloud|cloud\s*(?:token|account|auth)|\b(?:login|accounts?|quotas?|payments?)\b/i },
+  { capability: 'server or history behavior', pattern: /\b(?:server|backend|history)\b/i },
+  { capability: 'multi-timeframe', pattern: /multi[-\s]?timeframe/i },
+  { capability: 'news search', pattern: /news[-\s]?(?:search|reports?)|web[-\s]?search/i, allowStage2Literals: true },
+  { capability: 'exchange data', pattern: /\b(?:binance|okx|hyperliquid|ohlcv|exchange[-\s]?(?:api|data|feed)|calculated[-\s]?(?:data|feed)|external[-\s]?data)\b/i, allowStage2Literals: true },
+  { capability: 'exchange data', pattern: /(?:fetch|XMLHttpRequest|WebSocket)\s*\([\s\S]{0,240}(?:binance|okx|hyperliquid|exchange|klines)|https?:\/\/[^\s'"`]*(?:binance|okx|hyperliquid)[^\s'"`]*/i },
+  { capability: 'local model', pattern: /local[-\s]?models?/i },
+  { capability: 'compatibility adapter', pattern: /compatib(?:ility|le)[-\s]?(?:adapter|report)|legacy[-\s]?(?:adapter|report)/i },
+  { capability: 'remote JavaScript', pattern: /https?:\/\/[^\s'"`]+\.js(?:[?#][^\s'"`]*)?|import\s*(?:\(|[^;]*?from\s*)['"]https?:\/\//i },
+  { capability: 'analytics', pattern: /\b(?:analytics|telemetry)\b/i },
+  { capability: 'report behavior', pattern: /\b(?:communityreport|analysisreport)\b/i, allowStage2Literals: true },
+  { capability: 'provider behavior', pattern: /\b(?:visionprovider|providerregistry|providerconfig)\b/i },
+  { capability: 'capture behavior', pattern: /\b(?:capturevisibletab|tradingviewcapture|captureservice)\b/i },
+  { capability: 'annotation behavior', pattern: /\b(?:renderannotations|annotationrenderer|annotatedimage)\b/i },
+];
+
+const approvedStage2Literals = [
+  {
+    capability: 'report behavior',
+    paths: new Set(['extension/src/analysis/community-report.ts']),
+    pattern: /communityreport/gi,
+  },
+  {
+    capability: 'exchange data',
+    paths: new Set([
+      'extension/src/analysis/community-prompt.ts',
+      'extension/src/analysis/source-policy.ts',
+    ]),
+    pattern: /\b(?:binance|okx|hyperliquid|exchange[-\s]?(?:api|data|feed)s?|calculated[-\s]?(?:data|feed)s?|external[-\s]?data)\b/gi,
+  },
+  {
+    capability: 'news search',
+    paths: new Set([
+      'extension/src/analysis/community-prompt.ts',
+      'extension/src/analysis/source-policy.ts',
+    ]),
+    pattern: /news[-\s]?(?:search|reports?)|web[-\s]?search/gi,
+  },
 ];
 
 export function classifyRuntimeFile(file) {
@@ -39,10 +64,19 @@ export function classifyRuntimeFile(file) {
   return runtimeExtensions.has(path.extname(normalized)) || normalized === 'extension/package.json';
 }
 
-export function findForbiddenCapabilities(source) {
-  return forbiddenCapabilities
-    .filter(([, pattern]) => pattern.test(source))
-    .map(([capability]) => capability);
+export function findForbiddenCapabilities(source, file = '') {
+  const normalizedFile = file.replaceAll('\\', '/');
+  const matches = forbiddenCapabilities
+    .filter(({ capability, pattern, allowStage2Literals }) => {
+      const inspectedSource = allowStage2Literals
+        ? approvedStage2Literals
+          .filter((approval) => approval.capability === capability && approval.paths.has(normalizedFile))
+          .reduce((text, approval) => text.replace(approval.pattern, ''), source)
+        : source;
+      return pattern.test(inspectedSource);
+    })
+    .map(({ capability }) => capability);
+  return [...new Set(matches)];
 }
 
 function fail(message) {

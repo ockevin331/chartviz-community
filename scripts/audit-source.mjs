@@ -12,7 +12,7 @@ const files = execFileSync('git', ['ls-files'], { cwd: root, encoding: 'utf8' })
 
 for (const file of files) {
   const source = readFileSync(path.join(root, file), 'utf8');
-  const capabilities = findForbiddenCapabilities(source);
+  const capabilities = findForbiddenCapabilities(source, file);
   if (capabilities.length > 0) throw new Error(`Source audit failed: ${file} contains ${capabilities.join(', ')}`);
 }
 

@@ -30,7 +30,7 @@ test('recursively scans every tracked extension runtime or config file', () => {
 
   for (const file of runtimeFiles) {
     const source = readFileSync(path.join(repositoryRoot, file), 'utf8');
-    assert.deepEqual(findForbiddenCapabilities(source), [], `${file} must not contain forbidden runtime behavior`);
+    assert.deepEqual(findForbiddenCapabilities(source, file), [], `${file} must not contain forbidden runtime behavior`);
   }
 });
 
@@ -53,6 +53,57 @@ test('rejects every prohibited capability category in extension runtime code', (
 
   for (const [category, source] of cases) {
     assert.ok(findForbiddenCapabilities(source).includes(category), `${category} must be rejected`);
+  }
+});
+
+test('allows only approved Stage 2 report and source-policy literals in their exact files', () => {
+  assert.deepEqual(
+    findForbiddenCapabilities(
+      'export const communityReportSchema = {}; export type CommunityReport = {};',
+      'extension/src/analysis/community-report.ts',
+    ),
+    [],
+  );
+  assert.deepEqual(
+    findForbiddenCapabilities(
+      'const policy = /exchange api|binance api|calculated feed|web search|news reports/i;',
+      'extension/src/analysis/source-policy.ts',
+    ),
+    [],
+  );
+  assert.deepEqual(
+    findForbiddenCapabilities(
+      'const instruction = "Do not use exchange APIs, calculated feeds, news search, or web search";',
+      'extension/src/analysis/community-prompt.ts',
+    ),
+    [],
+  );
+});
+
+test('does not extend Stage 2 literal exemptions to other paths or forbidden behavior', () => {
+  assert.ok(
+    findForbiddenCapabilities(
+      'export type CommunityReport = {};',
+      'extension/src/ui/report.ts',
+    ).includes('report behavior'),
+  );
+  assert.ok(
+    findForbiddenCapabilities(
+      'const policy = "Binance API";',
+      'extension/src/providers/binance.ts',
+    ).includes('exchange data'),
+  );
+
+  const prohibitedInsideApprovedFiles = [
+    ['extension/src/analysis/community-report.ts', 'class VisionProvider {}', 'provider behavior'],
+    ['extension/src/analysis/community-report.ts', 'type AnalysisReport = {}', 'report behavior'],
+    ['extension/src/analysis/source-policy.ts', 'fetch("https://api.binance.com/api/v3/ticker/price")', 'exchange data'],
+    ['extension/src/analysis/source-policy.ts', 'const candles = "OHLCV history";', 'exchange data'],
+    ['extension/src/analysis/community-prompt.ts', 'const endpoint = "backend history";', 'server or history behavior'],
+  ];
+
+  for (const [file, source, category] of prohibitedInsideApprovedFiles) {
+    assert.ok(findForbiddenCapabilities(source, file).includes(category), `${file} must still reject ${category}`);
   }
 });
 
