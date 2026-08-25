@@ -1,0 +1,280 @@
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { communityJsonSchema } from '../src/analysis/community-json-schema';
+import { ProviderError, type AnalysisErrorCode } from '../src/providers/provider-errors';
+import { OpenRouterProvider } from '../src/providers/openrouter-provider';
+import type { ProviderConfig, VisionRequest } from '../src/providers/provider-types';
+
+const validReport = {
+  schemaVersion: 'community-1.0',
+  chart: { instrument: 'BTC/USDT', timeframe: '15m', limitations: [] },
+  marketView: {
+    bias: 'unclear', phase: 'unclear', strength: 'unclear', summary: 'The visible chart is mixed.', evidenceIds: [],
+  },
+  evidence: [],
+  volume: null,
+  indicators: [],
+  levels: [],
+  scenarios: {
+    long: {
+      condition: 'Wait for visible resistance to break.', entry: 'Enter only after confirmation.', stop: 'Below visible support.', targets: [], reason: 'Confirmation is not visible yet.', evidenceIds: [],
+    },
+    short: {
+      condition: 'Wait for visible support to fail.', entry: 'Enter only after confirmation.', stop: 'Above visible resistance.', targets: [], reason: 'Breakdown confirmation is not visible yet.', evidenceIds: [],
+    },
+    wait: { condition: 'Wait while structure remains mixed.', reason: 'The screenshot is inconclusive.', evidenceIds: [] },
+  },
+  patterns: [],
+  signals: [],
+  riskNotice: 'Educational screenshot analysis only.',
+};
+
+const config: ProviderConfig = {
+  provider: 'openrouter',
+  apiKey: 'unit-test-placeholder',
+  model: ' custom/vision-model ',
+  customModel: true,
+};
+
+function request(signal = new AbortController().signal): VisionRequest {
+  return {
+    image: { mediaType: 'image/png', dataUrl: 'data:image/png;base64,AAAA' },
+    prompt: { system: 'Screenshot-only system prompt.', user: 'Analyze this screenshot.' },
+    jsonSchema: communityJsonSchema,
+    signal,
+  };
+}
+
+function successfulResponse(content: unknown): Response {
+  return new Response(JSON.stringify({ choices: [{ message: { content } }] }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+function fetchCallBody(fetchImpl: ReturnType<typeof vi.fn>): Record<string, any> {
+  const init = fetchImpl.mock.calls[0]?.[1] as RequestInit;
+  return JSON.parse(String(init.body));
+}
+
+function providerWithFetch(fetchImpl: ReturnType<typeof vi.fn>, timeoutMs?: number): OpenRouterProvider {
+  vi.stubGlobal('fetch', fetchImpl);
+  return new OpenRouterProvider(timeoutMs === undefined ? {} : { timeoutMs });
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+describe('OpenRouter analyze', () => {
+  it('makes exactly one fixed-origin request with prompt before image and the shared strict schema', async () => {
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => (
+      successfulResponse(JSON.stringify(validReport))
+    ));
+    const provider = providerWithFetch(fetchImpl);
+
+    await expect(provider.analyze(config, request())).resolves.toEqual(validReport);
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchImpl.mock.calls[0]!;
+    expect(url).toBe('https://openrouter.ai/api/v1/chat/completions');
+    expect(init?.method).toBe('POST');
+    expect(init?.headers).toEqual({
+      Authorization: 'Bearer unit-test-placeholder',
+      'Content-Type': 'application/json',
+    });
+    const body = fetchCallBody(fetchImpl);
+    expect(body.model).toBe('custom/vision-model');
+    expect(body.messages).toEqual([
+      { role: 'system', content: 'Screenshot-only system prompt.' },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Analyze this screenshot.' },
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } },
+        ],
+      },
+    ]);
+    expect(body.response_format).toEqual({
+      type: 'json_schema',
+      json_schema: { name: 'community_report', strict: true, schema: communityJsonSchema },
+    });
+    expect(body.provider).toEqual({ require_parameters: true });
+    expect(JSON.stringify(body)).not.toContain(config.apiKey);
+  });
+
+  it.each([
+    [400, 'model_not_multimodal'],
+    [401, 'invalid_api_key'],
+    [403, 'invalid_api_key'],
+    [402, 'insufficient_balance'],
+    [404, 'model_not_found'],
+    [413, 'invalid_image'],
+    [415, 'invalid_image'],
+    [422, 'invalid_image'],
+    [429, 'rate_limited'],
+  ] satisfies Array<[number, AnalysisErrorCode]>)('maps HTTP %i to %s without reading the response body', async (status, code) => {
+    const json = vi.fn(async () => ({ secret: 'must-not-be-read' }));
+    const fetchImpl = vi.fn(async () => ({ ok: false, status, json }) as unknown as Response);
+    const provider = providerWithFetch(fetchImpl);
+
+    const operation = provider.analyze(config, request());
+
+    await expect(operation).rejects.toMatchObject({ code, httpStatus: status, params: { provider: 'openrouter' } });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid config before fetch', async () => {
+    const fetchImpl = vi.fn();
+    const provider = providerWithFetch(fetchImpl);
+
+    await expect(provider.analyze({ ...config, apiKey: ' ' }, request())).rejects.toMatchObject({
+      code: 'invalid_config', params: { field: 'apiKey' },
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('maps supplied-signal abort to cancelled after exactly one fetch', async () => {
+    const fetchImpl = vi.fn((_url: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('secret abort detail', 'AbortError')));
+    }));
+    const controller = new AbortController();
+    const provider = providerWithFetch(fetchImpl);
+    const operation = provider.analyze(config, request(controller.signal));
+
+    controller.abort();
+
+    await expect(operation).rejects.toMatchObject({ code: 'cancelled' });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps cancellation active while the successful response body is being read', async () => {
+    const controller = new AbortController();
+    const json = vi.fn(() => new Promise<unknown>((_resolve, reject) => {
+      controller.signal.addEventListener('abort', () => reject(new DOMException('body detail', 'AbortError')));
+    }));
+    const fetchImpl = vi.fn(async () => ({ ok: true, status: 200, json }) as unknown as Response);
+    const provider = providerWithFetch(fetchImpl);
+    const operation = provider.analyze(config, request(controller.signal));
+
+    await vi.waitFor(() => expect(json).toHaveBeenCalledTimes(1));
+    controller.abort();
+
+    await expect(operation).rejects.toMatchObject({ code: 'cancelled' });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('maps its deterministic timeout and network rejection without retry', async () => {
+    vi.useFakeTimers();
+    const timeoutFetch = vi.fn((_url: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('timeout detail', 'AbortError')));
+    }));
+    const provider = providerWithFetch(timeoutFetch, 25);
+    const timedOperation = provider.analyze(config, request());
+    const timeoutAssertion = expect(timedOperation).rejects.toMatchObject({ code: 'network_timeout' });
+
+    await vi.advanceTimersByTimeAsync(25);
+
+    await timeoutAssertion;
+    expect(timeoutFetch).toHaveBeenCalledTimes(1);
+
+    const networkFetch = vi.fn(async () => { throw new TypeError('upstream secret detail'); });
+    const networkProvider = providerWithFetch(networkFetch);
+    await expect(networkProvider.analyze(config, request())).rejects.toMatchObject({ code: 'network_timeout' });
+    expect(networkFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['invalid outer JSON', () => new Response('{', { status: 200 })],
+    ['missing assistant content', () => new Response(JSON.stringify({ choices: [] }), { status: 200 })],
+    ['non-string assistant content', () => successfulResponse({ value: true })],
+    ['markdown-wrapped assistant JSON', () => successfulResponse(`\`\`\`json\n${JSON.stringify(validReport)}\n\`\`\``)],
+    ['schema-invalid assistant JSON', () => successfulResponse(JSON.stringify({ ...validReport, schemaVersion: 'legacy' }))],
+  ])('maps %s to invalid_response without repair or a second fetch', async (_name, response) => {
+    const fetchImpl = vi.fn(async () => response());
+    const provider = providerWithFetch(fetchImpl);
+
+    await expect(provider.analyze(config, request())).rejects.toMatchObject({ code: 'invalid_response' });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('redacts provider body, headers, upstream errors, and keys from the exposed error', async () => {
+    const secret = 'redaction-sentinel';
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
+      error: { message: `upstream ${secret}` },
+    }), {
+      status: 401,
+      headers: { 'x-debug-secret': secret },
+    }));
+    const provider = providerWithFetch(fetchImpl);
+    let caught: unknown;
+
+    try {
+      await provider.analyze({ ...config, apiKey: secret }, request());
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(ProviderError);
+    expect(`${String(caught)} ${JSON.stringify(caught)} ${(caught as Error).stack}`).not.toContain(secret);
+    expect(Object.keys(caught as object).sort()).toEqual(['code', 'httpStatus', 'name', 'params']);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const [calledUrl, calledInit] = fetchImpl.mock.calls[0]!;
+    expect(String(calledUrl)).not.toContain(secret);
+    expect(String(calledInit?.body)).not.toContain(secret);
+  });
+});
+
+describe('OpenRouter connection test card', () => {
+  it('bundles the exact 64x64 icon-derived PNG and requests seenImage true with one call', async () => {
+    const asset = readFileSync(fileURLToPath(new URL('../assets/provider-test-card.png', import.meta.url)));
+    expect(asset.subarray(1, 4).toString('ascii')).toBe('PNG');
+    expect(asset.readUInt32BE(16)).toBe(64);
+    expect(asset.readUInt32BE(20)).toBe(64);
+    expect(createHash('sha256').update(asset).digest('hex')).toBe('3ac9d5233f78c41cf5b9cfb4d0e314836708af268706de6435fd663da8371d08');
+
+    const fetchImpl = vi.fn(async () => successfulResponse('{"seenImage":true}'));
+    const provider = providerWithFetch(fetchImpl);
+
+    await expect(provider.testConnection(config, new AbortController().signal)).resolves.toBeUndefined();
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const body = fetchCallBody(fetchImpl);
+    expect(body.messages[1].content[0]).toMatchObject({ type: 'text' });
+    expect(body.messages[1].content[1].type).toBe('image_url');
+    expect(body.messages[1].content[1].image_url.url).toMatch(/^data:image\/png;base64,/);
+    const sentAsset = Buffer.from(body.messages[1].content[1].image_url.url.split(',')[1], 'base64');
+    expect(createHash('sha256').update(sentAsset).digest('hex')).toBe('3ac9d5233f78c41cf5b9cfb4d0e314836708af268706de6435fd663da8371d08');
+    expect(body.response_format).toEqual({
+      type: 'json_schema',
+      json_schema: {
+        name: 'connection_test',
+        strict: true,
+        schema: {
+          type: 'object',
+          properties: { seenImage: { type: 'boolean' } },
+          required: ['seenImage'],
+          additionalProperties: false,
+        },
+      },
+    });
+    expect(body.provider).toEqual({ require_parameters: true });
+  });
+
+  it('rejects false or extra connection fields without repair or retry', async () => {
+    for (const content of ['{"seenImage":false}', '{"seenImage":true,"extra":1}']) {
+      const fetchImpl = vi.fn(async () => successfulResponse(content));
+      const provider = providerWithFetch(fetchImpl);
+
+      await expect(provider.testConnection(config, new AbortController().signal)).rejects.toMatchObject({
+        code: 'invalid_response',
+      });
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+    }
+  });
+});

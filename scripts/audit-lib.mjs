@@ -25,8 +25,17 @@ const excludedExtensionPaths = [
   'extension/__fixtures__/',
   'extension/fixtures/',
 ];
-// Stage 2 is network-free. Stage 3 may narrow this blanket gate only for a
-// separately approved provider-transport module; manifest origins alone never grant runtime behavior.
+const approvedOpenRouterTransportPath = 'extension/src/providers/openrouter-provider.ts';
+const approvedStage3RuntimePaths = new Set([
+  'extension/assets/provider-test-card.png?inline',
+  approvedOpenRouterTransportPath,
+  'extension/src/providers/model-catalog.ts',
+  'extension/src/providers/provider-errors.ts',
+  'extension/src/providers/provider-registry.ts',
+  'extension/src/providers/provider-types.ts',
+  'extension/src/providers/response-parser.ts',
+  'extension/src/storage/provider-session.ts',
+]);
 const networkPrimitives = new Set(['fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'sendBeacon']);
 const forbiddenModuleTokens = new Set([
   'cloud',
@@ -80,6 +89,23 @@ function hasForbiddenModuleSegment(value) {
   return forbiddenModuleTokenPairs.some(([first, second]) => tokens.some((token, index) => (
     token === first && tokens[index + 1] === second
   )));
+}
+
+function withoutScriptExtension(value) {
+  return value.replace(/\.(?:c|m)?(?:j|t)sx?$/i, '');
+}
+
+function isApprovedStage3ModulePath(value) {
+  const normalized = value.replaceAll('\\', '/');
+  return [...approvedStage3RuntimePaths].some((approved) => (
+    withoutScriptExtension(normalized) === withoutScriptExtension(approved)
+  ));
+}
+
+function isApprovedStage3ModuleSpecifier(file, specifier) {
+  if (!specifier.startsWith('.')) return false;
+  const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(file), specifier));
+  return isApprovedStage3ModulePath(resolved);
 }
 
 function literalText(node) {
@@ -141,6 +167,55 @@ function isStaticRequireCallee(expression) {
       && literalText(callee.argumentExpression) === 'require';
   }
   return false;
+}
+
+function networkPrimitiveFromExpression(expression) {
+  const target = unwrapExpression(expression);
+  if (typeScriptAst.isIdentifier(target) && networkPrimitives.has(target.text)) return target.text;
+  if (typeScriptAst.isPropertyAccessExpression(target) && networkPrimitives.has(target.name.text)) {
+    return target.name.text;
+  }
+  if (typeScriptAst.isElementAccessExpression(target)) {
+    const property = literalText(target.argumentExpression);
+    return networkPrimitives.has(property) ? property : null;
+  }
+  return null;
+}
+
+function isDirectNetworkCallReference(node) {
+  const parent = node.parent;
+  if (typeScriptAst.isCallExpression(parent) && unwrapExpression(parent.expression) === node) return true;
+  if ((typeScriptAst.isPropertyAccessExpression(parent) && parent.name === node)
+    || (typeScriptAst.isElementAccessExpression(parent) && parent.argumentExpression === node)) {
+    return typeScriptAst.isCallExpression(parent.parent)
+      && unwrapExpression(parent.parent.expression) === parent;
+  }
+  return false;
+}
+
+function isModuleSyntaxIdentifier(node, sourceFile) {
+  for (let ancestor = node.parent; ancestor && ancestor !== sourceFile; ancestor = ancestor.parent) {
+    if (typeScriptAst.isImportDeclaration(ancestor)
+      || typeScriptAst.isImportEqualsDeclaration(ancestor)
+      || typeScriptAst.isExportDeclaration(ancestor)) return true;
+  }
+  return false;
+}
+
+function isLexicalScopeNode(node) {
+  return typeScriptAst.isBlock(node)
+    || node.kind === typeScriptAst.SyntaxKind.SourceFile
+    || node.kind === typeScriptAst.SyntaxKind.CaseBlock
+    || node.kind === typeScriptAst.SyntaxKind.ForStatement
+    || node.kind === typeScriptAst.SyntaxKind.ForInStatement
+    || node.kind === typeScriptAst.SyntaxKind.ForOfStatement;
+}
+
+function nearestLexicalScope(node) {
+  for (let current = node; current; current = current.parent) {
+    if (isLexicalScopeNode(current)) return current;
+  }
+  return null;
 }
 
 function isRuntimeNetworkIdentifier(node, sourceFile) {
@@ -242,30 +317,73 @@ function inspectScriptSyntax(source, file) {
 
     const moduleSpecifiers = new Set();
     const identifiers = new Set();
+    const staticStringsByScope = new Map();
+    const networkCalls = [];
     let networkBehavior = false;
+    let networkReferenceOutsideCalls = false;
+    let dynamicImport = false;
 
     const addModuleSpecifier = (node) => {
       const specifier = literalText(node);
       if (specifier !== null) moduleSpecifiers.add(specifier);
     };
 
+    const collectStaticStrings = (node) => {
+      if (typeScriptAst.isVariableDeclaration(node)
+        && typeScriptAst.isIdentifier(node.name)
+        && node.initializer
+        && (node.parent.flags & typeScriptAst.NodeFlags.Const) !== 0) {
+        const value = literalText(node.initializer);
+        const scope = nearestLexicalScope(node.parent);
+        if (value !== null && scope !== null) {
+          const bindings = staticStringsByScope.get(scope) ?? new Map();
+          bindings.set(node.name.text, value);
+          staticStringsByScope.set(scope, bindings);
+        }
+      }
+      node.forEachChild(collectStaticStrings);
+    };
+    collectStaticStrings(sourceFile);
+
+    const resolvedStaticText = (node) => {
+      const direct = literalText(node);
+      if (direct !== null) return direct;
+      const expression = unwrapExpression(node);
+      if (!typeScriptAst.isIdentifier(expression)) return null;
+      for (let current = expression.parent; current; current = current.parent) {
+        if (isLexicalScopeNode(current)) {
+          const value = staticStringsByScope.get(current)?.get(expression.text);
+          if (value !== undefined) return value;
+        }
+      }
+      return null;
+    };
+
     const visit = (node) => {
       if (typeScriptAst.isIdentifier(node)) {
-        identifiers.add(node.text);
-        if (isRuntimeNetworkIdentifier(node, sourceFile)) networkBehavior = true;
+        if (!isModuleSyntaxIdentifier(node, sourceFile)) identifiers.add(node.text);
+        if (isRuntimeNetworkIdentifier(node, sourceFile)) {
+          networkBehavior = true;
+          if (!isDirectNetworkCallReference(node)) networkReferenceOutsideCalls = true;
+        }
       }
 
       if (typeScriptAst.isPropertyAccessExpression(node)
         && networkPrimitives.has(node.name.text)) {
         networkBehavior = true;
+        if (!(typeScriptAst.isCallExpression(node.parent)
+          && unwrapExpression(node.parent.expression) === node)) networkReferenceOutsideCalls = true;
       }
       if (typeScriptAst.isElementAccessExpression(node)
         && networkPrimitives.has(literalText(node.argumentExpression))) {
         networkBehavior = true;
+        if (!(typeScriptAst.isCallExpression(node.parent)
+          && unwrapExpression(node.parent.expression) === node)) networkReferenceOutsideCalls = true;
       }
       if (typeScriptAst.isBindingElement(node)
         && networkPrimitives.has(propertyNameText(node.propertyName ?? node.name))) {
         networkBehavior = true;
+        networkReferenceOutsideCalls = true;
       }
 
       if (typeScriptAst.isImportDeclaration(node)
@@ -277,12 +395,18 @@ function inspectScriptSyntax(source, file) {
       } else if (typeScriptAst.isCallExpression(node)) {
         if (node.expression.kind === typeScriptAst.SyntaxKind.ImportKeyword) {
           networkBehavior = true;
+          dynamicImport = true;
           addModuleSpecifier(node.arguments[0]);
         } else if (isReflectGet(node.expression)
           && networkPrimitives.has(literalText(node.arguments[1]))) {
           networkBehavior = true;
+          networkReferenceOutsideCalls = true;
         } else if (isStaticRequireCallee(node.expression)) {
           addModuleSpecifier(node.arguments[0]);
+        }
+        const primitive = networkPrimitiveFromExpression(node.expression);
+        if (primitive !== null) {
+          networkCalls.push({ primitive, target: resolvedStaticText(node.arguments[0]) });
         }
       }
 
@@ -293,7 +417,10 @@ function inspectScriptSyntax(source, file) {
     return {
       identifiers: [...identifiers],
       moduleSpecifiers: [...moduleSpecifiers],
+      dynamicImport,
+      networkCalls,
       networkBehavior,
+      networkReferenceOutsideCalls,
       syntaxDiagnostics,
     };
   } catch {
@@ -323,21 +450,42 @@ export function findForbiddenCapabilities(source, file = '') {
   const syntax = inspectAsScript
     ? inspectScriptSyntax(source, normalizedFile)
     : {
-      identifiers: [], moduleSpecifiers: [], networkBehavior: false, syntaxDiagnostics: [],
+      dynamicImport: false,
+      identifiers: [],
+      moduleSpecifiers: [],
+      networkBehavior: false,
+      networkCalls: [],
+      networkReferenceOutsideCalls: false,
+      syntaxDiagnostics: [],
     };
   const matches = [];
 
   if (syntax.syntaxDiagnostics.length > 0) matches.push('syntax error');
-  if (syntax.networkBehavior) matches.push('network behavior');
-  if (hasForbiddenModuleSegment(normalizedFile)
-    || syntax.moduleSpecifiers.some(hasForbiddenModuleSegment)) {
+  const approvedOpenRouterNetwork = normalizedFile === approvedOpenRouterTransportPath
+    && syntax.networkBehavior
+    && !syntax.dynamicImport
+    && !syntax.networkReferenceOutsideCalls
+    && syntax.networkCalls.length === 1
+    && syntax.networkCalls[0].primitive === 'fetch'
+    && syntax.networkCalls[0].target === 'https://openrouter.ai/api/v1/chat/completions';
+  if (syntax.networkBehavior && !approvedOpenRouterNetwork) matches.push('network behavior');
+  const forbiddenFilePath = hasForbiddenModuleSegment(normalizedFile)
+    && !isApprovedStage3ModulePath(normalizedFile);
+  const forbiddenSpecifier = syntax.moduleSpecifiers.some((specifier) => (
+    hasForbiddenModuleSegment(specifier)
+    && !isApprovedStage3ModuleSpecifier(normalizedFile, specifier)
+  ));
+  if (forbiddenFilePath || forbiddenSpecifier) {
     matches.push('forbidden module/import');
   }
   if (syntax.moduleSpecifiers.some((specifier) => /^https?:\/\//i.test(specifier))
     || hasRemoteHtmlScript(source, normalizedFile)) {
     matches.push('remote JavaScript');
   }
-  matches.push(...legacyIdentifierCapabilities(syntax.identifiers));
+  const legacyMatches = legacyIdentifierCapabilities(syntax.identifiers).filter((category) => (
+    category !== 'provider behavior' || !isApprovedStage3ModulePath(normalizedFile)
+  ));
+  matches.push(...legacyMatches);
   return [...new Set(matches)];
 }
 

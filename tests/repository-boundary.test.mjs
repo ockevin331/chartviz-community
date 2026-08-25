@@ -385,6 +385,103 @@ test('retains legacy symbol stage gates while network behavior is structural', (
   }
 });
 
+test('allows only the exact Stage 3 provider and session module paths and imports', () => {
+  const approvedFiles = [
+    ['extension/src/providers/provider-types.ts', 'export interface VisionProvider {}\nexport type ProviderConfig = {};'],
+    ['extension/src/providers/provider-errors.ts', 'export class ProviderError extends Error {}'],
+    ['extension/src/providers/model-catalog.ts', 'export const models = [];'],
+    ['extension/src/providers/response-parser.ts', 'import type { ProviderConfig } from "./provider-types";'],
+    ['extension/src/providers/provider-registry.ts', 'import type { VisionProvider } from "./provider-types";\nexport const providerRegistry = {};'],
+    ['extension/src/storage/provider-session.ts', 'import type { ProviderConfig } from "../providers/provider-types";'],
+  ];
+
+  for (const [file, source] of approvedFiles) {
+    assert.deepEqual(findForbiddenCapabilities(source, file), [], `approved Stage 3 module must pass: ${file}`);
+  }
+
+  const approvedConsumers = [
+    'import { providerRegistry } from "../providers/provider-registry";',
+    'import { loadProviderConfig } from "../storage/provider-session";',
+  ];
+  for (const source of approvedConsumers) {
+    assert.deepEqual(
+      findForbiddenCapabilities(source, 'extension/src/future/consumer.ts'),
+      [],
+      `exact approved Stage 3 import must pass: ${source}`,
+    );
+  }
+});
+
+test('permits one exact OpenRouter fetch only in the approved transport file', () => {
+  const source = [
+    'const openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";',
+    'export class OpenRouterProvider {',
+    '  analyze(init) { return globalThis.fetch(openRouterUrl, init); }',
+    '}',
+  ].join('\n');
+
+  assert.deepEqual(
+    findForbiddenCapabilities(source, 'extension/src/providers/openrouter-provider.ts'),
+    [],
+  );
+  assert.ok(
+    findForbiddenCapabilities(source, 'extension/src/providers/openrouter-provider-copy.ts')
+      .includes('network behavior'),
+  );
+  assert.ok(
+    findForbiddenCapabilities(source, 'extension/src/future/openrouter-provider.ts')
+      .includes('network behavior'),
+  );
+
+  const productionFile = 'extension/src/providers/openrouter-provider.ts';
+  const productionSource = readFileSync(path.join(repositoryRoot, productionFile), 'utf8');
+  assert.deepEqual(
+    findForbiddenCapabilities(productionSource, productionFile),
+    [],
+    'the real OpenRouter transport must satisfy the same structural exception',
+  );
+});
+
+test('rejects every non-approved transport mutation inside the OpenRouter file', () => {
+  const file = 'extension/src/providers/openrouter-provider.ts';
+  const cases = [
+    'fetch(endpoint);',
+    'fetch("https://evil.test/api");',
+    'function send() { const openRouterUrl = "https://evil.test/api"; fetch(openRouterUrl); } const openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";',
+    'for (const openRouterUrl = "https://evil.test/api"; ready;) { fetch(openRouterUrl); } const openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";',
+    'const url = "https://openrouter.ai/api/v1/chat/completions"; fetch(url); fetch(url);',
+    'new WebSocket("wss://openrouter.ai/socket");',
+    'new XMLHttpRequest();',
+    'new EventSource("https://openrouter.ai/api/stream");',
+    'navigator.sendBeacon("https://openrouter.ai/api/track", body);',
+    'import("./transport-helper");',
+  ];
+
+  for (const source of cases) {
+    assert.ok(
+      findForbiddenCapabilities(source, file).includes('network behavior'),
+      `unapproved OpenRouter transport behavior must fail: ${source}`,
+    );
+  }
+});
+
+test('keeps provider and storage path gates closed outside the exact Stage 3 allowlist', () => {
+  const cases = [
+    ['extension/src/providers/openai-provider.ts', 'export class OpenAiProvider {}'],
+    ['extension/src/providers/openrouter-provider-copy.ts', 'export class OpenRouterProvider {}'],
+    ['extension/src/storage/provider-local.ts', 'export const store = {};'],
+    ['extension/src/future/consumer.ts', 'import "../providers/openai-provider";'],
+    ['extension/src/future/consumer.ts', 'import "../storage/provider-local";'],
+  ];
+
+  for (const [file, source] of cases) {
+    assert.ok(
+      findForbiddenCapabilities(source, file).includes('forbidden module/import'),
+      `unapproved Stage 3 path/import must remain closed: ${file} ${source}`,
+    );
+  }
+});
+
 test('built manifests resolve their action popup artifacts after build and audit', () => {
   const output = validateBuiltOutputs(repositoryRoot);
   assert.deepEqual(output.browsers, ['chrome-mv3', 'edge-mv3']);
