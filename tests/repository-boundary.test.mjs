@@ -582,6 +582,94 @@ test('keeps using declarations lexical and type-only declarations out of runtime
   }
 });
 
+test('scopes runtime namespace import aliases to their enclosing module block', () => {
+  const file = 'extension/src/providers/openrouter-provider.ts';
+  const approved = 'https://openrouter.ai/api/v1/chat/completions';
+  const shadowedSources = [
+    `const u = "${approved}"; namespace inner { import u = value.path; fetch(u as unknown as string); }`,
+    `const u = "${approved}"; namespace inner { fetch(u as unknown as string); import u = value.path; }`,
+    `const u = "${approved}"; namespace inner { export import u = value.path; fetch(u as unknown as string); }`,
+    `const u = "${approved}"; namespace inner { import u = require("./provider-types"); fetch(u as unknown as string); }`,
+    `const u = "${approved}"; namespace outer { namespace inner { import u = value.path; fetch(u as unknown as string); } }`,
+    `const u = "${approved}"; namespace outer.inner { import u = value.path; fetch(u as unknown as string); }`,
+    `const u = "${approved}"; namespace inner { import u = value.first; fetch(u as unknown as string); } namespace inner { import u = value.second; consume(u); }`,
+  ];
+
+  for (const source of shadowedSources) {
+    assert.ok(
+      findForbiddenCapabilities(source, file).includes('network behavior'),
+      `namespace-local runtime import must stop fixed-origin resolution: ${source}`,
+    );
+  }
+
+  const disjointSources = [
+    `const u = "${approved}"; namespace inner { import u = value.path; consume(u); } fetch(u);`,
+    `const u = "${approved}"; namespace inner { export import u = value.path; consume(u); } fetch(u);`,
+    `const u = "${approved}"; namespace inner { import u = require("./provider-types"); consume(u); } fetch(u);`,
+    `const u = "${approved}"; namespace outer { namespace inner { import u = value.path; consume(u); } fetch(u); }`,
+    `const u = "${approved}"; namespace inner { import u = value.path; consume(u); } namespace inner { const other = 1; } fetch(u);`,
+  ];
+
+  for (const source of disjointSources) {
+    assert.deepEqual(
+      findForbiddenCapabilities(source, file),
+      [],
+      `namespace-local import must not pollute an outer approved binding: ${source}`,
+    );
+  }
+
+  assert.ok(
+    findForbiddenCapabilities(
+      'import { u } from "./provider-types"; fetch(u as unknown as string);',
+      file,
+    ).includes('network behavior'),
+    'a top-level runtime import must remain a SourceFile binding barrier',
+  );
+});
+
+test('erases ambient import bindings without weakening static module gates', () => {
+  const file = 'extension/src/providers/openrouter-provider.ts';
+  const approved = 'https://openrouter.ai/api/v1/chat/completions';
+  const allowedSources = [
+    `declare namespace ambientScope { import u = value.path; } const u = "${approved}"; fetch(u);`,
+    `declare namespace ambientScope { export import u = value.path; } const u = "${approved}"; fetch(u);`,
+    `declare namespace outer { namespace inner { import u = value.path; } } const u = "${approved}"; fetch(u);`,
+    `declare module "pkg" { import u = require("./provider-types"); } const u = "${approved}"; fetch(u);`,
+    `declare module "pkg" { import u from "./provider-types"; } const u = "${approved}"; fetch(u);`,
+    `declare module "pkg" { import { value as u } from "./provider-types"; } const u = "${approved}"; fetch(u);`,
+    `declare module "pkg" { import * as u from "./provider-types"; } const u = "${approved}"; fetch(u);`,
+    `declare module "pkg" { import type { u } from "./provider-types"; } const u = "${approved}"; fetch(u);`,
+  ];
+
+  for (const source of allowedSources) {
+    assert.deepEqual(
+      findForbiddenCapabilities(source, file),
+      [],
+      `ambient-erased import must not create a runtime binding: ${source}`,
+    );
+  }
+
+  const forbiddenAmbientSpecifiers = [
+    'declare module "pkg" { import type { Client } from "../backend/client"; }',
+    'declare module "pkg" { import Client from "../backend/client"; }',
+    'declare module "pkg" { import Client = require("../backend/client"); }',
+  ];
+  for (const source of forbiddenAmbientSpecifiers) {
+    assert.ok(
+      findForbiddenCapabilities(source, file).includes('forbidden module/import'),
+      `ambient imports must retain the independent forbidden-specifier gate: ${source}`,
+    );
+  }
+
+  assert.ok(
+    findForbiddenCapabilities(
+      'namespace inner { import { u from "./provider-types"; fetch(u); }',
+      file,
+    ).includes('syntax error'),
+    'malformed nested import syntax must remain fail closed',
+  );
+});
+
 test('keeps provider and storage path gates closed outside the exact Stage 3 allowlist', () => {
   const cases = [
     ['extension/src/providers/openai-provider.ts', 'export class OpenAiProvider {}'],

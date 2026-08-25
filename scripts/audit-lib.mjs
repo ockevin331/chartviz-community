@@ -412,19 +412,23 @@ function inspectScriptSyntax(source, file) {
 
       if (typeScriptAst.isImportDeclaration(node)
         && node.importClause
-        && !node.importClause.isTypeOnly) {
-        if (node.importClause.name) addBinding(sourceFile, node.importClause.name.text);
+        && !node.importClause.isTypeOnly
+        && !isAmbientDeclaration(node)) {
+        const scope = nearestLexicalScope(node.parent);
+        if (node.importClause.name) addBinding(scope, node.importClause.name.text);
         const namedBindings = node.importClause.namedBindings;
         if (namedBindings && typeScriptAst.isNamespaceImport(namedBindings)) {
-          addBinding(sourceFile, namedBindings.name.text);
+          addBinding(scope, namedBindings.name.text);
         } else if (namedBindings && typeScriptAst.isNamedImports(namedBindings)) {
           for (const element of namedBindings.elements) {
-            if (!element.isTypeOnly) addBinding(sourceFile, element.name.text);
+            if (!element.isTypeOnly) addBinding(scope, element.name.text);
           }
         }
       }
-      if (typeScriptAst.isImportEqualsDeclaration(node) && !node.isTypeOnly) {
-        addBinding(sourceFile, node.name.text);
+      if (typeScriptAst.isImportEqualsDeclaration(node)
+        && !node.isTypeOnly
+        && !isAmbientDeclaration(node)) {
+        addBinding(nearestLexicalScope(node.parent), node.name.text);
       }
 
       node.forEachChild(collectBindings);
