@@ -421,7 +421,9 @@ describe('parseCommunityReport', () => {
     '["15m", "1h"]',
     "['15m', '1h']",
     'daily / weekly',
+    'hourly / daily',
     '日线/周线',
+    '每小时/日线',
     '15m + 日线',
     '15分钟和1小时',
     '第二个周期为1小时',
@@ -433,6 +435,60 @@ describe('parseCommunityReport', () => {
   it('accepts one visible timeframe and a null timeframe', () => {
     expect(parseCommunityReport(mutated((report) => { report.chart.timeframe = '4-hour chart'; })).chart.timeframe).toBe('4-hour chart');
     expect(parseCommunityReport(mutated((report) => { report.chart.timeframe = null; })).chart.timeframe).toBeNull();
+  });
+
+  it.each([
+    ['chart limitation', (report) => { report.chart.limitations[0] = 'The daily chart is clearer.'; }],
+    ['market summary', (report) => { report.marketView.summary = 'The hourly chart confirms this view.'; }],
+    ['evidence observation', (report) => { report.evidence[0].observation = 'The weekly structure is bullish.'; }],
+    ['volume summary', (report) => { report.volume!.summary = 'A second timeframe confirms volume.'; }],
+    ['indicator summary', (report) => { report.indicators[0].summary = 'The monthly RSI is positive.'; }],
+    ['Chinese hourly level', (report) => { report.indicators[0].implication = '小时级别动能偏强。'; }],
+    ['Chinese daily level', (report) => { report.levels[0].timeAnchor = '日级别右侧'; }],
+    ['level reason', (report) => { report.levels[0].reason = 'The 1h chart also reacts here.'; }],
+    ['long scenario', (report) => { report.scenarios.long.reason = 'The daily view confirms entry.'; }],
+    ['wait scenario', (report) => { report.scenarios.wait.reason = '多个周期仍未达成一致。'; }],
+    ['pattern explanation', (report) => { report.patterns[0].explanation = 'The hourly pattern is confirmed.'; }],
+    ['signal reason', (report) => { report.signals[0].reason = 'Use confirmation from another timeframe.'; }],
+    ['hyphenated second timeframe', (report) => { report.signals[0].timeAnchor = 'Use second-timeframe confirmation.'; }],
+    ['plain Chinese multiple timeframe', (report) => { report.scenarios.wait.condition = '等待多周期确认。'; }],
+    ['risk notice', (report) => { report.riskNotice = '第二个时间周期仅供确认。'; }],
+  ] satisfies Array<[string, Mutation]>)('rejects a second timeframe claim in the %s text branch', (_name, mutate) => {
+    expectRejected(mutate);
+  });
+
+  it('allows canonical references to the same single timeframe across the report text tree', () => {
+    const parsed = parseCommunityReport(mutated((report) => {
+      report.chart.timeframe = '1h';
+      report.chart.limitations[0] = 'The visible session spans 09:00–13:00.';
+      report.marketView.summary = 'The hourly chart keeps a conditional bullish bias.';
+      report.evidence[0].observation = 'The 1-hour chart shows rising lows.';
+      report.evidence[0].timeAnchor = 'From 09:00 to 13:00';
+      report.scenarios.long.reason = 'The 60m structure remains intact.';
+      report.patterns[0].timeRange = '1小时图的左侧至右侧';
+      report.signals[0].reason = 'Use only visible hourly confirmation.';
+    }));
+
+    expect(parsed.chart.timeframe).toBe('1h');
+    expect(parsed.chart.limitations[0]).toContain('09:00–13:00');
+  });
+
+  it('canonicalizes daily English and Chinese references as one timeframe', () => {
+    const parsed = parseCommunityReport(mutated((report) => {
+      report.chart.timeframe = 'daily';
+      report.marketView.summary = 'The 1D structure is conditional.';
+      report.patterns[0].timeRange = '日线左侧至右侧';
+    }));
+
+    expect(parsed.chart.timeframe).toBe('daily');
+  });
+
+  it('rejects conflicting text-tree timeframes when the chart label is null', () => {
+    expectRejected((report) => {
+      report.chart.timeframe = null;
+      report.marketView.summary = 'The hourly chart is bullish.';
+      report.signals[0].reason = 'The daily chart confirms the signal.';
+    });
   });
 
   it.each([
@@ -472,6 +528,20 @@ describe('parseCommunityReport', () => {
     ['signal risk/reward', (report) => { report.signals[0].riskReward = 'Calculated feed says 1:2'; }],
     ['risk notice', (report) => { report.riskNotice = 'External data makes this certain.'; }],
   ] satisfies Array<[string, Mutation]>)('rejects prohibited external-source claims in the %s text branch', (_name, mutate) => {
+    expectRejected(mutate);
+  });
+
+  it.each([
+    ['plural exchange APIs', (report) => { report.marketView.summary = 'Exchange APIs confirm the move.'; }],
+    ['curly possessive exchange API', (report) => { report.evidence[0].implication = 'The exchange’s API confirms buyers.'; }],
+    ['straight possessive exchange API', (report) => { report.scenarios.long.reason = "The exchange's API confirms entry."; }],
+    ['plural calculated feeds', (report) => { report.patterns[0].explanation = 'Calculated feeds confirm the pattern.'; }],
+    ['hyphenated calculated feeds', (report) => { report.signals[0].reason = 'Calculated-feeds confirm the signal.'; }],
+    ['plural web searches', (report) => { report.riskNotice = 'Web searches make this certain.'; }],
+    ['possessive news report', (report) => { report.volume!.summary = 'A news report’s data confirms volume.'; }],
+    ['punctuated exchange APIs', (report) => { report.indicators[0].summary = 'Exchange : APIs confirm RSI.'; }],
+    ['Chinese possessive exchange API', (report) => { report.levels[0].reason = '交易所的 API 确认此处。'; }],
+  ] satisfies Array<[string, Mutation]>)('rejects source-claim bypass using %s', (_name, mutate) => {
     expectRejected(mutate);
   });
 

@@ -45,7 +45,7 @@ test('rejects every prohibited capability category in extension runtime code', (
     ['compatibility adapter', 'const adapter = "compatibility adapter";'],
     ['remote JavaScript', 'import "https://example.test/runtime.js";'],
     ['analytics', 'const client = "analytics";'],
-    ['report behavior', 'class CommunityReport {}'],
+    ['report behavior', 'class AnalysisReport {}'],
     ['provider behavior', 'class VisionProvider {}'],
     ['capture behavior', 'function captureVisibleTab() {}'],
     ['annotation behavior', 'function renderAnnotations() {}'],
@@ -56,7 +56,14 @@ test('rejects every prohibited capability category in extension runtime code', (
   }
 });
 
-test('allows only approved Stage 2 report and source-policy literals in their exact files', () => {
+test('allows legitimate Stage 2 report identifiers and source-policy literals', () => {
+  assert.deepEqual(
+    findForbiddenCapabilities(
+      'import type { CommunityReport } from "../analysis/community-report";',
+      'extension/src/ui/report.ts',
+    ),
+    [],
+  );
   assert.deepEqual(
     findForbiddenCapabilities(
       'export const communityReportSchema = {}; export type CommunityReport = {};',
@@ -80,13 +87,7 @@ test('allows only approved Stage 2 report and source-policy literals in their ex
   );
 });
 
-test('does not extend Stage 2 literal exemptions to other paths or forbidden behavior', () => {
-  assert.ok(
-    findForbiddenCapabilities(
-      'export type CommunityReport = {};',
-      'extension/src/ui/report.ts',
-    ).includes('report behavior'),
-  );
+test('rejects prohibited behavior without erasing matching tokens in approved files', () => {
   assert.ok(
     findForbiddenCapabilities(
       'const policy = "Binance API";',
@@ -97,6 +98,8 @@ test('does not extend Stage 2 literal exemptions to other paths or forbidden beh
   const prohibitedInsideApprovedFiles = [
     ['extension/src/analysis/community-report.ts', 'class VisionProvider {}', 'provider behavior'],
     ['extension/src/analysis/community-report.ts', 'type AnalysisReport = {}', 'report behavior'],
+    ['extension/src/analysis/community-report.ts', 'class CommunityReportAdapter {}', 'compatibility adapter'],
+    ['extension/src/analysis/source-policy.ts', 'async function fetchExternalData() {}', 'exchange data'],
     ['extension/src/analysis/source-policy.ts', 'fetch("https://api.binance.com/api/v3/ticker/price")', 'exchange data'],
     ['extension/src/analysis/source-policy.ts', 'const candles = "OHLCV history";', 'exchange data'],
     ['extension/src/analysis/community-prompt.ts', 'const endpoint = "backend history";', 'server or history behavior'],

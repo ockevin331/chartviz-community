@@ -136,6 +136,38 @@ function walkText(value: unknown, path: Path, visit: (text: string, path: Path) 
   }
 }
 
+function collectUserFacingText(report: z.infer<typeof reportShapeSchema>): string[] {
+  return [
+    ...(report.chart.instrument === null ? [] : [report.chart.instrument]),
+    ...(report.chart.timeframe === null ? [] : [report.chart.timeframe]),
+    ...report.chart.limitations,
+    report.marketView.summary,
+    ...report.evidence.flatMap(({ observation, implication, timeAnchor }) => [observation, implication, timeAnchor]),
+    ...(report.volume === null ? [] : [report.volume.summary]),
+    ...report.indicators.flatMap(({ summary, implication }) => [summary, implication]),
+    ...report.levels.flatMap(({ priceLabel, reason, timeAnchor }) => [priceLabel, reason, timeAnchor]),
+    ...[report.scenarios.long, report.scenarios.short].flatMap(({ condition, entry, stop, targets, reason }) => [
+      condition,
+      entry,
+      stop,
+      ...targets,
+      reason,
+    ]),
+    report.scenarios.wait.condition,
+    report.scenarios.wait.reason,
+    ...report.patterns.flatMap(({ name, timeRange, explanation }) => [name, timeRange, explanation]),
+    ...report.signals.flatMap(({ timeAnchor, reason, entry, stop, targets, riskReward }) => [
+      timeAnchor,
+      reason,
+      entry.priceLabel,
+      stop.priceLabel,
+      ...targets.map(({ priceLabel }) => priceLabel),
+      ...(riskReward === null ? [] : [riskReward]),
+    ]),
+    report.riskNotice,
+  ];
+}
+
 export const communityReportSchema = reportShapeSchema.superRefine((report, context) => {
   const evidenceIndexes = new Map<string, number>();
   report.evidence.forEach(({ id }, index) => {
@@ -175,16 +207,17 @@ export const communityReportSchema = reportShapeSchema.superRefine((report, cont
     });
   }
 
-  if (report.chart.timeframe !== null) {
-    try {
-      assertSingleTimeframe(report.chart.timeframe);
-    } catch (error) {
-      context.addIssue({
-        code: 'custom',
-        path: ['chart', 'timeframe'],
-        message: error instanceof Error ? error.message : 'Report must describe exactly one visible timeframe',
-      });
+  try {
+    if (report.chart.timeframe !== null && /^\[[\s\S]*\]$/.test(report.chart.timeframe)) {
+      throw new Error('Report must describe exactly one visible timeframe');
     }
+    assertSingleTimeframe(collectUserFacingText(report));
+  } catch (error) {
+    context.addIssue({
+      code: 'custom',
+      path: ['chart', 'timeframe'],
+      message: error instanceof Error ? error.message : 'Report must describe exactly one visible timeframe',
+    });
   }
 
   walkText(report, [], (text, path) => {
