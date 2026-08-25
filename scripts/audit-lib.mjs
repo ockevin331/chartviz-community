@@ -1,5 +1,13 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
+
+const extensionRequire = createRequire(new URL('../extension/package.json', import.meta.url));
+const [{ API: TypeScriptApi }, { createVirtualFileSystem }, typeScriptAst] = await Promise.all([
+  import(extensionRequire.resolve('typescript/unstable/sync')),
+  import(extensionRequire.resolve('typescript/unstable/fs')),
+  import(extensionRequire.resolve('typescript/unstable/ast')),
+]);
 
 export const approvedPermissions = ['activeTab', 'storage', 'scripting'];
 export const approvedOrigins = [
@@ -8,7 +16,8 @@ export const approvedOrigins = [
   'https://generativelanguage.googleapis.com/*',
 ];
 
-const runtimeExtensions = new Set(['.css', '.cts', '.html', '.js', '.json', '.jsx', '.mjs', '.mts', '.ts', '.tsx']);
+const runtimeExtensions = new Set(['.cjs', '.css', '.cts', '.html', '.js', '.json', '.jsx', '.mjs', '.mts', '.ts', '.tsx']);
+const scriptExtensions = new Set(['.cjs', '.cts', '.js', '.jsx', '.mjs', '.mts', '.ts', '.tsx']);
 const excludedExtensionPaths = [
   'extension/tests/',
   'extension/test/',
@@ -16,164 +25,9 @@ const excludedExtensionPaths = [
   'extension/__fixtures__/',
   'extension/fixtures/',
 ];
-const forbiddenCapabilities = [
-  { capability: 'cloud token or account', pattern: /chartviz\s*cloud|cloud\s*(?:token|account|auth)|\b(?:login|accounts?|quotas?|payments?)\b/i },
-  { capability: 'multi-timeframe', pattern: /multi[-\s]?timeframe/i },
-  { capability: 'compatibility adapter', pattern: /compatib(?:ility|le)[-\s]?(?:adapter|report)|legacy[-\s]?(?:adapter|report)|\b(?:communityreport|analysisreport)(?:adapter|adaptor)\b/i, sourceView: 'executable' },
-  { capability: 'analytics', pattern: /\b(?:analytics|telemetry)\b/i, sourceView: 'executable' },
-  { capability: 'report behavior', pattern: /\banalysisreport\b/i, sourceView: 'executable' },
-  { capability: 'provider behavior', pattern: /\b(?:visionprovider|providerregistry|providerconfig)\b/i, sourceView: 'executable' },
-  { capability: 'capture behavior', pattern: /\b(?:capturevisibletab|tradingviewcapture|captureservice)\b/i, sourceView: 'executable' },
-  { capability: 'annotation behavior', pattern: /\b(?:renderannotations|annotationrenderer|annotatedimage)\b/i, sourceView: 'executable' },
-];
-
-function maskNonExecutableJavaScript(source) {
-  const output = source.split('');
-  const mask = (index) => {
-    if (source[index] !== '\n' && source[index] !== '\r') output[index] = ' ';
-  };
-  const maskPair = (index) => {
-    mask(index);
-    if (index + 1 < source.length) mask(index + 1);
-  };
-
-  const isRegexStart = (index) => {
-    let previous = index - 1;
-    while (previous >= 0 && /\s/.test(source[previous])) previous -= 1;
-    if (previous < 0) return true;
-    if (/[[\](){},:=;!?&|+*%^~>-]/.test(source[previous])) return true;
-    return /(?:^|[^\w$])(?:return|throw|case|delete|void|typeof|instanceof|in|of|yield|await)\s*$/u.test(source.slice(0, index));
-  };
-
-  const scanQuoted = (start, quote) => {
-    mask(start);
-    let index = start + 1;
-    while (index < source.length) {
-      mask(index);
-      if (source[index] === '\\') {
-        index += 1;
-        if (index < source.length) mask(index);
-      } else if (source[index] === quote) {
-        return index + 1;
-      }
-      index += 1;
-    }
-    return index;
-  };
-
-  const scanLineComment = (start) => {
-    maskPair(start);
-    let index = start + 2;
-    while (index < source.length && source[index] !== '\n') {
-      mask(index);
-      index += 1;
-    }
-    return index;
-  };
-
-  const scanBlockComment = (start) => {
-    maskPair(start);
-    let index = start + 2;
-    while (index < source.length) {
-      if (source[index] === '*' && source[index + 1] === '/') {
-        maskPair(index);
-        return index + 2;
-      }
-      mask(index);
-      index += 1;
-    }
-    return index;
-  };
-
-  const scanRegex = (start) => {
-    mask(start);
-    let index = start + 1;
-    let inCharacterClass = false;
-    while (index < source.length) {
-      mask(index);
-      if (source[index] === '\\') {
-        index += 1;
-        if (index < source.length) mask(index);
-      } else if (source[index] === '[') {
-        inCharacterClass = true;
-      } else if (source[index] === ']') {
-        inCharacterClass = false;
-      } else if (source[index] === '/' && !inCharacterClass) {
-        index += 1;
-        while (index < source.length && /[a-z]/i.test(source[index])) {
-          mask(index);
-          index += 1;
-        }
-        return index;
-      }
-      index += 1;
-    }
-    return index;
-  };
-
-  let scanCode;
-  const scanTemplate = (start) => {
-    mask(start);
-    let index = start + 1;
-    while (index < source.length) {
-      if (source[index] === '\\') {
-        maskPair(index);
-        index += 2;
-      } else if (source[index] === '`') {
-        mask(index);
-        return index + 1;
-      } else if (source[index] === '$' && source[index + 1] === '{') {
-        maskPair(index);
-        index = scanCode(index + 2, true);
-      } else {
-        mask(index);
-        index += 1;
-      }
-    }
-    return index;
-  };
-
-  scanCode = (start, stopAtTemplateBrace = false) => {
-    let index = start;
-    let braceDepth = stopAtTemplateBrace ? 1 : 0;
-    while (index < source.length) {
-      const current = source[index];
-      const next = source[index + 1];
-      if (current === "'" || current === '"') {
-        index = scanQuoted(index, current);
-      } else if (current === '`') {
-        index = scanTemplate(index);
-      } else if (current === '/' && next === '/') {
-        index = scanLineComment(index);
-      } else if (current === '/' && next === '*') {
-        index = scanBlockComment(index);
-      } else if (current === '/' && isRegexStart(index)) {
-        index = scanRegex(index);
-      } else if (stopAtTemplateBrace && current === '{') {
-        braceDepth += 1;
-        index += 1;
-      } else if (stopAtTemplateBrace && current === '}') {
-        braceDepth -= 1;
-        if (braceDepth === 0) {
-          mask(index);
-          return index + 1;
-        }
-        index += 1;
-      } else {
-        index += 1;
-      }
-    }
-    return index;
-  };
-
-  scanCode(0);
-  return output.join('');
-}
-
 // Stage 2 is network-free. Stage 3 may narrow this blanket gate only for a
 // separately approved provider-transport module; manifest origins alone never grant runtime behavior.
-const networkPrimitivePattern = /\b(?:fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon)\b|\bimport\s*\(/;
-const computedNetworkMemberPattern = /\b([$A-Z_a-z][$\w]*)\s*(?:\?\.)?\[\s*(['"])(fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon)\2\s*\]/g;
+const networkPrimitives = new Set(['fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'sendBeacon']);
 const forbiddenModuleTokens = new Set([
   'cloud',
   'backend',
@@ -201,12 +55,15 @@ const forbiddenModuleTokenPairs = [
   ['exchange', 'api'],
   ['local', 'model'],
 ];
+const parserFileSystem = createVirtualFileSystem({});
+let parserApi = null;
+let parsedSourceSequence = 0;
 
-function hasNetworkBehavior(source, executableSource) {
-  if (networkPrimitivePattern.test(executableSource)) return true;
-  return [...source.matchAll(computedNetworkMemberPattern)].some((match) => (
-    executableKeywordAt(executableSource, match.index, match[1])
-  ));
+process.once('exit', () => parserApi?.close());
+
+function getParserApi() {
+  parserApi ??= new TypeScriptApi({ cwd: '/', fs: parserFileSystem });
+  return parserApi;
 }
 
 function moduleTokens(value) {
@@ -225,35 +82,190 @@ function hasForbiddenModuleSegment(value) {
   )));
 }
 
-function executableKeywordAt(executableSource, index, keyword) {
-  return executableSource.slice(index, index + keyword.length) === keyword;
+function literalText(node) {
+  if (typeScriptAst.isStringLiteral(node)
+    || typeScriptAst.isNoSubstitutionTemplateLiteral(node)) {
+    return node.text;
+  }
+  return null;
 }
 
-function staticModuleSpecifiers(source, executableSource) {
-  const specifiers = new Set();
-  const patterns = [
-    {
-      pattern: /\b(import|export)\b[^;]{0,2000}?\bfrom\s*(['"])([^'"\r\n]+)\2/g,
-      specifierGroup: 3,
-    },
-    {
-      pattern: /\b(import)\s*(['"])([^'"\r\n]+)\2/g,
-      specifierGroup: 3,
-    },
-    {
-      pattern: /\b(require)\s*\(\s*(['"])([^'"\r\n]+)\2\s*\)/g,
-      specifierGroup: 3,
-    },
-  ];
+function propertyNameText(node) {
+  if (!node) return null;
+  if (typeScriptAst.isIdentifier(node)) return node.text;
+  const directLiteral = literalText(node);
+  if (directLiteral !== null) return directLiteral;
+  if (typeScriptAst.isComputedPropertyName(node)) return literalText(node.expression);
+  return null;
+}
 
-  for (const { pattern, specifierGroup } of patterns) {
-    for (const match of source.matchAll(pattern)) {
-      if (executableKeywordAt(executableSource, match.index, match[1])) {
-        specifiers.add(match[specifierGroup]);
-      }
+function isReflectGet(expression) {
+  if (typeScriptAst.isPropertyAccessExpression(expression)) {
+    return typeScriptAst.isIdentifier(expression.expression)
+      && expression.expression.text === 'Reflect'
+      && expression.name.text === 'get';
+  }
+  if (typeScriptAst.isElementAccessExpression(expression)) {
+    return typeScriptAst.isIdentifier(expression.expression)
+      && expression.expression.text === 'Reflect'
+      && literalText(expression.argumentExpression) === 'get';
+  }
+  return false;
+}
+
+function isRuntimeNetworkIdentifier(node, sourceFile) {
+  if (!networkPrimitives.has(node.text)) return false;
+
+  for (let ancestor = node.parent; ancestor && ancestor !== sourceFile; ancestor = ancestor.parent) {
+    if (typeScriptAst.isTypeNode(ancestor)) return false;
+  }
+
+  const parent = node.parent;
+  if (typeScriptAst.isPropertyAccessExpression(parent) && parent.name === node) return true;
+  if (typeScriptAst.isBindingElement(parent)) {
+    return networkPrimitives.has(propertyNameText(parent.propertyName ?? parent.name));
+  }
+  if (typeScriptAst.isShorthandPropertyAssignment(parent)) return true;
+  if (parent.name === node) return false;
+  return true;
+}
+
+function identifierWords(identifier) {
+  return identifier
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .replace(/([a-z\d])([A-Z])/g, '$1 $2')
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map((word) => word.toLowerCase());
+}
+
+function hasWordSequence(words, sequence) {
+  return words.some((word, index) => sequence.every((expected, offset) => (
+    words[index + offset] === expected
+  )));
+}
+
+function legacyIdentifierCapabilities(identifiers) {
+  const matches = new Set();
+  for (const identifier of identifiers) {
+    const words = identifierWords(identifier);
+    const compact = words.join('');
+    const hasAny = (...values) => words.some((word) => values.includes(word));
+
+    if ((hasAny('cloud') && hasAny('token', 'account', 'auth'))
+      || hasWordSequence(words, ['chart', 'viz', 'cloud'])
+      || hasAny('login', 'accounts', 'quotas', 'payments')) {
+      matches.add('cloud token or account');
+    }
+    if (hasWordSequence(words, ['multi', 'timeframe'])) matches.add('multi-timeframe');
+    if (hasAny('backend', 'server', 'history')) matches.add('server or history behavior');
+    if (hasAny('news') && hasAny('search', 'report', 'reports', 'feed', 'feeds')) matches.add('news search');
+    if (hasWordSequence(words, ['local', 'model'])) matches.add('local model');
+    if (hasAny('analytics', 'telemetry')) matches.add('analytics');
+    if (compact.includes('analysisreport')) matches.add('report behavior');
+    if (compact.includes('communityreportadapter')
+      || compact.includes('communityreportadaptor')
+      || compact.includes('analysisreportadapter')
+      || compact.includes('analysisreportadaptor')
+      || (hasAny('compatibility', 'compatible', 'legacy') && hasAny('adapter', 'adaptor', 'report'))) {
+      matches.add('compatibility adapter');
+    }
+    if (compact.includes('visionprovider')
+      || compact.includes('providerregistry')
+      || compact.includes('providerconfig')) {
+      matches.add('provider behavior');
+    }
+    if (compact.includes('capturevisibletab')
+      || compact.includes('tradingviewcapture')
+      || compact.includes('captureservice')) {
+      matches.add('capture behavior');
+    }
+    if (compact.includes('renderannotations')
+      || compact.includes('annotationrenderer')
+      || compact.includes('annotatedimage')) {
+      matches.add('annotation behavior');
     }
   }
-  return [...specifiers];
+  return [...matches];
+}
+
+function inspectScriptSyntax(source, file) {
+  const requestedExtension = path.extname(file).toLowerCase();
+  const extension = scriptExtensions.has(requestedExtension) ? requestedExtension : '.tsx';
+  const virtualFile = `/__chartviz_source_audit__/runtime-${parsedSourceSequence += 1}${extension}`;
+  parserFileSystem.writeFile(virtualFile, source);
+  const snapshot = getParserApi().updateSnapshot({ openFiles: [virtualFile] });
+
+  try {
+    const project = snapshot.getDefaultProjectForFile(virtualFile);
+    const sourceFile = project?.program.getSourceFile(virtualFile);
+    if (!sourceFile) throw new Error(`Source audit parser failed to load ${file || virtualFile}`);
+
+    const moduleSpecifiers = new Set();
+    const identifiers = new Set();
+    let networkBehavior = false;
+
+    const addModuleSpecifier = (node) => {
+      const specifier = literalText(node);
+      if (specifier !== null) moduleSpecifiers.add(specifier);
+    };
+
+    const visit = (node) => {
+      if (typeScriptAst.isIdentifier(node)) {
+        identifiers.add(node.text);
+        if (isRuntimeNetworkIdentifier(node, sourceFile)) networkBehavior = true;
+      }
+
+      if (typeScriptAst.isPropertyAccessExpression(node)
+        && networkPrimitives.has(node.name.text)) {
+        networkBehavior = true;
+      }
+      if (typeScriptAst.isElementAccessExpression(node)
+        && networkPrimitives.has(literalText(node.argumentExpression))) {
+        networkBehavior = true;
+      }
+      if (typeScriptAst.isBindingElement(node)
+        && networkPrimitives.has(propertyNameText(node.propertyName ?? node.name))) {
+        networkBehavior = true;
+      }
+
+      if (typeScriptAst.isImportDeclaration(node)
+        || typeScriptAst.isExportDeclaration(node)) {
+        if (node.moduleSpecifier) addModuleSpecifier(node.moduleSpecifier);
+      } else if (typeScriptAst.isImportEqualsDeclaration(node)
+        && typeScriptAst.isExternalModuleReference(node.moduleReference)) {
+        addModuleSpecifier(node.moduleReference.expression);
+      } else if (typeScriptAst.isCallExpression(node)) {
+        if (node.expression.kind === typeScriptAst.SyntaxKind.ImportKeyword) {
+          networkBehavior = true;
+          addModuleSpecifier(node.arguments[0]);
+        } else if (isReflectGet(node.expression)
+          && networkPrimitives.has(literalText(node.arguments[1]))) {
+          networkBehavior = true;
+        } else if (typeScriptAst.isIdentifier(node.expression)
+          && node.expression.text === 'require') {
+          addModuleSpecifier(node.arguments[0]);
+        }
+      }
+
+      node.forEachChild(visit);
+    };
+
+    visit(sourceFile);
+    return {
+      identifiers: [...identifiers],
+      moduleSpecifiers: [...moduleSpecifiers],
+      networkBehavior,
+    };
+  } finally {
+    snapshot.dispose();
+  }
+}
+
+function hasRemoteHtmlScript(source, file) {
+  if (path.extname(file).toLowerCase() !== '.html') return false;
+  const executableHtml = source.replace(/<!--[\s\S]*?-->/g, '');
+  return /<script\b[^>]*\bsrc\s*=\s*(?:["']https?:\/\/[^"']+["']|https?:\/\/[^\s>]+)/i.test(executableHtml);
 }
 
 export function classifyRuntimeFile(file) {
@@ -265,25 +277,23 @@ export function classifyRuntimeFile(file) {
 
 export function findForbiddenCapabilities(source, file = '') {
   const normalizedFile = file.replaceAll('\\', '/');
-  const executableSource = maskNonExecutableJavaScript(source);
-  const moduleSpecifiers = staticModuleSpecifiers(source, executableSource);
+  const extension = path.extname(normalizedFile).toLowerCase();
+  const inspectAsScript = normalizedFile === '' || scriptExtensions.has(extension);
+  const syntax = inspectAsScript
+    ? inspectScriptSyntax(source, normalizedFile)
+    : { identifiers: [], moduleSpecifiers: [], networkBehavior: false };
   const matches = [];
 
-  if (hasNetworkBehavior(source, executableSource)) matches.push('network behavior');
+  if (syntax.networkBehavior) matches.push('network behavior');
   if (hasForbiddenModuleSegment(normalizedFile)
-    || moduleSpecifiers.some(hasForbiddenModuleSegment)) {
+    || syntax.moduleSpecifiers.some(hasForbiddenModuleSegment)) {
     matches.push('forbidden module/import');
   }
-  if (moduleSpecifiers.some((specifier) => /^https?:\/\//i.test(specifier))) {
+  if (syntax.moduleSpecifiers.some((specifier) => /^https?:\/\//i.test(specifier))
+    || hasRemoteHtmlScript(source, normalizedFile)) {
     matches.push('remote JavaScript');
   }
-
-  matches.push(...forbiddenCapabilities
-    .filter(({ pattern, sourceView }) => {
-      const inspectedSource = sourceView === 'executable' ? executableSource : source;
-      return pattern.test(inspectedSource);
-    })
-    .map(({ capability }) => capability));
+  matches.push(...legacyIdentifierCapabilities(syntax.identifiers));
   return [...new Set(matches)];
 }
 

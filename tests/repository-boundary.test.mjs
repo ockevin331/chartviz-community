@@ -25,6 +25,7 @@ test('recursively scans every tracked extension runtime or config file', () => {
   assert.ok(runtimeFiles.includes('extension/entrypoints/panel/App.tsx'));
   assert.equal(classifyRuntimeFile('extension/src/future/runtime.ts'), true);
   assert.equal(classifyRuntimeFile('extension/lib/future/runtime.ts'), true);
+  assert.equal(classifyRuntimeFile('extension/lib/future/runtime.cjs'), true);
   assert.equal(classifyRuntimeFile('extension/tests/fixtures/forbidden.ts'), false);
   assert.equal(classifyRuntimeFile('README.md'), false);
 
@@ -36,8 +37,8 @@ test('recursively scans every tracked extension runtime or config file', () => {
 
 test('rejects deterministic Stage 1 capability gates in extension runtime code', () => {
   const cases = [
-    ['cloud token or account', 'const token = "ChartViz Cloud token";'],
-    ['multi-timeframe', 'const view = "multi-timeframe";'],
+    ['cloud token or account', 'class CloudAccount {}'],
+    ['multi-timeframe', 'class MultiTimeframeController {}'],
     ['compatibility adapter', 'class CommunityReportAdapter {}'],
     ['remote JavaScript', 'import "https://example.test/runtime.js";'],
     ['analytics', 'const analytics = {};'],
@@ -127,6 +128,41 @@ test('rejects every Stage 2 network primitive reference, construction, or call',
   }
 });
 
+test('rejects computed destructuring and reflective acquisition of network primitives', () => {
+  const cases = [
+    'const { ["fetch"]: request } = globalThis; request(endpoint);',
+    "const { ['WebSocket']: Socket } = window; new Socket(endpoint);",
+    'const { ["sendBeacon"]: beacon } = navigator; beacon(endpoint, payload);',
+    'const request = Reflect.get(globalThis, "fetch"); request(endpoint);',
+    "const Socket = Reflect.get(window, 'WebSocket'); new Socket(endpoint);",
+    'const beacon = Reflect.get(navigator, "sendBeacon"); beacon(endpoint, payload);',
+    'const request = Reflect?.get(globalThis, "fetch"); request(endpoint);',
+  ];
+
+  for (const source of cases) {
+    assert.ok(
+      findForbiddenCapabilities(source, 'extension/src/future/runtime.ts').includes('network behavior'),
+      `network primitive acquisition must be rejected: ${source}`,
+    );
+  }
+});
+
+test('parses TypeScript, TSX, optional chains, dynamic imports, and template expressions structurally', () => {
+  const cases = [
+    ['extension/src/future/runtime.ts', 'const request: typeof fetch = fetch; request(endpoint);'],
+    ['extension/src/future/runtime.tsx', 'const view = <button onClick={() => window?.fetch?.(endpoint)}>Go</button>;'],
+    ['extension/src/future/runtime.ts', 'const modulePromise = import\n  ("./future-module");'],
+    ['extension/src/future/runtime.ts', 'const note = `policy ${Reflect.get(globalThis, "fetch")(endpoint)}`;'],
+  ];
+
+  for (const [file, source] of cases) {
+    assert.ok(
+      findForbiddenCapabilities(source, file).includes('network behavior'),
+      `${file} must reject structurally executable network syntax: ${source}`,
+    );
+  }
+});
+
 test('rejects forbidden runtime module paths independent of source naming', () => {
   const files = [
     'extension/src/cloud/client.ts',
@@ -183,6 +219,25 @@ test('rejects static imports and re-exports from forbidden runtime modules', () 
   }
 });
 
+test('parses comment-interleaved static module syntax without textual extraction gaps', () => {
+  const sources = [
+    'import /* stage */ "../backend/client";',
+    'import { client } /* stage */ from /* boundary */ "../backend/client";',
+    'import {\n  client,\n} from // boundary\n  "../backend/client";',
+    'export /* stage */ { client } from /* boundary */ "../backend/client";',
+    'import /* stage */ type { Client } from /* boundary */ "../backend/client";',
+    'const client = require(/* boundary */ "../backend/client");',
+    'import Client = require(/* boundary */ "../backend/client");',
+  ];
+
+  for (const source of sources) {
+    assert.ok(
+      findForbiddenCapabilities(source, 'extension/src/future/runtime.ts').includes('forbidden module/import'),
+      `comment-interleaved module syntax must be rejected: ${source}`,
+    );
+  }
+});
+
 test('allows non-network identifiers and non-executable policy or module text', () => {
   const allowed = [
     'const latestExchangeData = cachedValue;',
@@ -204,6 +259,55 @@ test('allows non-network identifiers and non-executable policy or module text', 
       'extension/src/analysis/source-policy.ts',
     ), [], `non-network source must remain allowed: ${source}`);
   }
+});
+
+test('allows Cloud and network policy prose while retaining executable Cloud stage gates', () => {
+  const policySource = [
+    'const note = "Never use a ChartViz Cloud token or account";',
+    'const guidance = `Never use CloudAccount, fetch, or backend imports`;',
+    '// Never use a ChartViz Cloud token or account.',
+    '/* CloudAccount and fetch are forbidden runtime capabilities. */',
+    'const prohibited = /ChartViz Cloud token|CloudAccount|fetch|backend/i;',
+  ].join('\n');
+
+  assert.deepEqual(
+    findForbiddenCapabilities(policySource, 'extension/src/analysis/source-policy.ts'),
+    [],
+  );
+  assert.ok(
+    findForbiddenCapabilities('class CloudAccount {}', 'extension/src/analysis/source-policy.ts')
+      .includes('cloud token or account'),
+  );
+});
+
+test('limits non-JavaScript inspection to paths and static remote HTML scripts', () => {
+  assert.ok(
+    findForbiddenCapabilities(
+      '<script src="https://example.test/runtime.js"></script>',
+      'extension/entrypoints/panel/index.html',
+    ).includes('remote JavaScript'),
+  );
+  assert.deepEqual(
+    findForbiddenCapabilities(
+      '<p>CloudAccount, fetch, and ../backend/client are policy prose.</p>',
+      'extension/entrypoints/panel/index.html',
+    ),
+    [],
+  );
+  assert.deepEqual(
+    findForbiddenCapabilities(
+      '{"policy":"CloudAccount fetch ../backend/client"}',
+      'extension/package.json',
+    ),
+    [],
+  );
+  assert.deepEqual(
+    findForbiddenCapabilities(
+      '/* CloudAccount fetch ../backend/client */ .policy::after { content: "fetch"; }',
+      'extension/entrypoints/panel/style.css',
+    ),
+    [],
+  );
 });
 
 test('retains legacy symbol stage gates while network behavior is structural', () => {
