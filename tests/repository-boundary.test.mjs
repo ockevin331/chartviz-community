@@ -238,6 +238,64 @@ test('parses comment-interleaved static module syntax without textual extraction
   }
 });
 
+test('rejects exact static module.require specifiers across equivalent AST call forms', () => {
+  const sources = [
+    'module.require("../backend/client");',
+    'module?.require?.("../history/store");',
+    'module["require"]("../news/search");',
+    'module?.["require"]?.("../analytics/client");',
+    'module\n  /* stage */\n  .\n  require\n  (\n    "../providers/openai/client"\n  );',
+    'module /* stage */ . /* property */ require /* call */ (/* specifier */ "../storage/session");',
+    'module.require(`../capture/service`);',
+  ];
+
+  for (const source of sources) {
+    assert.ok(
+      findForbiddenCapabilities(source, 'extension/src/future/runtime.ts').includes('forbidden module/import'),
+      `static module.require specifier must be rejected: ${source}`,
+    );
+  }
+});
+
+test('returns a bounded syntax-error finding for malformed JS, JSX, TS, and TSX', () => {
+  const cases = [
+    ['extension/src/future/runtime.js', 'const broken = ;'],
+    ['extension/src/future/runtime.jsx', 'const view = <button>'],
+    ['extension/src/future/runtime.ts', 'interface Broken { value: ; }'],
+    ['extension/src/future/runtime.ts', 'function broken(value: string { return value; }'],
+    ['extension/src/future/runtime.tsx', 'const view = <button>'],
+  ];
+
+  for (const [file, source] of cases) {
+    assert.deepEqual(
+      findForbiddenCapabilities(source, file),
+      ['syntax error'],
+      `${file} must fail closed without exposing source text`,
+    );
+  }
+});
+
+test('accepts valid TS/TSX and ignores malformed-looking policy prose or dynamic module specifiers', () => {
+  const cases = [
+    ['extension/src/future/runtime.ts', 'interface Good { value: string } const good: Good = { value: "ok" };'],
+    ['extension/src/future/runtime.tsx', 'const view = <button type="button">Go</button>;'],
+    ['extension/src/future/runtime.jsx', 'const view = <section aria-label="chart">Ready</section>;'],
+    ['extension/src/analysis/source-policy.ts', 'const note = "const broken = ; module.require(../backend/client)";'],
+    ['extension/src/analysis/source-policy.ts', 'const note = `const view = <button> module.require("../history/store")`;'],
+    ['extension/src/analysis/source-policy.ts', '// const broken = ; module.require("../news/search")\nconst valid = true;'],
+    ['extension/src/analysis/source-policy.ts', 'const prohibited = /const broken = ;|module[.]require/;'],
+    ['extension/src/future/runtime.ts', 'module.require(moduleName);'],
+  ];
+
+  for (const [file, source] of cases) {
+    assert.deepEqual(
+      findForbiddenCapabilities(source, file),
+      [],
+      `${file} valid/static-policy control must remain accepted: ${source}`,
+    );
+  }
+});
+
 test('allows non-network identifiers and non-executable policy or module text', () => {
   const allowed = [
     'const latestExchangeData = cachedValue;',

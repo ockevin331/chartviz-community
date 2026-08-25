@@ -113,6 +113,36 @@ function isReflectGet(expression) {
   return false;
 }
 
+function unwrapExpression(expression) {
+  let current = expression;
+  while (typeScriptAst.isParenthesizedExpression(current)
+    || typeScriptAst.isNonNullExpression(current)
+    || typeScriptAst.isAsExpression(current)
+    || typeScriptAst.isSatisfiesExpression(current)) {
+    current = current.expression;
+  }
+  return current;
+}
+
+function isStaticRequireCallee(expression) {
+  const callee = unwrapExpression(expression);
+  if (typeScriptAst.isIdentifier(callee)) return callee.text === 'require';
+
+  if (typeScriptAst.isPropertyAccessExpression(callee)) {
+    const receiver = unwrapExpression(callee.expression);
+    return typeScriptAst.isIdentifier(receiver)
+      && receiver.text === 'module'
+      && callee.name.text === 'require';
+  }
+  if (typeScriptAst.isElementAccessExpression(callee)) {
+    const receiver = unwrapExpression(callee.expression);
+    return typeScriptAst.isIdentifier(receiver)
+      && receiver.text === 'module'
+      && literalText(callee.argumentExpression) === 'require';
+  }
+  return false;
+}
+
 function isRuntimeNetworkIdentifier(node, sourceFile) {
   if (!networkPrimitives.has(node.text)) return false;
 
@@ -194,12 +224,21 @@ function inspectScriptSyntax(source, file) {
   const extension = scriptExtensions.has(requestedExtension) ? requestedExtension : '.tsx';
   const virtualFile = `/__chartviz_source_audit__/runtime-${parsedSourceSequence += 1}${extension}`;
   parserFileSystem.writeFile(virtualFile, source);
-  const snapshot = getParserApi().updateSnapshot({ openFiles: [virtualFile] });
+  let snapshot;
 
   try {
+    snapshot = getParserApi().updateSnapshot({ openFiles: [virtualFile] });
     const project = snapshot.getDefaultProjectForFile(virtualFile);
     const sourceFile = project?.program.getSourceFile(virtualFile);
     if (!sourceFile) throw new Error(`Source audit parser failed to load ${file || virtualFile}`);
+    const diagnostics = project.program.getSyntacticDiagnostics(virtualFile);
+    if (!Array.isArray(diagnostics)) throw new Error('Source audit parser returned invalid diagnostics');
+    const syntaxDiagnostics = diagnostics.map((diagnostic) => ({
+      category: Number.isInteger(diagnostic.category) ? diagnostic.category : null,
+      code: Number.isInteger(diagnostic.code) ? diagnostic.code : null,
+      end: Number.isInteger(diagnostic.end) ? diagnostic.end : null,
+      start: Number.isInteger(diagnostic.pos) ? diagnostic.pos : null,
+    }));
 
     const moduleSpecifiers = new Set();
     const identifiers = new Set();
@@ -242,8 +281,7 @@ function inspectScriptSyntax(source, file) {
         } else if (isReflectGet(node.expression)
           && networkPrimitives.has(literalText(node.arguments[1]))) {
           networkBehavior = true;
-        } else if (typeScriptAst.isIdentifier(node.expression)
-          && node.expression.text === 'require') {
+        } else if (isStaticRequireCallee(node.expression)) {
           addModuleSpecifier(node.arguments[0]);
         }
       }
@@ -256,9 +294,12 @@ function inspectScriptSyntax(source, file) {
       identifiers: [...identifiers],
       moduleSpecifiers: [...moduleSpecifiers],
       networkBehavior,
+      syntaxDiagnostics,
     };
+  } catch {
+    throw new Error(`Source audit parser failed for ${file || '<inline source>'}`);
   } finally {
-    snapshot.dispose();
+    snapshot?.dispose();
   }
 }
 
@@ -281,9 +322,12 @@ export function findForbiddenCapabilities(source, file = '') {
   const inspectAsScript = normalizedFile === '' || scriptExtensions.has(extension);
   const syntax = inspectAsScript
     ? inspectScriptSyntax(source, normalizedFile)
-    : { identifiers: [], moduleSpecifiers: [], networkBehavior: false };
+    : {
+      identifiers: [], moduleSpecifiers: [], networkBehavior: false, syntaxDiagnostics: [],
+    };
   const matches = [];
 
+  if (syntax.syntaxDiagnostics.length > 0) matches.push('syntax error');
   if (syntax.networkBehavior) matches.push('network behavior');
   if (hasForbiddenModuleSegment(normalizedFile)
     || syntax.moduleSpecifiers.some(hasForbiddenModuleSegment)) {
