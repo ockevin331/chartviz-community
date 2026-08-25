@@ -512,6 +512,76 @@ test('stops exact-origin resolution at every nearer runtime binding', () => {
   );
 });
 
+test('models TypeScript runtime value bindings as exact-origin shadow barriers', () => {
+  const file = 'extension/src/providers/openrouter-provider.ts';
+  const approved = 'https://openrouter.ai/api/v1/chat/completions';
+  const shadowedSources = [
+    `const u = "${approved}"; { enum u { Value } void String(u); fetch(u as unknown as string); }`,
+    `const u = "${approved}"; { fetch(u as unknown as string); enum u { Value } }`,
+    `const u = "${approved}"; function send() { enum u { Value } fetch(u as unknown as string); }`,
+    `const u = "${approved}"; { namespace u { export function toString() { return "other"; } } fetch(u as unknown as string); }`,
+    `const u = "${approved}"; { module u { export const value = 1; } fetch(u as unknown as string); }`,
+    `const u = "${approved}"; { namespace u { export const first = 1; } namespace u { export const second = 2; } fetch(u as unknown as string); }`,
+    `const u = "${approved}"; { enum u { Value } namespace u { export const extra = 1; } fetch(u as unknown as string); }`,
+    `const u = "${approved}"; namespace u.v { export const value = 1; } fetch(u as unknown as string);`,
+    `const u = "${approved}"; { using u = resource; fetch(u as unknown as string); }`,
+    `const u = "${approved}"; { fetch(u as unknown as string); using u = resource; }`,
+    `const u = "${approved}"; async function send() { await using u = resource; fetch(u as unknown as string); }`,
+    `const u = "${approved}"; async function send() { fetch(u as unknown as string); await using u = resource; }`,
+  ];
+
+  for (const source of shadowedSources) {
+    assert.ok(
+      findForbiddenCapabilities(source, file).includes('network behavior'),
+      `runtime TypeScript binding must stop fixed-origin resolution: ${source}`,
+    );
+  }
+
+  const exportedRuntimeSources = [
+    'export enum u { Value } fetch(u as unknown as string);',
+    'export namespace u { export const value = 1; } fetch(u as unknown as string);',
+    'export module u { export const value = 1; } fetch(u as unknown as string);',
+  ];
+  for (const source of exportedRuntimeSources) {
+    assert.ok(
+      findForbiddenCapabilities(source, file).includes('network behavior'),
+      `exported runtime TypeScript binding must remain unapproved: ${source}`,
+    );
+  }
+});
+
+test('keeps using declarations lexical and type-only declarations out of runtime resolution', () => {
+  const file = 'extension/src/providers/openrouter-provider.ts';
+  const approved = 'https://openrouter.ai/api/v1/chat/completions';
+  const allowedSources = [
+    `function send() { const u = "${approved}"; { using u = resource; consume(u); } fetch(u); }`,
+    `async function send() { const u = "${approved}"; { await using u = resource; consume(u); } fetch(u); }`,
+    `const u = "${approved}"; { enum shadow { Value } consume(shadow); } fetch(u);`,
+    `const u = "${approved}"; { namespace shadow { export const value = 1; } consume(shadow); } fetch(u);`,
+    `import type { u } from "./provider-types"; const u = "${approved}"; fetch(u);`,
+    `import { type u } from "./provider-types"; const u = "${approved}"; fetch(u);`,
+    `import type u from "./provider-types"; const u = "${approved}"; fetch(u);`,
+    `import type * as u from "./provider-types"; const u = "${approved}"; fetch(u);`,
+    `import type u = require("./provider-types"); const u = "${approved}"; fetch(u);`,
+    `const u = "${approved}"; interface u { value: string } fetch(u);`,
+    `const u = "${approved}"; type u = string; fetch(u);`,
+    `declare module "u" { export type Value = string; } const u = "${approved}"; fetch(u);`,
+    `declare namespace u.v { type Value = string; } const u = "${approved}"; fetch(u);`,
+    `declare enum u { Value } const u = "${approved}"; fetch(u);`,
+    `declare const u: string; const u = "${approved}"; fetch(u);`,
+    `declare function u(): void; const u = "${approved}"; fetch(u);`,
+    `declare class u {} const u = "${approved}"; fetch(u);`,
+  ];
+
+  for (const source of allowedSources) {
+    assert.deepEqual(
+      findForbiddenCapabilities(source, file),
+      [],
+      `type-only or disjoint lexical declaration must not shadow the approved value: ${source}`,
+    );
+  }
+});
+
 test('keeps provider and storage path gates closed outside the exact Stage 3 allowlist', () => {
   const cases = [
     ['extension/src/providers/openai-provider.ts', 'export class OpenAiProvider {}'],

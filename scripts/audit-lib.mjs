@@ -204,6 +204,7 @@ function isModuleSyntaxIdentifier(node, sourceFile) {
 
 function isLexicalScopeNode(node) {
   return typeScriptAst.isBlock(node)
+    || typeScriptAst.isModuleBlock(node)
     || typeScriptAst.isFunctionLikeDeclaration(node)
     || typeScriptAst.isCatchClause(node)
     || typeScriptAst.isClassLikeDeclaration(node)
@@ -238,6 +239,14 @@ function nearestLexicalScope(node) {
     if (isLexicalScopeNode(current)) return current;
   }
   return null;
+}
+
+function isAmbientDeclaration(node) {
+  for (let current = node; current; current = current.parent) {
+    if ((current.flags & typeScriptAst.NodeFlags.Ambient) !== 0) return true;
+    if (current.kind === typeScriptAst.SyntaxKind.SourceFile) return false;
+  }
+  return false;
 }
 
 function isRuntimeNetworkIdentifier(node, sourceFile) {
@@ -359,10 +368,12 @@ function inspectScriptSyntax(source, file) {
 
     const collectBindings = (node) => {
       if (typeScriptAst.isVariableDeclaration(node)
-        && typeScriptAst.isVariableDeclarationList(node.parent)) {
+        && typeScriptAst.isVariableDeclarationList(node.parent)
+        && !isAmbientDeclaration(node)) {
         const flags = node.parent.flags;
-        const isConst = (flags & typeScriptAst.NodeFlags.Const) !== 0;
-        const isVar = (flags & (typeScriptAst.NodeFlags.Const | typeScriptAst.NodeFlags.Let)) === 0;
+        const declarationKind = flags & typeScriptAst.NodeFlags.BlockScoped;
+        const isConst = declarationKind === typeScriptAst.NodeFlags.Const;
+        const isVar = declarationKind === typeScriptAst.NodeFlags.None;
         const scope = isVar ? nearestVarScope(node.parent) : nearestLexicalScope(node.parent);
         const staticText = isConst && typeScriptAst.isIdentifier(node.name) && node.initializer
           ? literalText(node.initializer)
@@ -377,28 +388,44 @@ function inspectScriptSyntax(source, file) {
         if (typeScriptAst.isFunctionExpression(node) && node.name) addBinding(node, node.name.text);
       }
 
-      if (typeScriptAst.isFunctionDeclaration(node) && node.name) {
+      if (typeScriptAst.isFunctionDeclaration(node) && node.name && !isAmbientDeclaration(node)) {
         addBinding(nearestLexicalScope(node.parent), node.name.text);
       }
-      if (typeScriptAst.isClassDeclaration(node) && node.name) {
+      if (typeScriptAst.isClassDeclaration(node) && node.name && !isAmbientDeclaration(node)) {
         addBinding(nearestLexicalScope(node.parent), node.name.text);
       }
       if (typeScriptAst.isClassExpression(node) && node.name) addBinding(node, node.name.text);
+
+      if (typeScriptAst.isEnumDeclaration(node) && !isAmbientDeclaration(node)) {
+        addBinding(nearestLexicalScope(node.parent), node.name.text);
+      }
+      if (typeScriptAst.isModuleDeclaration(node)
+        && typeScriptAst.isIdentifier(node.name)
+        && !(typeScriptAst.isModuleDeclaration(node.parent) && node.parent.body === node)
+        && !isAmbientDeclaration(node)) {
+        addBinding(nearestLexicalScope(node.parent), node.name.text);
+      }
 
       if (typeScriptAst.isCatchClause(node) && node.variableDeclaration) {
         for (const name of bindingNames(node.variableDeclaration.name)) addBinding(node, name);
       }
 
-      if (typeScriptAst.isImportDeclaration(node) && node.importClause) {
+      if (typeScriptAst.isImportDeclaration(node)
+        && node.importClause
+        && !node.importClause.isTypeOnly) {
         if (node.importClause.name) addBinding(sourceFile, node.importClause.name.text);
         const namedBindings = node.importClause.namedBindings;
         if (namedBindings && typeScriptAst.isNamespaceImport(namedBindings)) {
           addBinding(sourceFile, namedBindings.name.text);
         } else if (namedBindings && typeScriptAst.isNamedImports(namedBindings)) {
-          for (const element of namedBindings.elements) addBinding(sourceFile, element.name.text);
+          for (const element of namedBindings.elements) {
+            if (!element.isTypeOnly) addBinding(sourceFile, element.name.text);
+          }
         }
       }
-      if (typeScriptAst.isImportEqualsDeclaration(node)) addBinding(sourceFile, node.name.text);
+      if (typeScriptAst.isImportEqualsDeclaration(node) && !node.isTypeOnly) {
+        addBinding(sourceFile, node.name.text);
+      }
 
       node.forEachChild(collectBindings);
     };
