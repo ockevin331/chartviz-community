@@ -483,6 +483,38 @@ describe('parseCommunityReport', () => {
     expect(parsed.chart.timeframe).toBe('daily');
   });
 
+  it('does not interpret common amount and volume suffixes as timeframes', () => {
+    const parsed = parseCommunityReport(mutated((report) => {
+      report.chart.timeframe = '1h';
+      report.volume!.summary = 'Volume reached 2.5K, turnover was 1.2M, and notional was 3B.';
+      report.evidence[0].observation = 'Visible volume was 3M.';
+    }));
+
+    expect(parsed.chart.timeframe).toBe('1h');
+    expect(parsed.volume!.summary).toContain('1.2M');
+  });
+
+  it('treats uppercase compact 1M as monthly in the chart timeframe field', () => {
+    const parsed = parseCommunityReport(mutated((report) => {
+      report.chart.timeframe = '1M';
+      report.marketView.summary = 'The monthly chart remains conditional.';
+      report.patterns[0].timeRange = 'The visible 1M chart range';
+    }));
+
+    expect(parsed.chart.timeframe).toBe('1M');
+  });
+
+  it.each([
+    ['minute chart with uppercase monthly text', '1m', 'The 1M chart remains conditional.'],
+    ['monthly chart with lowercase minute text', '1M', 'The 1m chart remains conditional.'],
+    ['minute chart with uppercase monthly and named text', '1m', 'The 1M/monthly chart remains conditional.'],
+  ])('rejects %s', (_name, timeframe, summary) => {
+    expectRejected((report) => {
+      report.chart.timeframe = timeframe;
+      report.marketView.summary = summary;
+    });
+  });
+
   it('rejects conflicting text-tree timeframes when the chart label is null', () => {
     expectRejected((report) => {
       report.chart.timeframe = null;

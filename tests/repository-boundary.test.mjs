@@ -87,6 +87,39 @@ test('allows legitimate Stage 2 report identifiers and source-policy literals', 
   );
 });
 
+test('ignores raw policy phrases in strings, templates, comments, and policy regexes', () => {
+  const policySource = [
+    'const quoted = "Do not use exchange APIs or calculated feeds";',
+    'const template = `Reject exchangeData and fetchExternalData claims`;',
+    '// fetchExternalData and marketFeed are prohibited',
+    '/* Never use exchange data from external feeds. */',
+    'const prohibited = /exchange api|external data|news reports/i;',
+  ].join('\n');
+
+  assert.deepEqual(
+    findForbiddenCapabilities(policySource, 'extension/src/analysis/source-policy.ts'),
+    [],
+  );
+});
+
+test('detects executable exchange-data flows in approved policy paths across simple renames', () => {
+  const cases = [
+    'async function analyze(endpoint) { const exchangeData = await fetch(endpoint); return exchangeData; }',
+    'async function inspect(endpoint) { const externalData = await load(endpoint); return externalData; }',
+    'async function inspect(endpoint) { const marketFeed = await request(endpoint); return marketFeed; }',
+    'async function inspect(endpoint) { const exchange_data = await fetch(endpoint); return exchange_data; }',
+    'async function inspect(endpoint) { const binanceData = await fetch(endpoint); return binanceData; }',
+    'async function inspect(endpoint) { const note = `policy ${await fetch(endpoint)} ${exchangeData}`; return note; }',
+  ];
+
+  for (const source of cases) {
+    assert.ok(
+      findForbiddenCapabilities(source, 'extension/src/analysis/source-policy.ts').includes('exchange data'),
+      `approved policy path must reject executable flow: ${source}`,
+    );
+  }
+});
+
 test('rejects prohibited behavior without erasing matching tokens in approved files', () => {
   assert.ok(
     findForbiddenCapabilities(

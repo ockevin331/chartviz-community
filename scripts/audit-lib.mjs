@@ -25,9 +25,10 @@ const forbiddenCapabilities = [
   { capability: 'server or history behavior', pattern: /\b(?:server|backend|history)\b/i },
   { capability: 'multi-timeframe', pattern: /multi[-\s]?timeframe/i },
   { capability: 'news search', pattern: /news[-\s]?(?:search(?:es)?|reports?)|web[-\s]?search(?:es)?/i, allowedLiteralPaths: approvedPolicyLiteralPaths },
-  { capability: 'news search', pattern: /\b(?:fetch|search|query|load|request|retrieve)[-_]?(?:news|web)[-_]?(?:data|feed|reports?|results?)?\b/i },
+  { capability: 'news search', pattern: /\b(?:fetch|search|query|load|request|retrieve)[-_]?(?:news|web)[-_]?(?:data|feed|reports?|results?)?\b/i, sourceView: 'executable' },
   { capability: 'exchange data', pattern: /\b(?:binance|okx|hyperliquid|exchange[-\s]?(?:apis?|data|feeds?)|calculated[-\s]?(?:data|feeds?)|external[-\s]?data)\b/i, allowedLiteralPaths: approvedPolicyLiteralPaths },
-  { capability: 'exchange data', pattern: /\bohlcv\b|https?:\/\/[^\s'"`]*(?:binance|okx|hyperliquid)[^\s'"`]*|\b(?:fetch|load|get|request|query|download|retrieve)[-_]?(?:exchange|external|calculated|market)[-_]?(?:data|feed|ohlcv)\b|\b(?:binance|okx|hyperliquid)(?:client|feed|api|ohlcv)\b/i },
+  { capability: 'exchange data', pattern: /\b(?:exchange|external|calculated|market)[-_]?(?:apis?|data|feeds?)\b|\b(?:fetch|load|get|request|query|download|retrieve)[-_]?(?:exchange|external|calculated|market)[-_]?(?:data|feed|ohlcv)\b|\b(?:binance|okx|hyperliquid)(?:client|data|feed|api|ohlcv)\b/i, sourceView: 'executable' },
+  { capability: 'exchange data', pattern: /\bohlcv\b|https?:\/\/[^\s'"`]*(?:binance|okx|hyperliquid)[^\s'"`]*/i },
   { capability: 'local model', pattern: /local[-\s]?models?/i },
   { capability: 'compatibility adapter', pattern: /compatib(?:ility|le)[-\s]?(?:adapter|report)|legacy[-\s]?(?:adapter|report)|\b(?:communityreport|analysisreport)(?:adapter|adaptor)\b/i },
   { capability: 'remote JavaScript', pattern: /https?:\/\/[^\s'"`]+\.js(?:[?#][^\s'"`]*)?|import\s*(?:\(|[^;]*?from\s*)['"]https?:\/\//i },
@@ -38,6 +39,149 @@ const forbiddenCapabilities = [
   { capability: 'annotation behavior', pattern: /\b(?:renderannotations|annotationrenderer|annotatedimage)\b/i },
 ];
 
+function maskNonExecutableJavaScript(source) {
+  const output = source.split('');
+  const mask = (index) => {
+    if (source[index] !== '\n' && source[index] !== '\r') output[index] = ' ';
+  };
+  const maskPair = (index) => {
+    mask(index);
+    if (index + 1 < source.length) mask(index + 1);
+  };
+
+  const isRegexStart = (index) => {
+    let previous = index - 1;
+    while (previous >= 0 && /\s/.test(source[previous])) previous -= 1;
+    if (previous < 0) return true;
+    if (/[[\](){},:=;!?&|+*%^~>-]/.test(source[previous])) return true;
+    return /(?:^|[^\w$])(?:return|throw|case|delete|void|typeof|instanceof|in|of|yield|await)\s*$/u.test(source.slice(0, index));
+  };
+
+  const scanQuoted = (start, quote) => {
+    mask(start);
+    let index = start + 1;
+    while (index < source.length) {
+      mask(index);
+      if (source[index] === '\\') {
+        index += 1;
+        if (index < source.length) mask(index);
+      } else if (source[index] === quote) {
+        return index + 1;
+      }
+      index += 1;
+    }
+    return index;
+  };
+
+  const scanLineComment = (start) => {
+    maskPair(start);
+    let index = start + 2;
+    while (index < source.length && source[index] !== '\n') {
+      mask(index);
+      index += 1;
+    }
+    return index;
+  };
+
+  const scanBlockComment = (start) => {
+    maskPair(start);
+    let index = start + 2;
+    while (index < source.length) {
+      if (source[index] === '*' && source[index + 1] === '/') {
+        maskPair(index);
+        return index + 2;
+      }
+      mask(index);
+      index += 1;
+    }
+    return index;
+  };
+
+  const scanRegex = (start) => {
+    mask(start);
+    let index = start + 1;
+    let inCharacterClass = false;
+    while (index < source.length) {
+      mask(index);
+      if (source[index] === '\\') {
+        index += 1;
+        if (index < source.length) mask(index);
+      } else if (source[index] === '[') {
+        inCharacterClass = true;
+      } else if (source[index] === ']') {
+        inCharacterClass = false;
+      } else if (source[index] === '/' && !inCharacterClass) {
+        index += 1;
+        while (index < source.length && /[a-z]/i.test(source[index])) {
+          mask(index);
+          index += 1;
+        }
+        return index;
+      }
+      index += 1;
+    }
+    return index;
+  };
+
+  let scanCode;
+  const scanTemplate = (start) => {
+    mask(start);
+    let index = start + 1;
+    while (index < source.length) {
+      if (source[index] === '\\') {
+        maskPair(index);
+        index += 2;
+      } else if (source[index] === '`') {
+        mask(index);
+        return index + 1;
+      } else if (source[index] === '$' && source[index + 1] === '{') {
+        maskPair(index);
+        index = scanCode(index + 2, true);
+      } else {
+        mask(index);
+        index += 1;
+      }
+    }
+    return index;
+  };
+
+  scanCode = (start, stopAtTemplateBrace = false) => {
+    let index = start;
+    let braceDepth = stopAtTemplateBrace ? 1 : 0;
+    while (index < source.length) {
+      const current = source[index];
+      const next = source[index + 1];
+      if (current === "'" || current === '"') {
+        index = scanQuoted(index, current);
+      } else if (current === '`') {
+        index = scanTemplate(index);
+      } else if (current === '/' && next === '/') {
+        index = scanLineComment(index);
+      } else if (current === '/' && next === '*') {
+        index = scanBlockComment(index);
+      } else if (current === '/' && isRegexStart(index)) {
+        index = scanRegex(index);
+      } else if (stopAtTemplateBrace && current === '{') {
+        braceDepth += 1;
+        index += 1;
+      } else if (stopAtTemplateBrace && current === '}') {
+        braceDepth -= 1;
+        if (braceDepth === 0) {
+          mask(index);
+          return index + 1;
+        }
+        index += 1;
+      } else {
+        index += 1;
+      }
+    }
+    return index;
+  };
+
+  scanCode(0);
+  return output.join('');
+}
+
 export function classifyRuntimeFile(file) {
   const normalized = file.replaceAll('\\', '/');
   if (!normalized.startsWith('extension/')) return false;
@@ -47,8 +191,12 @@ export function classifyRuntimeFile(file) {
 
 export function findForbiddenCapabilities(source, file = '') {
   const normalizedFile = file.replaceAll('\\', '/');
+  const executableSource = maskNonExecutableJavaScript(source);
   const matches = forbiddenCapabilities
-    .filter(({ pattern, allowedLiteralPaths }) => pattern.test(source) && !allowedLiteralPaths?.has(normalizedFile))
+    .filter(({ pattern, allowedLiteralPaths, sourceView }) => {
+      const inspectedSource = sourceView === 'executable' ? executableSource : source;
+      return pattern.test(inspectedSource) && !allowedLiteralPaths?.has(normalizedFile);
+    })
     .map(({ capability }) => capability);
   return [...new Set(matches)];
 }

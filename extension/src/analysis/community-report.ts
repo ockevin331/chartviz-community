@@ -139,7 +139,6 @@ function walkText(value: unknown, path: Path, visit: (text: string, path: Path) 
 function collectUserFacingText(report: z.infer<typeof reportShapeSchema>): string[] {
   return [
     ...(report.chart.instrument === null ? [] : [report.chart.instrument]),
-    ...(report.chart.timeframe === null ? [] : [report.chart.timeframe]),
     ...report.chart.limitations,
     report.marketView.summary,
     ...report.evidence.flatMap(({ observation, implication, timeAnchor }) => [observation, implication, timeAnchor]),
@@ -211,7 +210,7 @@ export const communityReportSchema = reportShapeSchema.superRefine((report, cont
     if (report.chart.timeframe !== null && /^\[[\s\S]*\]$/.test(report.chart.timeframe)) {
       throw new Error('Report must describe exactly one visible timeframe');
     }
-    assertSingleTimeframe(collectUserFacingText(report));
+    assertSingleTimeframe(collectUserFacingText(report), report.chart.timeframe);
   } catch (error) {
     context.addIssue({
       code: 'custom',
