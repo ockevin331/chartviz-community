@@ -76,6 +76,12 @@ export function useAnalysisController(dependencies: AnalysisControllerDependenci
     setState({ ...initialState, status: 'source' });
   }, [invalidateOperation]);
 
+  const refresh = useCallback(() => {
+    invalidateOperation();
+    imageRef.current = null;
+    setState({ ...initialState, status: configRef.current ? 'source' : 'setup' });
+  }, [invalidateOperation]);
+
   const analyze = useCallback(async (pageContext: CommunityPromptInput['pageContext'], language: CommunityPromptInput['language']) => {
     const config = configRef.current;
     const image = imageRef.current;
@@ -144,5 +150,5 @@ export function useAnalysisController(dependencies: AnalysisControllerDependenci
     if (image) setState({ ...initialState, status: 'preview', image });
   }, [invalidateOperation]);
 
-  return { state, configure, selectImage, chooseAnotherImage, analyze, cancel, returnToPreview };
+  return { state, configure, selectImage, chooseAnotherImage, refresh, analyze, cancel, returnToPreview };
 }

@@ -74,6 +74,16 @@ describe('useAnalysisController', () => {
     expect(analyze).toHaveBeenCalledTimes(2);
   });
 
+  it('resets the current workflow while retaining configured access', () => {
+    const { result } = setup(vi.fn(async () => communityReport));
+    act(() => { result.current.configure(config); result.current.selectImage(processedImage); });
+    expect(result.current.state.status).toBe('preview');
+
+    act(() => result.current.refresh());
+
+    expect(result.current.state).toMatchObject({ status: 'source', image: null, report: null, annotations: null });
+  });
+
   it('moves analyzing → cancelled → preview and aborts the one active call', async () => {
     const analyze = vi.fn((_config, request) => new Promise<typeof communityReport>((_resolve, reject) => {
       request.signal.addEventListener('abort', () => reject(request.signal.reason), { once: true });
