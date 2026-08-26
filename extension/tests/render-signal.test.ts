@@ -80,6 +80,22 @@ function expectPairwiseSpacing(values: number[], minimum: number): void {
   });
 }
 
+function priceLineYs(operations: Operation[]): number[] {
+  return operations
+    .filter(([name, x]) => name === 'moveTo' && x === 0.75)
+    .map((operation) => operation[2] as number);
+}
+
+function arrowPathCoordinates(operations: Operation[]): Array<[number, number]> {
+  const arrowStart = operations.findIndex((operation) => (
+    operation[0] === 'setLineWidth' && operation[1] === 3
+  ));
+  return operations
+    .slice(arrowStart)
+    .filter(([name]) => name === 'moveTo' || name === 'lineTo')
+    .map((operation) => [operation[1] as number, operation[2] as number]);
+}
+
 describe('renderSignal', () => {
   it('draws one long signal with a compact arrow below entry and every trade field visible', async () => {
     // Breaks on: combining overlays, omitting a target/RR, failing to clamp a ratio,
@@ -147,11 +163,11 @@ describe('renderSignal', () => {
       ['lineTo', 406, 248],
       ['stroke'],
       ['fillText', 'LONG', 412, 270],
-      ['fillText', 'Risk/reward 2:1', 12, 570],
+      ['fillText', 'Risk/reward 2:1', 12, 574],
       ['encode'],
       ['dispose'],
     ]);
-    expect(tradeLabelBaselines(operations)).toEqual([234, 384, 114, 592, 570]);
+    expect(tradeLabelBaselines(operations)).toEqual([234, 384, 114, 592, 574]);
     expectPairwiseSpacing(tradeLabelBaselines(operations), 18);
   });
 
@@ -176,8 +192,8 @@ describe('renderSignal', () => {
     expect(operations).toContainEqual(['lineTo', 606, 442]);
     expect(operations).toContainEqual(['fillText', 'SHORT', 612, 414]);
     expect(operations).toContainEqual(['fillText', 'Target 1 90', 12, 592]);
-    expect(operations).toContainEqual(['fillText', 'Risk/reward Not provided', 12, 570]);
-    expect(tradeLabelBaselines(operations)).toEqual([444, 354, 592, 570]);
+    expect(operations).toContainEqual(['fillText', 'Risk/reward Not provided', 12, 574]);
+    expect(tradeLabelBaselines(operations)).toEqual([444, 354, 592, 574]);
     expectPairwiseSpacing(tradeLabelBaselines(operations), 18);
     expect(operations.filter(([name]) => name === 'drawSource')).toHaveLength(1);
     expect(operations.filter(([name]) => name === 'encode')).toHaveLength(1);
@@ -209,7 +225,7 @@ describe('renderSignal', () => {
       ['lineTo', 13.5, 576.5],
       ['stroke'],
       ['fillText', 'LONG', 19.5, 592],
-      ['fillText', 'Risk/reward 2:1', 12, 552],
+      ['fillText', 'Risk/reward 2:1', 12, 556],
       ['encode'],
       ['dispose'],
     ]);
@@ -274,7 +290,96 @@ describe('renderSignal', () => {
       ['moveTo', 0.75, 300],
       ['lineTo', 799.25, 300],
     ]);
-    expect(tradeLabelBaselines(operations)).toEqual([234, 354, 294, 312, 276, 588]);
+    expect(tradeLabelBaselines(operations)).toEqual([234, 354, 294, 312, 330, 588]);
     expectPairwiseSpacing(tradeLabelBaselines(operations), 18);
+  });
+
+  it('globally packs six top-clustered labels while preserving their price-line Ys', async () => {
+    // Breaks on: returning the per-label greedy lanes instead of a globally ordered packing.
+    const input = signal({
+      entry: { priceLabel: 'ENTRY', xRatio: 0.5, yRatio: 0 },
+      stop: { priceLabel: 'STOP', yRatio: 0 },
+      targets: [
+        { priceLabel: 'T1', yRatio: 0 },
+        { priceLabel: 'T2', yRatio: 0 },
+        { priceLabel: 'T3', yRatio: 0 },
+      ],
+      riskReward: '2:1',
+    });
+    const { dependencies, operations } = recordingCanvas('data:image/png;base64,dG9w');
+
+    await renderSignal({ ...image, width: 320, height: 180 }, input, dependencies);
+
+    expect(tradeLabelBaselines(operations)).toEqual([16, 34, 52, 70, 88, 168]);
+    expectPairwiseSpacing(tradeLabelBaselines(operations), 18);
+    expect(tradeLabelBaselines(operations).every((y) => y >= 16 && y <= 172)).toBe(true);
+    expect(priceLineYs(operations)).toEqual([0.75, 0.75, 0.75, 0.75, 0.75]);
+  });
+
+  it('globally packs six bottom-clustered labels without returning a colliding fallback', async () => {
+    // Breaks on: greedy placement choosing order-dependent lanes or falling back to a collision.
+    const input = signal({
+      entry: { priceLabel: 'ENTRY', xRatio: 0.5, yRatio: 1 },
+      stop: { priceLabel: 'STOP', yRatio: 1 },
+      targets: [
+        { priceLabel: 'T1', yRatio: 1 },
+        { priceLabel: 'T2', yRatio: 1 },
+        { priceLabel: 'T3', yRatio: 1 },
+      ],
+      riskReward: null,
+    });
+    const { dependencies, operations } = recordingCanvas('data:image/png;base64,Ym90dG9t');
+
+    await renderSignal({ ...image, width: 320, height: 180 }, input, dependencies);
+
+    expect(tradeLabelBaselines(operations)).toEqual([100, 118, 136, 154, 172, 82]);
+    expectPairwiseSpacing(tradeLabelBaselines(operations), 18);
+    expect(tradeLabelBaselines(operations).every((y) => y >= 16 && y <= 172)).toBe(true);
+    expect(priceLineYs(operations)).toEqual([179.25, 179.25, 179.25, 179.25, 179.25]);
+    expect(operations).toContainEqual(['fillText', 'Risk/reward Not provided', 12, 82]);
+  });
+
+  it('stably packs mixed preferred baselines in original label order', async () => {
+    // Breaks on: skipping the stable sort by preferred baseline then original field order.
+    const input = signal({
+      entry: { priceLabel: 'ENTRY', xRatio: 0.5, yRatio: 31 / 180 },
+      stop: { priceLabel: 'STOP', yRatio: 49 / 180 },
+      targets: [
+        { priceLabel: 'T1', yRatio: 22 / 180 },
+        { priceLabel: 'T2', yRatio: 80 / 180 },
+        { priceLabel: 'T3', yRatio: 140 / 180 },
+      ],
+      riskReward: '3:1',
+    });
+    const { dependencies, operations } = recordingCanvas('data:image/png;base64,bWl4ZWQ=');
+
+    await renderSignal({ ...image, width: 320, height: 180 }, input, dependencies);
+
+    expect(tradeLabelBaselines(operations)).toEqual([34, 52, 16, 74, 134, 168]);
+    expectPairwiseSpacing(tradeLabelBaselines(operations), 18);
+    expect(tradeLabelBaselines(operations).every((y) => y >= 16 && y <= 172)).toBe(true);
+    [31, 49, 22, 80, 140].forEach((expected, index) => {
+      expect(priceLineYs(operations)[index]).toBeCloseTo(expected);
+    });
+  });
+
+  it.each([
+    ['long', signal({ entry: { priceLabel: 'BOTTOM', xRatio: 0, yRatio: 1 } })],
+    ['short', signal({ direction: 'short', entry: { priceLabel: 'TOP', xRatio: 1, yRatio: 0 } })],
+  ] as const)('keeps every %s arrow body and head coordinate inside a 320x180 canvas', async (_, input) => {
+    // Breaks on: a minimum-size arrow clipping at an edge or collapsing its body/head geometry.
+    const { dependencies, operations } = recordingCanvas('data:image/png;base64,YXJyb3c=');
+
+    await renderSignal({ ...image, width: 320, height: 180 }, input, dependencies);
+
+    const coordinates = arrowPathCoordinates(operations);
+    expect(coordinates).toHaveLength(5);
+    expect(coordinates.every(([x, y]) => x >= 0 && x <= 320 && y >= 0 && y <= 180)).toBe(true);
+    expect(coordinates[0]![1]).not.toBe(coordinates[1]![1]);
+    expect(coordinates.slice(2)).toEqual([
+      [coordinates[0]![0] - 6, coordinates[1]![1] + (input.direction === 'long' ? 8 : -8)],
+      coordinates[1],
+      [coordinates[0]![0] + 6, coordinates[1]![1] + (input.direction === 'long' ? 8 : -8)],
+    ]);
   });
 });

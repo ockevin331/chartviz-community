@@ -5,7 +5,10 @@ import {
   type AnnotationCanvasDependencies,
   type AnnotationSurface,
 } from '../src/annotations/canvas-surface';
-import { buildAnnotations } from '../src/annotations/build-annotations';
+import {
+  ANNOTATION_IMAGE_TOO_SMALL_CODE,
+  buildAnnotations,
+} from '../src/annotations/build-annotations';
 
 type Operation = readonly [name: string, ...values: unknown[]];
 
@@ -119,6 +122,40 @@ function texts(operations: Operation[]): unknown[] {
 }
 
 describe('buildAnnotations', () => {
+  it('fails closed below 320x180 and permits both minimum-size boundaries', async () => {
+    // Breaks on: accepting a geometrically unsafe source or starting decode/surface work
+    // before the annotation-size preflight can reject it.
+    for (const [width, height] of [[319, 180], [320, 179]] as const) {
+      const { dependencies, canvases, decodes } = recordingCanvases();
+      const duplicateIdReport = report();
+      duplicateIdReport.signals[1]!.id = duplicateIdReport.signals[0]!.id;
+
+      await expect(buildAnnotations({ ...image, width, height }, duplicateIdReport, dependencies))
+        .rejects.toMatchObject({ code: ANNOTATION_IMAGE_TOO_SMALL_CODE });
+      expect(canvases).toEqual([]);
+      expect(decodes).toEqual([]);
+    }
+
+    for (const [width, height] of [[320, 180], [321, 181]] as const) {
+      const { dependencies, canvases, decodes } = recordingCanvases();
+
+      await expect(buildAnnotations({ ...image, width, height }, report(), dependencies))
+        .resolves.toMatchObject({
+          levels: { width, height },
+          signals: {
+            'signal-a': { width, height },
+            'signal-b': { width, height },
+          },
+          patterns: {
+            'pattern-a': { width, height },
+            'pattern-b': { width, height },
+          },
+        });
+      expect(canvases).toHaveLength(5);
+      expect(decodes).toHaveLength(5);
+    }
+  });
+
   it('builds one levels canvas and one isolated canvas for each signal and pattern without mutating inputs', async () => {
     // Breaks on: combined signal/pattern rendering, skipped outputs, repeated level images,
     // wrong dimensions, or mutation of either source contract.

@@ -23,26 +23,32 @@ const LABEL_MIN_Y = 16;
 const LABEL_BOTTOM_PADDING = 8;
 const LABEL_SPACING = 18;
 
-function textLanePosition(preferredY: number, height: number, occupied: readonly number[]): number {
-  const maximum = Math.max(LABEL_MIN_Y, height - LABEL_BOTTOM_PADDING);
-  const base = clampPixel(preferredY, LABEL_MIN_Y, maximum);
+type SignalLabel = {
+  key: string;
+  originalOrder: number;
+  preferredBaseline: number;
+};
 
-  for (let step = 0; step <= occupied.length; step += 1) {
-    const candidates = step === 0
-      ? [base]
-      : [base + step * LABEL_SPACING, base - step * LABEL_SPACING];
-    for (const candidate of candidates) {
-      if (
-        candidate >= LABEL_MIN_Y
-        && candidate <= maximum
-        && occupied.every((position) => Math.abs(position - candidate) >= LABEL_SPACING)
-      ) {
-        return candidate;
-      }
+function packLabelBaselines(labels: readonly SignalLabel[], height: number): ReadonlyMap<string, number> {
+  const maximum = height - LABEL_BOTTOM_PADDING;
+  const sorted = [...labels].sort((left, right) => (
+    left.preferredBaseline - right.preferredBaseline || left.originalOrder - right.originalOrder
+  ));
+  const baselines: number[] = [];
+
+  for (const label of sorted) {
+    const previous = baselines.at(-1) ?? Number.NEGATIVE_INFINITY;
+    baselines.push(Math.max(LABEL_MIN_Y, label.preferredBaseline, previous + LABEL_SPACING));
+  }
+
+  if (baselines.at(-1)! > maximum) {
+    baselines[baselines.length - 1] = maximum;
+    for (let index = baselines.length - 2; index >= 0; index -= 1) {
+      baselines[index] = Math.min(baselines[index]!, baselines[index + 1]! - LABEL_SPACING);
     }
   }
 
-  return base;
+  return new Map(sorted.map((label, index) => [label.key, baselines[index]!]));
 }
 
 function drawPriceLine(
@@ -51,11 +57,9 @@ function drawPriceLine(
   yRatio: number,
   color: string,
   label: string,
-  occupiedTextLanes: number[],
+  labelY: number,
 ): void {
   const y = ratioToDrawablePixel(yRatio, image.height, PRICE_LINE_MARGIN);
-  const labelY = textLanePosition(y - 6, image.height, occupiedTextLanes);
-  occupiedTextLanes.push(labelY);
   surface.setStrokeStyle(color);
   surface.setFillStyle(color);
   surface.setLineWidth(1.5);
@@ -113,36 +117,50 @@ export async function renderSignal(
   dependencies: AnnotationCanvasDependencies = browserAnnotationCanvasDependencies,
 ): Promise<AnnotatedImage> {
   const dataUrl = await drawOnSourceImage(image, dependencies, (surface) => {
-    const occupiedTextLanes: number[] = [];
-    drawPriceLine(
-      surface,
-      image,
-      signal.entry.yRatio,
-      ENTRY_COLOR,
-      `Entry ${signal.entry.priceLabel}`,
-      occupiedTextLanes,
-    );
-    drawPriceLine(
-      surface,
-      image,
-      signal.stop.yRatio,
-      STOP_COLOR,
-      `Stop ${signal.stop.priceLabel}`,
-      occupiedTextLanes,
-    );
-    signal.targets.forEach((target, index) => {
+    const priceLabels = [
+      {
+        key: 'entry', yRatio: signal.entry.yRatio, color: ENTRY_COLOR,
+        text: `Entry ${signal.entry.priceLabel}`,
+      },
+      {
+        key: 'stop', yRatio: signal.stop.yRatio, color: STOP_COLOR,
+        text: `Stop ${signal.stop.priceLabel}`,
+      },
+      ...signal.targets.slice(0, 3).map((target, index) => ({
+        key: `target-${index}`, yRatio: target.yRatio, color: TARGET_COLOR,
+        text: `Target ${index + 1} ${target.priceLabel}`,
+      })),
+    ];
+    const labels: SignalLabel[] = [
+      ...priceLabels.map((label, originalOrder) => ({
+        key: label.key,
+        originalOrder,
+        preferredBaseline: ratioToDrawablePixel(label.yRatio, image.height, PRICE_LINE_MARGIN) - 6,
+      })),
+      {
+        key: 'risk-reward',
+        originalOrder: priceLabels.length,
+        preferredBaseline: image.height - 12,
+      },
+    ];
+    const labelBaselines = packLabelBaselines(labels, image.height);
+
+    priceLabels.forEach((label) => {
       drawPriceLine(
         surface,
         image,
-        target.yRatio,
-        TARGET_COLOR,
-        `Target ${index + 1} ${target.priceLabel}`,
-        occupiedTextLanes,
+        label.yRatio,
+        label.color,
+        label.text,
+        labelBaselines.get(label.key)!,
       );
     });
     drawDirectionArrow(surface, image, signal);
-    const riskRewardY = textLanePosition(image.height - 12, image.height, occupiedTextLanes);
-    surface.fillText(`Risk/reward ${signal.riskReward ?? 'Not provided'}`, 12, riskRewardY);
+    surface.fillText(
+      `Risk/reward ${signal.riskReward ?? 'Not provided'}`,
+      12,
+      labelBaselines.get('risk-reward')!,
+    );
   });
 
   return {

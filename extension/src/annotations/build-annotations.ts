@@ -9,6 +9,18 @@ import { renderLevels } from './render-levels';
 import { renderPattern } from './render-pattern';
 import { renderSignal } from './render-signal';
 
+export const ANNOTATION_IMAGE_TOO_SMALL_CODE = 'annotation_image_too_small';
+export const ANNOTATION_IMAGE_TOO_SMALL_MESSAGE = 'Images must be at least 320 by 180 pixels for annotations.';
+
+export class AnnotationImageTooSmallError extends Error {
+  readonly code = ANNOTATION_IMAGE_TOO_SMALL_CODE;
+
+  constructor() {
+    super(ANNOTATION_IMAGE_TOO_SMALL_MESSAGE);
+    this.name = 'AnnotationImageTooSmallError';
+  }
+}
+
 function assertUniqueIds(items: readonly { id: string }[], kind: 'signal' | 'pattern'): void {
   const ids = new Set<string>();
   for (const { id } of items) {
@@ -24,6 +36,10 @@ export async function buildAnnotations(
   report: CommunityReport,
   dependencies: AnnotationCanvasDependencies = browserAnnotationCanvasDependencies,
 ): Promise<AnnotatedReportImages> {
+  if (image.width < 320 || image.height < 180) {
+    throw new AnnotationImageTooSmallError();
+  }
+
   assertUniqueIds(report.signals, 'signal');
   assertUniqueIds(report.patterns, 'pattern');
 
