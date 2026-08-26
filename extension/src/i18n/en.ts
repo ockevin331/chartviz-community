@@ -1,8 +1,10 @@
 export const en = {
   slogan: 'Instant pattern intelligence – wherever you trade.',
-  language: 'Language', close: 'Close', providerSetup: 'Provider setup', providerSetupHelp: 'Connect a vision-capable model with your own API key.',
-  provider: 'Provider', model: 'Model', apiKey: 'API key', showApiKey: 'Show API key', hideApiKey: 'Hide API key', customModel: 'Use a custom model', customModelId: 'Custom model ID',
-  multimodalWarning: 'Custom models must support image input. Text-only models cannot analyze chart screenshots.', multimodalAck: 'I confirm this model supports image input.',
+  language: 'Language', close: 'Close', refresh: 'Refresh', providerSetup: 'Connect your own vision model', providerSetupHelp: 'Choose how ChartViz reads chart screenshots before your first analysis.',
+  setupChooseModel: 'Select a vision-capable model.', setupEnterKey: 'Enter your own API key.', setupDirectSend: 'ChartViz sends the captured chart directly to the selected service.',
+  model: 'Model', apiKey: 'API key', showApiKey: 'Show API key', hideApiKey: 'Hide API key', customModel: 'Custom model', customModelId: 'Custom model ID', customModelHelp: 'Use a custom OpenRouter model ID.', otherModels: 'Other',
+  useOpenRouter: 'Use OpenRouter', openRouterHelp: 'One API key for models from different providers.', openRouterRequired: 'Required for this model.',
+  multimodalWarning: 'Custom models must support image input. Text-only models cannot analyze chart screenshots.', sessionKeyPrivacy: 'Your key stays in extension session storage. Screenshots go directly to the selected service.',
   connectionCost: 'Testing the connection sends a provider request and may incur a small charge.', testConnection: 'Test connection', testingConnection: 'Testing…', connectionOk: 'Connection successful.', saveContinue: 'Save and continue',
   invalid_config: 'Check the API key and model.', invalid_api_key: 'The API key is invalid.', model_not_found: 'The selected model was not found.', model_not_multimodal: 'The selected model does not support image input.', insufficient_balance: 'The provider account has insufficient balance.', rate_limited: 'The provider rate limit was reached.', invalid_image: 'The chart image could not be read.', network_timeout: 'The provider request timed out.', invalid_response: 'The provider returned an invalid report.', cancelled: 'Analysis cancelled.', unknownError: 'Something went wrong.',
   chooseImage: 'Choose chart image', chooseImageHelp: 'Analyze one visible TradingView chart or upload one PNG, JPEG, or WebP image.', capture: 'Capture visible TradingView chart', upload: 'Upload one chart image', sourceError: 'Unable to read this image.',

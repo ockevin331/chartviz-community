@@ -1,9 +1,19 @@
 import { useMemo, useState } from 'react';
-import { getDefaultModel, getModelsForProvider } from '../../providers/model-catalog';
+import {
+  findModelChoiceForConfig,
+  getDefaultModelChoice,
+  getModelChoice,
+  modelChoices,
+  resolveModelChoice,
+  type ModelVendor,
+} from '../../providers/model-catalog';
 import { ProviderError, type AnalysisErrorCode } from '../../providers/provider-errors';
-import type { ProviderConfig, ProviderKind } from '../../providers/provider-types';
+import type { ProviderConfig } from '../../providers/provider-types';
 import { saveProviderConfig } from '../../storage/provider-session';
 import { translations, type Language } from './LanguageMenu';
+import { SelectMenu, type SelectOption } from './SelectMenu';
+
+const CUSTOM_MODEL_KEY = '__custom_openrouter_model__' as const;
 
 type Props = {
   language: Language;
@@ -29,21 +39,61 @@ function EyeOffIcon() {
 }
 
 export function ProviderSetup({ language, onConfigured, initialConfig = null, saveConfig = saveProviderConfig, testConnection }: Props) {
-  const [provider, setProvider] = useState<ProviderKind>(initialConfig?.provider ?? 'openrouter');
+  const initialChoice = findModelChoiceForConfig(initialConfig);
+  const [selectedModelKey, setSelectedModelKey] = useState(initialConfig?.customModel
+    ? CUSTOM_MODEL_KEY
+    : initialChoice?.key ?? getDefaultModelChoice().key);
+  const [useOpenRouter, setUseOpenRouter] = useState(initialConfig
+    ? initialConfig.provider === 'openrouter'
+    : true);
   const [apiKey, setApiKey] = useState(initialConfig?.apiKey ?? '');
-  const [model, setModel] = useState(initialConfig?.model ?? getDefaultModel('openrouter')!.id);
-  const [customModel, setCustomModel] = useState(initialConfig?.customModel ?? false);
-  const [acknowledged, setAcknowledged] = useState(false);
+  const [customModelId, setCustomModelId] = useState(initialConfig?.customModel ? initialConfig.model : '');
   const [showKey, setShowKey] = useState(false);
   const [testing, setTesting] = useState(false);
   const [message, setMessage] = useState<{ kind: 'error' | 'success'; text: string } | null>(null);
   const t = translations[language];
-  const models = useMemo(() => getModelsForProvider(provider), [provider]);
-  const config = (): ProviderConfig => ({ provider, apiKey: apiKey.trim(), model: model.trim(), customModel });
-  const valid = apiKey.trim() !== '' && model.trim() !== '' && (!customModel || acknowledged);
+  const customModel = selectedModelKey === CUSTOM_MODEL_KEY;
+  const selectedChoice = customModel ? null : getModelChoice(selectedModelKey);
+  const openRouterRequired = customModel || !selectedChoice?.direct;
+  const vendorLabels: Record<ModelVendor, string> = {
+    openai: 'OpenAI', anthropic: 'Anthropic', google: 'Google', qwen: 'Qwen',
+  };
+  const modelOptions = useMemo<readonly SelectOption<string>[]>(() => [
+    ...modelChoices.map((item) => ({
+      value: item.key,
+      label: item.label,
+      group: vendorLabels[item.vendor],
+      description: item.description[language],
+      badge: item.badge?.[language],
+    })),
+    {
+      value: CUSTOM_MODEL_KEY,
+      label: t.customModel,
+      group: t.otherModels,
+      description: t.customModelHelp,
+    },
+  ], [language, t.customModel, t.customModelHelp, t.otherModels]);
 
-  function changeProvider(value: ProviderKind) {
-    setProvider(value); setCustomModel(false); setAcknowledged(false); setModel(getDefaultModel(value)?.id ?? ''); setMessage(null);
+  function config(): ProviderConfig {
+    if (customModel) {
+      return {
+        provider: 'openrouter',
+        apiKey: apiKey.trim(),
+        model: customModelId.trim(),
+        customModel: true,
+      };
+    }
+    const resolved = resolveModelChoice(selectedChoice ?? getDefaultModelChoice(), useOpenRouter);
+    return { ...resolved, apiKey: apiKey.trim() };
+  }
+
+  const valid = apiKey.trim() !== '' && (customModel ? customModelId.trim() !== '' : selectedChoice !== null);
+
+  function changeModel(value: string) {
+    setSelectedModelKey(value);
+    const nextChoice = value === CUSTOM_MODEL_KEY ? null : getModelChoice(value);
+    if (!nextChoice?.direct) setUseOpenRouter(true);
+    setMessage(null);
   }
 
   async function connect() {
@@ -61,13 +111,32 @@ export function ProviderSetup({ language, onConfigured, initialConfig = null, sa
   }
 
   return <section className="provider-setup-card">
-    <div className="setup-heading"><div><h2>{t.providerSetup}</h2><p>{t.providerSetupHelp}</p></div></div>
+    <div className="setup-intro">
+      <h2>{t.providerSetup}</h2>
+      <p>{t.providerSetupHelp}</p>
+      <ol className="setup-steps">
+        <li>{t.setupChooseModel}</li>
+        <li>{t.setupEnterKey}</li>
+        <li>{t.setupDirectSend}</li>
+      </ol>
+    </div>
     <form className="provider-form" onSubmit={(event) => { event.preventDefault(); void save(); }}>
-      <label>{t.provider}<select aria-label={t.provider} value={provider} onChange={(event) => changeProvider(event.target.value as ProviderKind)}><option value="openrouter">OpenRouter</option><option value="openai">OpenAI</option><option value="gemini">Gemini</option></select></label>
-      <label>{t.model}<select aria-label={t.model} value={customModel ? '__custom__' : model} onChange={(event) => { if (event.target.value === '__custom__') { setCustomModel(true); setModel(''); } else { setCustomModel(false); setAcknowledged(false); setModel(event.target.value); } }}>{models.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}<option value="__custom__">{t.customModel}</option></select></label>
-      <label className="custom-toggle"><input type="checkbox" aria-label={t.customModel} checked={customModel} onChange={(event) => { setCustomModel(event.target.checked); setAcknowledged(false); setModel(event.target.checked ? '' : getDefaultModel(provider)?.id ?? ''); }} />{t.customModel}</label>
-      {customModel && <div className="custom-model-fields"><label>{t.customModelId}<input aria-label={t.customModelId} value={model} onChange={(event) => setModel(event.target.value)} /></label><p className="capture-warning" role="status">⚠ {t.multimodalWarning}</p><label className="acknowledgement"><input type="checkbox" checked={acknowledged} aria-label={t.multimodalAck} onChange={(event) => setAcknowledged(event.target.checked)} />{t.multimodalAck}</label></div>}
+      <label><span>{t.model}</span><SelectMenu ariaLabel={t.model} value={selectedModelKey} options={modelOptions} onChange={changeModel} /></label>
+      <div className="openrouter-row">
+        <label>
+          <input
+            type="checkbox"
+            checked={useOpenRouter || openRouterRequired}
+            disabled={openRouterRequired}
+            aria-label={t.useOpenRouter}
+            onChange={(event) => { setUseOpenRouter(event.target.checked); setMessage(null); }}
+          />
+          <span><strong>{t.useOpenRouter}</strong><small>{openRouterRequired ? t.openRouterRequired : t.openRouterHelp}</small></span>
+        </label>
+      </div>
+      {customModel && <div className="custom-model-fields"><label>{t.customModelId}<input aria-label={t.customModelId} value={customModelId} onChange={(event) => { setCustomModelId(event.target.value); setMessage(null); }} /></label><p className="capture-warning" role="status">⚠ {t.multimodalWarning}</p></div>}
       <label>{t.apiKey}<span className="password-field"><input aria-label={t.apiKey} type={showKey ? 'text' : 'password'} autoComplete="off" value={apiKey} onChange={(event) => setApiKey(event.target.value)} /><button type="button" aria-label={showKey ? t.hideApiKey : t.showApiKey} onClick={() => setShowKey((value) => !value)}>{showKey ? <EyeOffIcon /> : <EyeIcon />}</button></span></label>
+      <p className="privacy-notice">{t.sessionKeyPrivacy}</p>
       <p className="cost-notice">{t.connectionCost}</p>
       {message && <p className={message.kind === 'error' ? 'setup-error' : 'setup-success'} role={message.kind === 'error' ? 'alert' : 'status'}>{message.text}</p>}
       <div className="provider-actions"><button className="secondary" type="button" disabled={!valid || testing} onClick={() => void connect()}>{testing ? t.testingConnection : t.testConnection}</button><button className="primary" type="submit" disabled={!valid}>{t.saveContinue}</button></div>
