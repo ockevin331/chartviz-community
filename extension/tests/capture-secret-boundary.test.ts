@@ -1,233 +1,160 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createBackgroundHandlers } from '../entrypoints/background';
-import { mountFloatingPanel } from '../src/capture/mount-floating-panel';
-import { createPanelVisibility } from '../src/capture/panel-visibility';
+import { createBackgroundHandlers, type BackgroundDependencies } from '../entrypoints/background';
+import type { ChartContext } from '../src/domain/chart-context';
 
-const tradingViewSender = {
-  tab: {
-    id: 42,
-    windowId: 17,
-    url: 'https://www.tradingview.com/chart/ABC123/',
-  },
+const context: ChartContext = {
+  site: 'tradingview',
+  pageType: 'advanced-chart',
+  url: 'https://www.tradingview.com/chart/3c8vMvO3/?symbol=BITSTAMP%3ABTCUSD',
+  symbol: 'BTCUSD',
+  exchange: 'BITSTAMP',
+  timeframe: '15m',
+  chart: { id: 'Chart #1', bounds: { x: 20, y: 80, width: 1200, height: 700 } },
+  viewport: { width: 1440, height: 900, devicePixelRatio: 2 },
 };
 
-describe('capture background boundary', () => {
-  it('returns a Promise only for the exact capture command and captures its sender window', async () => {
-    const captureVisibleTab = vi.fn(async () => 'data:image/png;base64,Y2FwdHVyZWQ=');
-    const handlers = createBackgroundHandlers({
-      captureVisibleTab,
-      executeScript: vi.fn(async () => undefined),
-      getPanelUrl: () => 'chrome-extension://fixture/panel.html',
-    });
+function captureDependencies(overrides: Partial<BackgroundDependencies> = {}) {
+  const events: string[] = [];
+  const cropped = new Blob(['cropped'], { type: 'image/png' });
+  const dependencies: BackgroundDependencies = {
+    getActiveTab: vi.fn(async () => {
+      events.push('active-tab');
+      return { id: 42, windowId: 17, url: context.url };
+    }),
+    sendTabMessage: vi.fn(async (tabId, message) => {
+      if (message.type === 'chartviz/chart/ready') {
+        events.push(`ready:${tabId}`);
+        return { ok: true, context };
+      }
+      if (message.type === 'chartviz/panel/visibility') {
+        events.push(`${message.visible ? 'restore' : 'hide'}:${tabId}`);
+        return { ok: true, visible: message.visible };
+      }
+      if (message.type === 'chartviz/panel/toggle') {
+        events.push(`toggle:${tabId}`);
+        return { ok: true, visible: true };
+      }
+      return undefined;
+    }),
+    captureVisibleTab: vi.fn(async (windowId) => {
+      events.push(`capture:${windowId}`);
+      return 'data:image/png;base64,c2NyZWVuc2hvdA==';
+    }),
+    cropScreenshot: vi.fn(async () => {
+      events.push('crop');
+      return cropped;
+    }),
+    blobToDataUrl: vi.fn(async (blob) => {
+      expect(blob).toBe(cropped);
+      events.push('data-url');
+      return 'data:image/png;base64,Y3JvcHBlZA==';
+    }),
+    injectContentScript: vi.fn(async (tabId) => { events.push(`inject:${tabId}`); }),
+    wait: vi.fn(async () => undefined),
+    ...overrides,
+  };
+  return { dependencies, events };
+}
 
-    const reply = handlers.onMessage({ type: 'capture-visible-tab' }, tradingViewSender);
+describe('active-chart background boundary', () => {
+  it('waits for context, hides, captures, crops, restores, and returns context in order', async () => {
+    const { dependencies, events } = captureDependencies();
+    const handlers = createBackgroundHandlers(dependencies);
 
-    expect(reply).toBeInstanceOf(Promise);
-    await expect(reply).resolves.toEqual({
+    await expect(handlers.onMessage({ type: 'chartviz/active-chart/capture' })).resolves.toEqual({
       ok: true,
-      dataUrl: 'data:image/png;base64,Y2FwdHVyZWQ=',
+      context,
+      previewDataUrl: 'data:image/png;base64,Y3JvcHBlZA==',
     });
-    expect(captureVisibleTab).toHaveBeenCalledExactlyOnceWith(17);
+    expect(events).toEqual([
+      'active-tab', 'ready:42', 'hide:42', 'capture:17', 'crop', 'restore:42', 'data-url',
+    ]);
+    expect(dependencies.wait).toHaveBeenCalledWith(80);
   });
 
-  it('returns undefined synchronously for non-capture messages', () => {
-    const captureVisibleTab = vi.fn(async () => 'data:image/png;base64,Y2FwdHVyZWQ=');
-    const handlers = createBackgroundHandlers({
-      captureVisibleTab,
-      executeScript: vi.fn(async () => undefined),
-      getPanelUrl: () => 'chrome-extension://fixture/panel.html',
+  it('inspects through the content script without taking a screenshot', async () => {
+    const { dependencies, events } = captureDependencies();
+    const handlers = createBackgroundHandlers(dependencies);
+
+    await expect(handlers.onMessage({ type: 'chartviz/active-chart/inspect' })).resolves.toEqual({ ok: true, context });
+    expect(events).toEqual(['active-tab', 'ready:42']);
+    expect(dependencies.captureVisibleTab).not.toHaveBeenCalled();
+  });
+
+  it('returns readiness failure without hiding or capturing', async () => {
+    const { dependencies } = captureDependencies({
+      sendTabMessage: vi.fn(async () => ({ ok: false, error: 'The chart is still loading.' })),
     });
+    const handlers = createBackgroundHandlers(dependencies);
 
-    const reply = handlers.onMessage({ type: 'other-extension-message' }, tradingViewSender);
+    await expect(handlers.onMessage({ type: 'chartviz/active-chart/capture' })).resolves.toEqual({
+      ok: false, error: 'The chart is still loading.',
+    });
+    expect(dependencies.captureVisibleTab).not.toHaveBeenCalled();
+  });
 
-    expect(reply).toBeUndefined();
-    expect(captureVisibleTab).not.toHaveBeenCalled();
+  it('restores the panel when crop fails and returns a bounded error', async () => {
+    const { dependencies, events } = captureDependencies();
+    dependencies.cropScreenshot = vi.fn(async () => {
+      events.push('crop');
+      throw new Error('crop failed');
+    });
+    const handlers = createBackgroundHandlers(dependencies);
+
+    await expect(handlers.onMessage({ type: 'chartviz/active-chart/capture' })).resolves.toEqual({
+      ok: false, error: 'crop failed',
+    });
+    expect(events).toContain('restore:42');
   });
 
   it.each(['provider', 'apiKey', 'key', 'prompt', 'model', 'response'])(
-    'rejects a capture message carrying forbidden %s data',
-    async (field) => {
-      const captureVisibleTab = vi.fn(async () => 'data:image/png;base64,Y2FwdHVyZWQ=');
-      const handlers = createBackgroundHandlers({
-        captureVisibleTab,
-        executeScript: vi.fn(async () => undefined),
-        getPanelUrl: () => 'chrome-extension://fixture/panel.html',
-      });
+    'ignores a capture message carrying forbidden %s data',
+    (field) => {
+      const { dependencies } = captureDependencies();
+      const handlers = createBackgroundHandlers(dependencies);
 
-      const reply = handlers.onMessage(
-        { type: 'capture-visible-tab', [field]: 'secret' },
-        tradingViewSender,
-      );
-
-      expect(reply).toBeUndefined();
-      expect(captureVisibleTab).not.toHaveBeenCalled();
+      expect(handlers.onMessage({ type: 'chartviz/active-chart/capture', [field]: 'secret' })).toBeUndefined();
+      expect(dependencies.getActiveTab).not.toHaveBeenCalled();
     },
   );
 
-  it('returns a bounded failure reply instead of throwing capture errors', async () => {
-    const handlers = createBackgroundHandlers({
-      captureVisibleTab: vi.fn(async () => { throw new Error('capture denied'); }),
-      executeScript: vi.fn(async () => undefined),
-      getPanelUrl: () => 'chrome-extension://fixture/panel.html',
-    });
+  it('returns undefined synchronously for unrelated messages', () => {
+    const { dependencies } = captureDependencies();
+    const handlers = createBackgroundHandlers(dependencies);
 
-    await expect(handlers.onMessage({ type: 'capture-visible-tab' }, tradingViewSender)).resolves.toEqual({
-      ok: false,
-      error: 'capture denied',
-    });
+    expect(handlers.onMessage({ type: 'other-extension-message' })).toBeUndefined();
+    expect(dependencies.getActiveTab).not.toHaveBeenCalled();
   });
 
-  it.each([
-    ['missing sender', undefined],
-    ['missing tab', {}],
-    ['missing tab id', { tab: { windowId: 17, url: tradingViewSender.tab.url } }],
-    ['missing window id', { tab: { id: 42, url: tradingViewSender.tab.url } }],
-    ['non-integer window id', { tab: { id: 42, windowId: 1.5, url: tradingViewSender.tab.url } }],
-    ['non-TradingView URL', { tab: { id: 42, windowId: 17, url: 'https://example.com/chart/ABC/' } }],
-    ['non-chart TradingView URL', { tab: { id: 42, windowId: 17, url: 'https://www.tradingview.com/markets/' } }],
-  ])('rejects a capture command from an invalid sender: %s', async (_label, sender) => {
-    const captureVisibleTab = vi.fn(async () => 'data:image/png;base64,Y2FwdHVyZWQ=');
-    const handlers = createBackgroundHandlers({
-      captureVisibleTab,
-      executeScript: vi.fn(async () => undefined),
-      getPanelUrl: () => 'chrome-extension://fixture/panel.html',
-    });
-
-    await expect(handlers.onMessage({ type: 'capture-visible-tab' }, sender)).resolves.toEqual({
-      ok: false,
-      error: 'Capture is available only from a TradingView chart tab',
-    });
-    expect(captureVisibleTab).not.toHaveBeenCalled();
-  });
-
-  it('injects the self-contained floating panel on an action click with an active tab', async () => {
-    const executeScript = vi.fn(async () => undefined);
-    const handlers = createBackgroundHandlers({
-      captureVisibleTab: vi.fn(async () => ''),
-      executeScript,
-      getPanelUrl: () => 'chrome-extension://fixture/panel.html',
-    });
+  it('toggles the existing content-script panel without reinjection', async () => {
+    const { dependencies, events } = captureDependencies();
+    const handlers = createBackgroundHandlers(dependencies);
 
     await handlers.onActionClicked({ id: 42 });
 
-    expect(executeScript).toHaveBeenCalledWith({
-      target: { tabId: 42 },
-      func: mountFloatingPanel,
-      args: ['chrome-extension://fixture/panel.html'],
-    });
+    expect(events).toEqual(['toggle:42']);
+    expect(dependencies.injectContentScript).not.toHaveBeenCalled();
   });
 
-  it('does not inject without an active tab id', async () => {
-    const executeScript = vi.fn(async () => undefined);
-    const handlers = createBackgroundHandlers({
-      captureVisibleTab: vi.fn(async () => ''),
-      executeScript,
-      getPanelUrl: () => 'chrome-extension://fixture/panel.html',
-    });
+  it('injects the content script and retries once when the tab has no receiver', async () => {
+    const { dependencies, events } = captureDependencies();
+    const sendTabMessage = vi.mocked(dependencies.sendTabMessage);
+    sendTabMessage.mockRejectedValueOnce(new Error('No receiver'));
+    const handlers = createBackgroundHandlers(dependencies);
+
+    await handlers.onActionClicked({ id: 42 });
+
+    expect(events).toEqual(['inject:42', 'toggle:42']);
+    expect(sendTabMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it('does nothing when the action click has no tab id', async () => {
+    const { dependencies } = captureDependencies();
+    const handlers = createBackgroundHandlers(dependencies);
 
     await handlers.onActionClicked({});
 
-    expect(executeScript).not.toHaveBeenCalled();
-  });
-
-  it('mounts an extension-origin iframe with a working close control', () => {
-    const elements = new Map<string, FakeElement>();
-    class FakeElement {
-      id = '';
-      style: Record<string, string> = {};
-      children: FakeElement[] = [];
-      listeners = new Map<string, () => void>();
-      parent: FakeElement | null = null;
-      src = '';
-      title = '';
-      type = '';
-      textContent = '';
-
-      append(...children: FakeElement[]) {
-        children.forEach((child) => {
-          child.parent = this;
-          this.children.push(child);
-          if (child.id) elements.set(child.id, child);
-        });
-      }
-
-      addEventListener(type: string, listener: () => void) {
-        this.listeners.set(type, listener);
-      }
-
-      remove() {
-        if (this.id) elements.delete(this.id);
-        if (this.parent) this.parent.children = this.parent.children.filter((child) => child !== this);
-      }
-
-      setAttribute() {}
-    }
-
-    const root = new FakeElement();
-    const documentFixture = {
-      createElement: () => new FakeElement(),
-      documentElement: root,
-      getElementById: (id: string) => elements.get(id) ?? null,
-    };
-    const addWindowListener = vi.fn();
-    const removeWindowListener = vi.fn();
-    vi.stubGlobal('document', documentFixture);
-    vi.stubGlobal('window', {
-      addEventListener: addWindowListener,
-      removeEventListener: removeWindowListener,
-    });
-
-    try {
-      mountFloatingPanel('chrome-extension://fixture/panel.html');
-
-      const host = elements.get('chartviz-community-panel');
-      expect(host).toBeDefined();
-      expect(host?.children[0]).toMatchObject({
-        src: 'chrome-extension://fixture/panel.html',
-        title: 'ChartViz Community',
-      });
-      host?.children[1]?.listeners.get('click')?.();
-      expect(elements.has('chartviz-community-panel')).toBe(false);
-      expect(removeWindowListener).toHaveBeenCalledTimes(1);
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it('waits for the page host to acknowledge hide and restore requests', async () => {
-    const listeners = new Set<(event: MessageEvent) => void>();
-    const parent = {
-      postMessage: vi.fn((message: { requestId: number }) => {
-        listeners.forEach((listener) => listener({
-          data: { type: 'chartviz-panel-visibility-ack', requestId: message.requestId },
-          source: parent,
-        } as unknown as MessageEvent));
-      }),
-    };
-    const panelWindow = {
-      parent,
-      addEventListener: (_type: string, listener: (event: MessageEvent) => void) => {
-        listeners.add(listener);
-      },
-      removeEventListener: (_type: string, listener: (event: MessageEvent) => void) => {
-        listeners.delete(listener);
-      },
-    } as unknown as Window;
-    const visibility = createPanelVisibility(panelWindow);
-
-    await visibility.hidePanel();
-    await visibility.restorePanel();
-
-    expect(parent.postMessage).toHaveBeenNthCalledWith(1, {
-      type: 'chartviz-panel-visibility',
-      requestId: 1,
-      visible: false,
-    }, '*');
-    expect(parent.postMessage).toHaveBeenNthCalledWith(2, {
-      type: 'chartviz-panel-visibility',
-      requestId: 2,
-      visible: true,
-    }, '*');
-    expect(listeners.size).toBe(0);
+    expect(dependencies.sendTabMessage).not.toHaveBeenCalled();
+    expect(dependencies.injectContentScript).not.toHaveBeenCalled();
   });
 });
