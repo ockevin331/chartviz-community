@@ -7,6 +7,7 @@ import { collectTradingViewContextWithRetry } from './tradingview/collect-contex
 import { collect10jqkaContextWithRetry, parse10jqkaStockUrl } from './10jqka/collect-context';
 import { collectVergexContextWithRetry, parseVergexChartUrl } from './vergex/collect-context';
 import { collectUpbitContextWithRetry, parseUpbitExchangeUrl } from './upbit/collect-context';
+import { UNSUPPORTED_CHART_URL_ERROR } from './supported-sites';
 
 export function isSupportedChartUrl(value: string): boolean {
   try {
@@ -18,7 +19,7 @@ export function isSupportedChartUrl(value: string): boolean {
 
 export function collectActiveChartContext(): Promise<ChartContext> {
   if (!isSupportedChartUrl(location.href)) {
-    return Promise.reject(new Error('This page is not a supported chart URL.'));
+    return Promise.reject(new Error(UNSUPPORTED_CHART_URL_ERROR));
   }
   if (parseBinanceSpotUrl(location.href) || parseBinanceFuturesUrl(location.href) || parseBinanceStockUrl(location.href) || parseBinanceWeb3TokenUrl(location.href)) return collectBinanceSpotContextWithRetry();
   if (parseOkxTradeUrl(location.href)) return collectOkxContextWithRetry();
@@ -31,6 +32,7 @@ export function collectActiveChartContext(): Promise<ChartContext> {
 }
 
 export async function waitForActiveChartReady(timeoutMs = 15000): Promise<ChartContext> {
+  if (!isSupportedChartUrl(location.href)) throw new Error(UNSUPPORTED_CHART_URL_ERROR);
   const deadline = Date.now() + timeoutMs;
   let lastSignature = '';
   let stableSamples = 0;
@@ -50,6 +52,7 @@ export async function waitForActiveChartReady(timeoutMs = 15000): Promise<ChartC
       lastSignature = signature;
       if (stableSamples >= 3) return context;
     } catch (error) {
+      if (error instanceof Error && error.message === UNSUPPORTED_CHART_URL_ERROR) throw error;
       lastError = error;
       stableSamples = 0;
       lastSignature = '';

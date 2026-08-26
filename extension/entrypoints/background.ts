@@ -9,6 +9,7 @@ import type {
   PanelResponse,
 } from '../src/domain/chart-messages';
 import { blobToDataUrl, cropScreenshot } from '../src/platform/capture/crop';
+import { isSupportedChartHost, UNSUPPORTED_CHART_URL_ERROR } from '../src/sites/supported-sites';
 
 export type ActiveTab = {
   id: number;
@@ -47,6 +48,12 @@ export function createBackgroundHandlers(dependencies: BackgroundDependencies) {
     return tab;
   }
 
+  async function supportedActiveTab(): Promise<ActiveTab> {
+    const tab = await activeTab();
+    if (!tab.url || !isSupportedChartHost(tab.url)) throw new Error(UNSUPPORTED_CHART_URL_ERROR);
+    return tab;
+  }
+
   async function readyActiveChart(tabId: number): Promise<ChartContextResponse> {
     try {
       const response = await dependencies.sendTabMessage(tabId, { type: 'chartviz/chart/ready' });
@@ -64,7 +71,7 @@ export function createBackgroundHandlers(dependencies: BackgroundDependencies) {
 
   async function inspectActiveChart(): Promise<ChartContextResponse> {
     try {
-      const tab = await activeTab();
+      const tab = await supportedActiveTab();
       return await readyActiveChart(tab.id);
     } catch (error) {
       return { ok: false, error: publicError(error, 'Unable to inspect the active chart.') };
@@ -73,7 +80,7 @@ export function createBackgroundHandlers(dependencies: BackgroundDependencies) {
 
   async function captureActiveChart(): Promise<CaptureResponse> {
     try {
-      const tab = await activeTab();
+      const tab = await supportedActiveTab();
       const ready = await readyActiveChart(tab.id);
       if (!ready.ok) return ready;
 

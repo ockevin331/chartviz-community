@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { approvedHostPermissions, createManifest } from '../wxt.config';
-import { supportedContentMatches } from '../src/sites/supported-sites';
+import { isSupportedChartHost, supportedContentMatches } from '../src/sites/supported-sites';
 
 describe('extension manifest', () => {
   it('uses only the approved temporary-tab permissions and exact provider origins', () => {
@@ -22,6 +22,13 @@ describe('extension manifest', () => {
     expect(supportedContentMatches).not.toContain('http://*/*');
     expect(supportedContentMatches).not.toContain('https://*/*');
     expect(JSON.stringify(supportedContentMatches)).not.toContain('<all_urls>');
+  });
+
+  it('identifies unsupported domains without loading a page collector', () => {
+    expect(isSupportedChartHost('https://www.tradingview.com/chart/abc')).toBe(true);
+    expect(isSupportedChartHost('https://app.hyperliquid.xyz/trade/BTC')).toBe(true);
+    expect(isSupportedChartHost('https://gmgn.ai/sol/token/example')).toBe(false);
+    expect(isSupportedChartHost('not a URL')).toBe(false);
   });
 
   it('exposes only the floating panel as a dynamic HTTP(S) web resource', () => {

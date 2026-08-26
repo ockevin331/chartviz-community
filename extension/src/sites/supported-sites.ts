@@ -1,3 +1,22 @@
+export const UNSUPPORTED_CHART_URL_ERROR = 'This page is not a supported chart URL.';
+
+const supportedHostSuffixes = [
+  'tradingview.com', 'binance.com', 'okx.com', 'bybit.com', 'coinbase.com',
+  'bitget.com', 'gate.com', 'gate.io', 'kucoin.com', 'mexc.com', 'htx.com', 'upbit.com',
+] as const;
+
+export function isSupportedChartHost(value: string): boolean {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return supportedHostSuffixes.some((host) => hostname === host || hostname.endsWith(`.${host}`))
+      || hostname === 'app.hyperliquid.xyz'
+      || hostname === 'stockpage.10jqka.com.cn'
+      || hostname === 'vergex.trade';
+  } catch {
+    return false;
+  }
+}
+
 export const supportedContentMatches = [
   'https://*.tradingview.com/chart/*',
   'https://*.binance.com/*/trade/*',

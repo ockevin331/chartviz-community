@@ -81,6 +81,32 @@ describe('active-chart background boundary', () => {
     expect(dependencies.captureVisibleTab).not.toHaveBeenCalled();
   });
 
+  it.each(['chartviz/active-chart/inspect', 'chartviz/active-chart/capture'] as const)(
+    'rejects an unsupported active-tab URL before contacting the page for %s',
+    async (type) => {
+      const { dependencies, events } = captureDependencies({
+        getActiveTab: vi.fn(async () => {
+          events.push('active-tab');
+          return {
+            id: 42,
+            windowId: 17,
+            url: 'https://gmgn.ai/sol/token/1zJX5gRnjLgmTpq5sVwkq69mNDQkCemqoasyjaPW6jm',
+          };
+        }),
+      });
+      const handlers = createBackgroundHandlers(dependencies);
+
+      await expect(handlers.onMessage({ type })).resolves.toEqual({
+        ok: false,
+        error: 'This page is not a supported chart URL.',
+      });
+      expect(events).toEqual(['active-tab']);
+      expect(dependencies.sendTabMessage).not.toHaveBeenCalled();
+      expect(dependencies.wait).not.toHaveBeenCalled();
+      expect(dependencies.captureVisibleTab).not.toHaveBeenCalled();
+    },
+  );
+
   it('returns readiness failure without hiding or capturing', async () => {
     const { dependencies } = captureDependencies({
       sendTabMessage: vi.fn(async () => ({ ok: false, error: 'The chart is still loading.' })),

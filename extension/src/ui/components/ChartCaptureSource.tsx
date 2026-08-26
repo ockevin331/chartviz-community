@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CapturedChart } from '../../capture/active-chart';
 import type { ChartContext } from '../../domain/chart-context';
-import { supportedSiteLinks } from '../../sites/supported-sites';
+import { supportedSiteLinks, UNSUPPORTED_CHART_URL_ERROR } from '../../sites/supported-sites';
 import { translations, type Language } from './LanguageMenu';
 
 type ChartCaptureSourceProps = {
@@ -22,6 +22,7 @@ export function ChartCaptureSource({ language, inspect, capture, onCaptured }: C
   const [capturing, setCapturing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const captureController = useRef<AbortController | null>(null);
+  const unsupported = error === UNSUPPORTED_CHART_URL_ERROR;
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -58,7 +59,7 @@ export function ChartCaptureSource({ language, inspect, capture, onCaptured }: C
   }
 
   return <section className="capture-source chart-capture-source">
-    <div className="section-heading"><div><h2>{t.detectedChart}</h2><p>{t.detectedChartHelp}</p></div></div>
+    <div className="section-heading"><div><h2>{unsupported ? t.unsupportedPage : t.detectedChart}</h2><p>{unsupported ? t.unsupportedChartHelp : t.detectedChartHelp}</p></div></div>
     {loading && <p className="chart-waiting" role="status">{t.waitingForChart}</p>}
     {!loading && context && <>
       <dl className="chart-context">
@@ -69,11 +70,9 @@ export function ChartCaptureSource({ language, inspect, capture, onCaptured }: C
       <button className="primary" type="button" disabled={capturing} onClick={() => void startCapture()}>{capturing ? t.capturingChart : t.captureAnalyze}</button>
     </>}
     {!loading && error && <div className="chart-guidance" role="alert">
-      <strong>{t.chartUnavailable}</strong>
-      <p>{error}</p>
-      <p>{t.unsupportedChartHelp}</p>
+      {!unsupported && <><strong>{t.chartUnavailable}</strong><p>{error}</p></>}
       <div className="supported-site-links" aria-label={t.supportedSites}>{supportedSiteLinks.map((site) => <a key={site.name} href={site.url} target="_blank" rel="noreferrer">{site.name}</a>)}</div>
     </div>}
-    {!loading && <button className="secondary refresh-detection" type="button" disabled={capturing} onClick={() => void refresh()}>{t.refreshChartDetection}</button>}
+    {!loading && !unsupported && <button className="secondary refresh-detection" type="button" disabled={capturing} onClick={() => void refresh()}>{t.refreshChartDetection}</button>}
   </section>;
 }

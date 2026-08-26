@@ -43,15 +43,25 @@ describe('ChartCaptureSource', () => {
     expect(capture).toHaveBeenCalledTimes(1);
   });
 
-  it('shows neutral guidance, supported links, and retries inspection', async () => {
+  it('shows neutral guidance and supported links without a pointless retry on unsupported URLs', async () => {
+    const inspect = vi.fn().mockRejectedValue(new Error('This page is not a supported chart URL.'));
+    render(<ChartCaptureSource language="en" inspect={inspect} capture={async () => captured} onCaptured={() => undefined} />);
+
+    expect(await screen.findByRole('heading', { name: 'This page is not supported' })).toBeTruthy();
+    expect(await screen.findByRole('alert')).not.toHaveProperty('textContent', expect.stringContaining('This page is not a supported chart URL.'));
+    expect(screen.getByRole('link', { name: 'TradingView' })).toHaveProperty('href', expect.stringContaining('tradingview.com/chart'));
+    expect(screen.queryByRole('button', { name: 'Refresh chart detection' })).toBeNull();
+    expect(inspect).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps refresh for a supported chart that is still loading', async () => {
     const user = userEvent.setup();
     const inspect = vi.fn()
-      .mockRejectedValueOnce(new Error('This page is not a supported chart URL.'))
+      .mockRejectedValueOnce(new Error('The chart is still loading.'))
       .mockResolvedValueOnce(context);
     render(<ChartCaptureSource language="en" inspect={inspect} capture={async () => captured} onCaptured={() => undefined} />);
 
-    expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('This page is not a supported chart URL.'));
-    expect(screen.getByRole('link', { name: 'TradingView' })).toHaveProperty('href', expect.stringContaining('tradingview.com/chart'));
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('The chart is still loading.'));
     await user.click(screen.getByRole('button', { name: 'Refresh chart detection' }));
     expect(await screen.findByText('BTCUSD')).toBeTruthy();
     expect(inspect).toHaveBeenCalledTimes(2);
