@@ -51,6 +51,7 @@ export function mountFloatingPanel(panelUrl: string): void {
   });
 
   const panelOrigin = new URL(panelUrl).origin;
+  let automaticRestoreTimer: number | undefined;
   const onVisibilityMessage = (event: MessageEvent) => {
     if (
       event.source !== iframe.contentWindow
@@ -63,6 +64,16 @@ export function mountFloatingPanel(panelUrl: string): void {
     }
 
     host.style.visibility = event.data.visible ? 'visible' : 'hidden';
+    if (automaticRestoreTimer !== undefined) {
+      window.clearTimeout(automaticRestoreTimer);
+      automaticRestoreTimer = undefined;
+    }
+    if (!event.data.visible) {
+      automaticRestoreTimer = window.setTimeout(() => {
+        host.style.visibility = 'visible';
+        automaticRestoreTimer = undefined;
+      }, 3_000);
+    }
     iframe.contentWindow?.postMessage({
       type: 'chartviz-panel-visibility-ack',
       requestId: event.data.requestId,
@@ -70,6 +81,9 @@ export function mountFloatingPanel(panelUrl: string): void {
   };
 
   const unmount = () => {
+    if (automaticRestoreTimer !== undefined) {
+      window.clearTimeout(automaticRestoreTimer);
+    }
     window.removeEventListener('message', onVisibilityMessage);
     host.remove();
   };

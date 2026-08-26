@@ -7,7 +7,7 @@ export type CaptureReply =
 
 export type CaptureDependencies = {
   pageUrl: string;
-  hidePanel(): Promise<void>;
+  hidePanel(signal: AbortSignal): Promise<void>;
   restorePanel(): Promise<void>;
   captureVisibleTab(command: CaptureCommand): Promise<CaptureReply>;
   processImage(input: Blob): Promise<ProcessedImage>;
@@ -24,7 +24,7 @@ function throwIfAborted(signal: AbortSignal) {
   throw new DOMException('Cancelled', 'AbortError');
 }
 
-function isTradingViewChartUrl(value: string) {
+export function isTradingViewChartUrl(value: string) {
   try {
     const url = new URL(value);
     const tradingViewHost = url.hostname === 'tradingview.com'
@@ -64,7 +64,7 @@ export async function captureTradingView(
   throwIfAborted(signal);
 
   try {
-    await dependencies.hidePanel();
+    await dependencies.hidePanel(signal);
     throwIfAborted(signal);
 
     const reply = await dependencies.captureVisibleTab({ type: 'capture-visible-tab' });
@@ -75,7 +75,9 @@ export async function captureTradingView(
 
     const image = (dependencies.dataUrlToBlob ?? capturedDataUrlToBlob)(reply.dataUrl);
     throwIfAborted(signal);
-    return await dependencies.processImage(image);
+    const processed = await dependencies.processImage(image);
+    throwIfAborted(signal);
+    return processed;
   } finally {
     await dependencies.restorePanel();
   }

@@ -63,11 +63,13 @@ describe('captureTradingView', () => {
 
   it('hides, captures exactly once, processes, and finally restores in order', async () => {
     const { dependencies, events } = createDependencies();
+    const controller = new AbortController();
 
-    const result = await captureTradingView(dependencies, new AbortController().signal);
+    const result = await captureTradingView(dependencies, controller.signal);
 
     expect(result).toEqual(processed);
     expect(events).toEqual(['hide', 'capture:capture-visible-tab', 'process', 'restore']);
+    expect(dependencies.hidePanel).toHaveBeenCalledWith(controller.signal);
     expect(dependencies.captureVisibleTab).toHaveBeenCalledTimes(1);
   });
 
@@ -109,6 +111,27 @@ describe('captureTradingView', () => {
     expect(events).toEqual(['hide', 'capture', 'restore']);
     expect(dependencies.processImage).not.toHaveBeenCalled();
     expect(dependencies.captureVisibleTab).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects cancellation that happens while image processing is in flight and restores', async () => {
+    const controller = new AbortController();
+    const { dependencies, events } = createDependencies();
+    let finishProcessing: ((value: ProcessedImage) => void) | undefined;
+    dependencies.processImage = vi.fn(async () => {
+      events.push('process');
+      return new Promise<ProcessedImage>((resolve) => {
+        finishProcessing = resolve;
+      });
+    });
+
+    const capture = captureTradingView(dependencies, controller.signal);
+    await vi.waitFor(() => expect(dependencies.processImage).toHaveBeenCalledTimes(1));
+    controller.abort(new DOMException('Cancelled during processing', 'AbortError'));
+    finishProcessing?.(processed);
+
+    await expect(capture).rejects.toMatchObject({ name: 'AbortError' });
+    expect(events).toEqual(['hide', 'capture:capture-visible-tab', 'process', 'restore']);
+    expect(dependencies.restorePanel).toHaveBeenCalledWith();
   });
 
   it('does not hide or capture when already cancelled', async () => {

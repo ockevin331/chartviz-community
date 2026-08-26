@@ -3,8 +3,16 @@ import { createBackgroundHandlers } from '../entrypoints/background';
 import { mountFloatingPanel } from '../src/capture/mount-floating-panel';
 import { createPanelVisibility } from '../src/capture/panel-visibility';
 
+const tradingViewSender = {
+  tab: {
+    id: 42,
+    windowId: 17,
+    url: 'https://www.tradingview.com/chart/ABC123/',
+  },
+};
+
 describe('capture background boundary', () => {
-  it('accepts only the exact capture-visible-tab command', async () => {
+  it('returns a Promise only for the exact capture command and captures its sender window', async () => {
     const captureVisibleTab = vi.fn(async () => 'data:image/png;base64,Y2FwdHVyZWQ=');
     const handlers = createBackgroundHandlers({
       captureVisibleTab,
@@ -12,11 +20,28 @@ describe('capture background boundary', () => {
       getPanelUrl: () => 'chrome-extension://fixture/panel.html',
     });
 
-    await expect(handlers.onMessage({ type: 'capture-visible-tab' })).resolves.toEqual({
+    const reply = handlers.onMessage({ type: 'capture-visible-tab' }, tradingViewSender);
+
+    expect(reply).toBeInstanceOf(Promise);
+    await expect(reply).resolves.toEqual({
       ok: true,
       dataUrl: 'data:image/png;base64,Y2FwdHVyZWQ=',
     });
-    expect(captureVisibleTab).toHaveBeenCalledTimes(1);
+    expect(captureVisibleTab).toHaveBeenCalledExactlyOnceWith(17);
+  });
+
+  it('returns undefined synchronously for non-capture messages', () => {
+    const captureVisibleTab = vi.fn(async () => 'data:image/png;base64,Y2FwdHVyZWQ=');
+    const handlers = createBackgroundHandlers({
+      captureVisibleTab,
+      executeScript: vi.fn(async () => undefined),
+      getPanelUrl: () => 'chrome-extension://fixture/panel.html',
+    });
+
+    const reply = handlers.onMessage({ type: 'other-extension-message' }, tradingViewSender);
+
+    expect(reply).toBeUndefined();
+    expect(captureVisibleTab).not.toHaveBeenCalled();
   });
 
   it.each(['provider', 'apiKey', 'key', 'prompt', 'model', 'response'])(
@@ -29,7 +54,10 @@ describe('capture background boundary', () => {
         getPanelUrl: () => 'chrome-extension://fixture/panel.html',
       });
 
-      const reply = await handlers.onMessage({ type: 'capture-visible-tab', [field]: 'secret' });
+      const reply = handlers.onMessage(
+        { type: 'capture-visible-tab', [field]: 'secret' },
+        tradingViewSender,
+      );
 
       expect(reply).toBeUndefined();
       expect(captureVisibleTab).not.toHaveBeenCalled();
@@ -43,10 +71,33 @@ describe('capture background boundary', () => {
       getPanelUrl: () => 'chrome-extension://fixture/panel.html',
     });
 
-    await expect(handlers.onMessage({ type: 'capture-visible-tab' })).resolves.toEqual({
+    await expect(handlers.onMessage({ type: 'capture-visible-tab' }, tradingViewSender)).resolves.toEqual({
       ok: false,
       error: 'capture denied',
     });
+  });
+
+  it.each([
+    ['missing sender', undefined],
+    ['missing tab', {}],
+    ['missing tab id', { tab: { windowId: 17, url: tradingViewSender.tab.url } }],
+    ['missing window id', { tab: { id: 42, url: tradingViewSender.tab.url } }],
+    ['non-integer window id', { tab: { id: 42, windowId: 1.5, url: tradingViewSender.tab.url } }],
+    ['non-TradingView URL', { tab: { id: 42, windowId: 17, url: 'https://example.com/chart/ABC/' } }],
+    ['non-chart TradingView URL', { tab: { id: 42, windowId: 17, url: 'https://www.tradingview.com/markets/' } }],
+  ])('rejects a capture command from an invalid sender: %s', async (_label, sender) => {
+    const captureVisibleTab = vi.fn(async () => 'data:image/png;base64,Y2FwdHVyZWQ=');
+    const handlers = createBackgroundHandlers({
+      captureVisibleTab,
+      executeScript: vi.fn(async () => undefined),
+      getPanelUrl: () => 'chrome-extension://fixture/panel.html',
+    });
+
+    await expect(handlers.onMessage({ type: 'capture-visible-tab' }, sender)).resolves.toEqual({
+      ok: false,
+      error: 'Capture is available only from a TradingView chart tab',
+    });
+    expect(captureVisibleTab).not.toHaveBeenCalled();
   });
 
   it('injects the self-contained floating panel on an action click with an active tab', async () => {

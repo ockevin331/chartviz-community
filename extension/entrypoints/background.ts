@@ -1,7 +1,10 @@
 import { browser } from 'wxt/browser';
 import { defineBackground } from 'wxt/utils/define-background';
 import { mountFloatingPanel } from '../src/capture/mount-floating-panel';
-import type { CaptureReply } from '../src/capture/tradingview-capture';
+import {
+  isTradingViewChartUrl,
+  type CaptureReply,
+} from '../src/capture/tradingview-capture';
 
 type ScriptInjection = {
   target: { tabId: number };
@@ -10,9 +13,17 @@ type ScriptInjection = {
 };
 
 export type BackgroundDependencies = {
-  captureVisibleTab(): Promise<string>;
+  captureVisibleTab(windowId: number): Promise<string>;
   executeScript(injection: ScriptInjection): Promise<unknown>;
   getPanelUrl(): string;
+};
+
+type CaptureSender = {
+  tab?: {
+    id?: number;
+    windowId?: number;
+    url?: string;
+  };
 };
 
 function isCaptureCommand(message: unknown): message is { type: 'capture-visible-tab' } {
@@ -25,19 +36,41 @@ function isCaptureCommand(message: unknown): message is { type: 'capture-visible
 }
 
 export function createBackgroundHandlers(dependencies: BackgroundDependencies) {
+  async function captureFromSender(sender: CaptureSender | undefined): Promise<CaptureReply> {
+    const tab = sender?.tab;
+    if (
+      !tab
+      || !Number.isInteger(tab.id)
+      || !Number.isInteger(tab.windowId)
+      || typeof tab.windowId !== 'number'
+      || typeof tab.url !== 'string'
+      || !isTradingViewChartUrl(tab.url)
+    ) {
+      return {
+        ok: false,
+        error: 'Capture is available only from a TradingView chart tab',
+      };
+    }
+
+    try {
+      return { ok: true, dataUrl: await dependencies.captureVisibleTab(tab.windowId) };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Visible-tab capture failed',
+      };
+    }
+  }
+
   return {
-    async onMessage(message: unknown): Promise<CaptureReply | undefined> {
+    onMessage(
+      message: unknown,
+      sender?: CaptureSender,
+    ): Promise<CaptureReply> | undefined {
       if (!isCaptureCommand(message)) {
         return undefined;
       }
-      try {
-        return { ok: true, dataUrl: await dependencies.captureVisibleTab() };
-      } catch (error) {
-        return {
-          ok: false,
-          error: error instanceof Error ? error.message : 'Visible-tab capture failed',
-        };
-      }
+      return captureFromSender(sender);
     },
     async onActionClicked(tab: { id?: number }): Promise<void> {
       if (typeof tab.id !== 'number') {
@@ -54,7 +87,7 @@ export function createBackgroundHandlers(dependencies: BackgroundDependencies) {
 
 export default defineBackground(() => {
   const handlers = createBackgroundHandlers({
-    captureVisibleTab: () => browser.tabs.captureVisibleTab({ format: 'png' }),
+    captureVisibleTab: (windowId) => browser.tabs.captureVisibleTab(windowId, { format: 'png' }),
     executeScript: (injection) => browser.scripting.executeScript(injection),
     getPanelUrl: () => browser.runtime.getURL('/panel.html'),
   });
