@@ -11,8 +11,12 @@ type Operation = readonly [name: string, ...values: unknown[]];
 
 function recordingCanvases() {
   const canvases: Operation[][] = [];
+  const decodes: string[] = [];
   const dependencies: AnnotationCanvasDependencies = {
-    decode: async () => ({ source: 'synthetic-800x600', dispose: () => undefined }),
+    decode: async (dataUrl) => {
+      decodes.push(dataUrl);
+      return { source: 'synthetic-800x600', dispose: () => undefined };
+    },
     createSurface: (width, height) => {
       const operations: Operation[] = [['createSurface', width, height]];
       const canvasNumber = canvases.push(operations);
@@ -33,7 +37,7 @@ function recordingCanvases() {
       return surface;
     },
   };
-  return { dependencies, canvases };
+  return { dependencies, canvases, decodes };
 }
 
 const image: ProcessedImage = {
@@ -184,5 +188,52 @@ describe('buildAnnotations', () => {
       patterns: {},
     });
     expect(canvases).toEqual([]);
+  });
+
+  it('rejects duplicate signal ids before creating or decoding any canvas', async () => {
+    // Breaks on: partial levels/signal rendering before a duplicate signal artifact fails closed.
+    const inputReport = report();
+    inputReport.signals[1]!.id = inputReport.signals[0]!.id;
+    const { dependencies, canvases, decodes } = recordingCanvases();
+
+    await expect(buildAnnotations(image, inputReport, dependencies))
+      .rejects.toThrow('Duplicate signal annotation id: signal-a');
+    expect(canvases).toEqual([]);
+    expect(decodes).toEqual([]);
+  });
+
+  it('rejects duplicate pattern ids before creating or decoding any canvas', async () => {
+    // Breaks on: partial levels/signal rendering before a duplicate pattern artifact fails closed.
+    const inputReport = report();
+    inputReport.patterns[1]!.id = inputReport.patterns[0]!.id;
+    const { dependencies, canvases, decodes } = recordingCanvases();
+
+    await expect(buildAnnotations(image, inputReport, dependencies))
+      .rejects.toThrow('Duplicate pattern annotation id: pattern-a');
+    expect(canvases).toEqual([]);
+    expect(decodes).toEqual([]);
+  });
+
+  it('returns special ids as collision-safe own enumerable record entries', async () => {
+    // Breaks on: Object prototype setter assignment swallowing __proto__ or constructor collisions.
+    const inputReport = report();
+    inputReport.signals[0]!.id = '__proto__';
+    inputReport.signals[1]!.id = 'constructor';
+    inputReport.patterns[0]!.id = '__proto__';
+    inputReport.patterns[1]!.id = 'constructor';
+    const { dependencies } = recordingCanvases();
+
+    const result = await buildAnnotations(image, inputReport, dependencies);
+
+    expect(Object.keys(result.signals)).toEqual(['__proto__', 'constructor']);
+    expect(Object.keys(result.patterns)).toEqual(['__proto__', 'constructor']);
+    expect(Object.hasOwn(result.signals, '__proto__')).toBe(true);
+    expect(Object.hasOwn(result.signals, 'constructor')).toBe(true);
+    expect(Object.hasOwn(result.patterns, '__proto__')).toBe(true);
+    expect(Object.hasOwn(result.patterns, 'constructor')).toBe(true);
+    expect(result.signals['__proto__']!.id).toBe('__proto__');
+    expect(result.signals['constructor']!.id).toBe('constructor');
+    expect(result.patterns['__proto__']!.id).toBe('__proto__');
+    expect(result.patterns['constructor']!.id).toBe('constructor');
   });
 });

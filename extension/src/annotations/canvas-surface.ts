@@ -84,6 +84,11 @@ export function ratioToPixel(value: number, length: number): number {
   return clampRatio(value) * length;
 }
 
+export function ratioToDrawablePixel(value: number, length: number, margin: number): number {
+  const safeMargin = Math.min(Math.max(0, margin), length / 2);
+  return clampPixel(ratioToPixel(value, length), safeMargin, length - safeMargin);
+}
+
 export function clampPixel(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
 }

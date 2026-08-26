@@ -5,11 +5,12 @@ import {
   browserAnnotationCanvasDependencies,
   clampPixel,
   drawOnSourceImage,
-  ratioToPixel,
+  ratioToDrawablePixel,
   type AnnotationCanvasDependencies,
 } from './canvas-surface';
 
 const PATTERN_COLOR = '#7c3aed';
+const POLYLINE_MARGIN = 1.5;
 
 export async function renderPattern(
   image: ProcessedImage,
@@ -18,8 +19,8 @@ export async function renderPattern(
 ): Promise<AnnotatedImage> {
   const dataUrl = await drawOnSourceImage(image, dependencies, (surface) => {
     const pixels = pattern.points.map((point) => ({
-      x: ratioToPixel(point.xRatio, image.width),
-      y: ratioToPixel(point.yRatio, image.height),
+      x: ratioToDrawablePixel(point.xRatio, image.width, POLYLINE_MARGIN),
+      y: ratioToDrawablePixel(point.yRatio, image.height, POLYLINE_MARGIN),
     }));
 
     const [first, ...rest] = pixels;

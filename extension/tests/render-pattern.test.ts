@@ -89,11 +89,11 @@ describe('renderPattern', () => {
       ['setFillStyle', '#7c3aed'],
       ['setLineWidth', 3],
       ['beginPath'],
-      ['moveTo', 0, 600],
+      ['moveTo', 1.5, 598.5],
       ['lineTo', 400, 300],
-      ['lineTo', 800, 0],
+      ['lineTo', 798.5, 1.5],
       ['stroke'],
-      ['fillText', '1', 6, 592],
+      ['fillText', '1', 7.5, 592],
       ['fillText', '2', 406, 294],
       ['fillText', '3', 784, 16],
       ['fillText', 'Visible triangle', 12, 24],
@@ -120,5 +120,26 @@ describe('renderPattern', () => {
     expect(labels).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', 'Visible triangle']);
     expect(operations.filter(([name]) => name === 'drawSource')).toHaveLength(1);
     expect(operations.filter(([name]) => name === 'encode')).toHaveLength(1);
+  });
+
+  it('maps endpoint points to a 1.5 px margin so the full polyline stroke remains drawable', async () => {
+    // Breaks on: centering the 3 px polyline stroke on a clipped canvas boundary.
+    const input = pattern([
+      { xRatio: 0, yRatio: 0 },
+      { xRatio: 1, yRatio: 1 },
+    ]);
+    const { dependencies, operations } = recordingCanvas();
+
+    await renderPattern(image, input, dependencies);
+
+    expect(operations.filter(([name]) => name === 'moveTo' || name === 'lineTo')).toEqual([
+      ['moveTo', 1.5, 1.5],
+      ['lineTo', 798.5, 598.5],
+    ]);
+    expect(operations.filter(([name]) => name === 'fillText')).toEqual([
+      ['fillText', '1', 7.5, 16],
+      ['fillText', '2', 784, 592],
+      ['fillText', 'Visible triangle', 12, 24],
+    ]);
   });
 });

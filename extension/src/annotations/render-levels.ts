@@ -5,7 +5,7 @@ import {
   browserAnnotationCanvasDependencies,
   clampPixel,
   drawOnSourceImage,
-  ratioToPixel,
+  ratioToDrawablePixel,
   type AnnotationCanvasDependencies,
 } from './canvas-surface';
 
@@ -16,6 +16,7 @@ const COLORS = {
 const LABEL_MIN_Y = 16;
 const LABEL_SPACING = 18;
 const LABEL_BOTTOM_PADDING = 8;
+const LINE_MARGIN = 1;
 
 function labelPosition(rawY: number, height: number, occupied: number[]): number {
   const maximum = Math.max(LABEL_MIN_Y, height - LABEL_BOTTOM_PADDING);
@@ -54,7 +55,7 @@ export async function renderLevels(
     const ordinal = { support: 0, resistance: 0 };
     for (const level of levels) {
       ordinal[level.type] += 1;
-      const lineY = ratioToPixel(level.yRatio, image.height);
+      const lineY = ratioToDrawablePixel(level.yRatio, image.height, LINE_MARGIN);
       const occupied = level.type === 'support' ? supportLabels : resistanceLabels;
       const textY = labelPosition(lineY, image.height, occupied);
       occupied.push(textY);
@@ -63,8 +64,8 @@ export async function renderLevels(
       surface.setFillStyle(COLORS[level.type]);
       surface.setLineWidth(2);
       surface.beginPath();
-      surface.moveTo(0, lineY);
-      surface.lineTo(image.width, lineY);
+      surface.moveTo(LINE_MARGIN, lineY);
+      surface.lineTo(image.width - LINE_MARGIN, lineY);
       surface.stroke();
       const prefix = level.type === 'support' ? 'S' : 'R';
       surface.fillText(`${prefix}${ordinal[level.type]} ${level.priceLabel}`, 12, textY);

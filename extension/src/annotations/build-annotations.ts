@@ -9,21 +9,38 @@ import { renderLevels } from './render-levels';
 import { renderPattern } from './render-pattern';
 import { renderSignal } from './render-signal';
 
+function assertUniqueIds(items: readonly { id: string }[], kind: 'signal' | 'pattern'): void {
+  const ids = new Set<string>();
+  for (const { id } of items) {
+    if (ids.has(id)) {
+      throw new Error(`Duplicate ${kind} annotation id: ${id}`);
+    }
+    ids.add(id);
+  }
+}
+
 export async function buildAnnotations(
   image: ProcessedImage,
   report: CommunityReport,
   dependencies: AnnotationCanvasDependencies = browserAnnotationCanvasDependencies,
 ): Promise<AnnotatedReportImages> {
+  assertUniqueIds(report.signals, 'signal');
+  assertUniqueIds(report.patterns, 'pattern');
+
   const levels = await renderLevels(image, report.levels, dependencies);
-  const signals: Record<string, AnnotatedImage> = {};
-  const patterns: Record<string, AnnotatedImage> = {};
+  const signalEntries: Array<[string, AnnotatedImage]> = [];
+  const patternEntries: Array<[string, AnnotatedImage]> = [];
 
   for (const signal of report.signals) {
-    signals[signal.id] = await renderSignal(image, signal, dependencies);
+    signalEntries.push([signal.id, await renderSignal(image, signal, dependencies)]);
   }
   for (const pattern of report.patterns) {
-    patterns[pattern.id] = await renderPattern(image, pattern, dependencies);
+    patternEntries.push([pattern.id, await renderPattern(image, pattern, dependencies)]);
   }
 
-  return { levels, signals, patterns };
+  return {
+    levels,
+    signals: Object.fromEntries(signalEntries),
+    patterns: Object.fromEntries(patternEntries),
+  };
 }

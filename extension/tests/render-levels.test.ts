@@ -88,32 +88,32 @@ describe('renderLevels', () => {
       ['setFillStyle', '#16a34a'],
       ['setLineWidth', 2],
       ['beginPath'],
-      ['moveTo', 0, 0],
-      ['lineTo', 800, 0],
+      ['moveTo', 1, 1],
+      ['lineTo', 799, 1],
       ['stroke'],
       ['fillText', 'S1 100', 12, 16],
       ['setStrokeStyle', '#16a34a'],
       ['setFillStyle', '#16a34a'],
       ['setLineWidth', 2],
       ['beginPath'],
-      ['moveTo', 0, 6],
-      ['lineTo', 800, 6],
+      ['moveTo', 1, 6],
+      ['lineTo', 799, 6],
       ['stroke'],
       ['fillText', 'S2 101', 12, 34],
       ['setStrokeStyle', '#dc2626'],
       ['setFillStyle', '#dc2626'],
       ['setLineWidth', 2],
       ['beginPath'],
-      ['moveTo', 0, 600],
-      ['lineTo', 800, 600],
+      ['moveTo', 1, 599],
+      ['lineTo', 799, 599],
       ['stroke'],
       ['fillText', 'R1 120', 12, 592],
       ['setStrokeStyle', '#dc2626'],
       ['setFillStyle', '#dc2626'],
       ['setLineWidth', 2],
       ['beginPath'],
-      ['moveTo', 0, 594],
-      ['lineTo', 800, 594],
+      ['moveTo', 1, 594],
+      ['lineTo', 799, 594],
       ['stroke'],
       ['fillText', 'R2 119', 12, 574],
       ['encode'],
@@ -127,5 +127,22 @@ describe('renderLevels', () => {
 
     await expect(renderLevels(image, [], dependencies)).resolves.toBeNull();
     expect(operations).toEqual([]);
+  });
+
+  it('maps endpoint ratios to stroke-safe margins for complete horizontal lines', async () => {
+    // Breaks on: placing a 2 px stroke center at x/y 0 or width/height and clipping half the line.
+    const { dependencies, operations } = recordingCanvas();
+
+    await renderLevels(image, [
+      level('support-edge', 'support', 'LOW', 0),
+      level('resistance-edge', 'resistance', 'HIGH', 1),
+    ], dependencies);
+
+    expect(operations.filter(([name]) => name === 'moveTo' || name === 'lineTo')).toEqual([
+      ['moveTo', 1, 1],
+      ['lineTo', 799, 1],
+      ['moveTo', 1, 599],
+      ['lineTo', 799, 599],
+    ]);
   });
 });

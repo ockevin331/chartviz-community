@@ -64,6 +64,22 @@ function signal(overrides: Partial<TradeSignal> = {}): TradeSignal {
   };
 }
 
+function tradeLabelBaselines(operations: Operation[]): number[] {
+  return operations
+    .filter(([name, text]) => (
+      name === 'fillText' && /^(Entry|Stop|Target|Risk\/reward)/.test(String(text))
+    ))
+    .map((operation) => operation[3] as number);
+}
+
+function expectPairwiseSpacing(values: number[], minimum: number): void {
+  values.forEach((value, index) => {
+    values.slice(index + 1).forEach((other) => {
+      expect(Math.abs(value - other)).toBeGreaterThanOrEqual(minimum);
+    });
+  });
+}
+
 describe('renderSignal', () => {
   it('draws one long signal with a compact arrow below entry and every trade field visible', async () => {
     // Breaks on: combining overlays, omitting a target/RR, failing to clamp a ratio,
@@ -90,32 +106,32 @@ describe('renderSignal', () => {
       ['setFillStyle', '#2563eb'],
       ['setLineWidth', 1.5],
       ['beginPath'],
-      ['moveTo', 0, 240],
-      ['lineTo', 800, 240],
+      ['moveTo', 0.75, 240],
+      ['lineTo', 799.25, 240],
       ['stroke'],
       ['fillText', 'Entry 105', 12, 234],
       ['setStrokeStyle', '#dc2626'],
       ['setFillStyle', '#dc2626'],
       ['setLineWidth', 1.5],
       ['beginPath'],
-      ['moveTo', 0, 390],
-      ['lineTo', 800, 390],
+      ['moveTo', 0.75, 390],
+      ['lineTo', 799.25, 390],
       ['stroke'],
       ['fillText', 'Stop 99', 12, 384],
       ['setStrokeStyle', '#16a34a'],
       ['setFillStyle', '#16a34a'],
       ['setLineWidth', 1.5],
       ['beginPath'],
-      ['moveTo', 0, 120],
-      ['lineTo', 800, 120],
+      ['moveTo', 0.75, 120],
+      ['lineTo', 799.25, 120],
       ['stroke'],
       ['fillText', 'Target 1 110', 12, 114],
       ['setStrokeStyle', '#16a34a'],
       ['setFillStyle', '#16a34a'],
       ['setLineWidth', 1.5],
       ['beginPath'],
-      ['moveTo', 0, 600],
-      ['lineTo', 800, 600],
+      ['moveTo', 0.75, 599.25],
+      ['lineTo', 799.25, 599.25],
       ['stroke'],
       ['fillText', 'Target 2 115', 12, 592],
       ['setStrokeStyle', '#16a34a'],
@@ -131,10 +147,12 @@ describe('renderSignal', () => {
       ['lineTo', 406, 248],
       ['stroke'],
       ['fillText', 'LONG', 412, 270],
-      ['fillText', 'Risk/reward 2:1', 12, 588],
+      ['fillText', 'Risk/reward 2:1', 12, 570],
       ['encode'],
       ['dispose'],
     ]);
+    expect(tradeLabelBaselines(operations)).toEqual([234, 384, 114, 592, 570]);
+    expectPairwiseSpacing(tradeLabelBaselines(operations), 18);
   });
 
   it('mirrors the compact arrow above a short entry and exposes a null risk/reward explicitly', async () => {
@@ -144,7 +162,7 @@ describe('renderSignal', () => {
       direction: 'short',
       entry: { priceLabel: '95', xRatio: 0.75, yRatio: 0.75 },
       stop: { priceLabel: '101', yRatio: 0.6 },
-      targets: [{ priceLabel: '90', yRatio: 0.9 }],
+      targets: [{ priceLabel: '90', yRatio: 1 }],
       riskReward: null,
     });
     const { dependencies, operations } = recordingCanvas('data:image/png;base64,c2hvcnQ=');
@@ -157,8 +175,106 @@ describe('renderSignal', () => {
     expect(operations).toContainEqual(['moveTo', 594, 442]);
     expect(operations).toContainEqual(['lineTo', 606, 442]);
     expect(operations).toContainEqual(['fillText', 'SHORT', 612, 414]);
-    expect(operations).toContainEqual(['fillText', 'Risk/reward Not provided', 12, 588]);
+    expect(operations).toContainEqual(['fillText', 'Target 1 90', 12, 592]);
+    expect(operations).toContainEqual(['fillText', 'Risk/reward Not provided', 12, 570]);
+    expect(tradeLabelBaselines(operations)).toEqual([444, 354, 592, 570]);
+    expectPairwiseSpacing(tradeLabelBaselines(operations), 18);
     expect(operations.filter(([name]) => name === 'drawSource')).toHaveLength(1);
     expect(operations.filter(([name]) => name === 'encode')).toHaveLength(1);
+  });
+
+  it('keeps a long arrow at ratio-one entry fully drawable, directional, and non-zero', async () => {
+    // Breaks on: a bottom-edge long arrow collapsing to zero length or clipping its left arrowhead.
+    const input = signal({
+      entry: { priceLabel: 'BOTTOM', xRatio: 0, yRatio: 1 },
+      stop: { priceLabel: 'STOP', yRatio: 0 },
+      targets: [{ priceLabel: 'TARGET', yRatio: 1 }],
+    });
+    const { dependencies, operations } = recordingCanvas('data:image/png;base64,bG9uZy1lZGdl');
+
+    await renderSignal(image, input, dependencies);
+
+    const arrowStart = operations.findIndex((operation) => (
+      operation[0] === 'setLineWidth' && operation[1] === 3
+    ));
+    expect(operations.slice(arrowStart, arrowStart + 15)).toEqual([
+      ['setLineWidth', 3],
+      ['beginPath'],
+      ['moveTo', 7.5, 598.5],
+      ['lineTo', 7.5, 568.5],
+      ['stroke'],
+      ['beginPath'],
+      ['moveTo', 1.5, 576.5],
+      ['lineTo', 7.5, 568.5],
+      ['lineTo', 13.5, 576.5],
+      ['stroke'],
+      ['fillText', 'LONG', 19.5, 592],
+      ['fillText', 'Risk/reward 2:1', 12, 552],
+      ['encode'],
+      ['dispose'],
+    ]);
+    expect(operations).toContainEqual(['moveTo', 0.75, 599.25]);
+    expect(operations).toContainEqual(['lineTo', 799.25, 599.25]);
+  });
+
+  it('keeps a short arrow at ratio-zero entry fully drawable, directional, and non-zero', async () => {
+    // Breaks on: a top-edge short arrow collapsing to zero length or clipping its right arrowhead.
+    const input = signal({
+      id: 'signal-short-edge',
+      direction: 'short',
+      entry: { priceLabel: 'TOP', xRatio: 1, yRatio: 0 },
+      stop: { priceLabel: 'STOP', yRatio: 1 },
+      targets: [{ priceLabel: 'TARGET', yRatio: 0 }],
+    });
+    const { dependencies, operations } = recordingCanvas('data:image/png;base64,c2hvcnQtZWRnZQ==');
+
+    await renderSignal(image, input, dependencies);
+
+    const arrowStart = operations.findIndex((operation) => (
+      operation[0] === 'setLineWidth' && operation[1] === 3
+    ));
+    expect(operations.slice(arrowStart, arrowStart + 11)).toEqual([
+      ['setLineWidth', 3],
+      ['beginPath'],
+      ['moveTo', 792.5, 1.5],
+      ['lineTo', 792.5, 31.5],
+      ['stroke'],
+      ['beginPath'],
+      ['moveTo', 786.5, 23.5],
+      ['lineTo', 792.5, 31.5],
+      ['lineTo', 798.5, 23.5],
+      ['stroke'],
+      ['fillText', 'SHORT', 728, 16],
+    ]);
+    expect(operations).toContainEqual(['moveTo', 0.75, 0.75]);
+    expect(operations).toContainEqual(['lineTo', 799.25, 0.75]);
+  });
+
+  it('places three same-price targets in deterministic non-overlapping text lanes', async () => {
+    // Breaks on: independently clamping same-y labels to one baseline instead of moving labels only.
+    const input = signal({
+      stop: { priceLabel: '99', yRatio: 0.6 },
+      targets: [
+        { priceLabel: 'T1', yRatio: 0.5 },
+        { priceLabel: 'T2', yRatio: 0.5 },
+        { priceLabel: 'T3', yRatio: 0.5 },
+      ],
+    });
+    const { dependencies, operations } = recordingCanvas('data:image/png;base64,bGFuZXM=');
+
+    await renderSignal(image, input, dependencies);
+
+    expect(operations.filter(([name, , y]) => (
+      (name === 'moveTo' || name === 'lineTo') && y === 300
+    ))).toEqual([
+      ['moveTo', 0.75, 300],
+      ['lineTo', 799.25, 300],
+      ['moveTo', 0.75, 300],
+      ['lineTo', 799.25, 300],
+      ['moveTo', 0.75, 300],
+      ['lineTo', 799.25, 300],
+    ]);
+    expect(tradeLabelBaselines(operations)).toEqual([234, 354, 294, 312, 276, 588]);
+    expectPairwiseSpacing(tradeLabelBaselines(operations), 18);
   });
 });
