@@ -1,21 +1,22 @@
 import { defineConfig } from 'wxt';
 
 const approvedPermissions = ['activeTab', 'storage', 'scripting'];
-const approvedOrigins = [
-  'https://openrouter.ai/api/*',
-  'https://api.openai.com/v1/*',
-  'https://generativelanguage.googleapis.com/*',
-];
 
 export type ExtensionManifest = {
   name: string;
   description: string;
   version: string;
   permissions: string[];
-  host_permissions: string[];
+  host_permissions?: undefined;
   optional_host_permissions?: undefined;
-  action: { default_popup: string; default_icon: Record<number, string> };
+  content_scripts?: undefined;
+  action: { default_popup?: undefined; default_icon: Record<number, string> };
   icons: Record<number, string>;
+  web_accessible_resources: Array<{
+    resources: string[];
+    matches: string[];
+    use_dynamic_url: true;
+  }>;
 };
 
 export function createManifest(): ExtensionManifest {
@@ -24,9 +25,7 @@ export function createManifest(): ExtensionManifest {
     description: 'Chart education in your browser.',
     version: '0.1.0',
     permissions: [...approvedPermissions],
-    host_permissions: [...approvedOrigins],
     action: {
-      default_popup: 'panel.html',
       default_icon: {
         16: 'icons/chartviz-16.png',
         32: 'icons/chartviz-32.png',
@@ -40,6 +39,11 @@ export function createManifest(): ExtensionManifest {
       48: 'icons/chartviz-48.png',
       128: 'icons/chartviz-128.png',
     },
+    web_accessible_resources: [{
+      resources: ['panel.html'],
+      matches: ['http://*/*', 'https://*/*'],
+      use_dynamic_url: true,
+    }],
   };
 }
 
