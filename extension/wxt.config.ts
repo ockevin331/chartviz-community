@@ -1,15 +1,23 @@
 import { defineConfig } from 'wxt';
+import { supportedChartHosts } from './src/sites/supported-sites';
 
 const approvedPermissions = ['activeTab', 'storage', 'scripting'];
+export const approvedProviderOrigins = [
+  'https://openrouter.ai/api/*',
+  'https://api.openai.com/v1/*',
+  'https://generativelanguage.googleapis.com/*',
+] as const;
+
+export const approvedHostPermissions = [...approvedProviderOrigins, ...supportedChartHosts];
 
 export type ExtensionManifest = {
   name: string;
   description: string;
   version: string;
   permissions: string[];
-  host_permissions?: undefined;
+  host_permissions: string[];
   optional_host_permissions?: undefined;
-  content_scripts?: undefined;
+  content_security_policy: { extension_pages: string };
   action: { default_popup?: undefined; default_icon: Record<number, string> };
   icons: Record<number, string>;
   web_accessible_resources: Array<{
@@ -21,10 +29,11 @@ export type ExtensionManifest = {
 
 export function createManifest(): ExtensionManifest {
   return {
-    name: 'ChartViz Community',
+    name: 'ChartViz',
     description: 'Chart education in your browser.',
-    version: '0.1.0',
+    version: '1.0.0',
     permissions: [...approvedPermissions],
+    host_permissions: [...approvedHostPermissions],
     action: {
       default_icon: {
         16: 'icons/chartviz-16.png',
@@ -38,6 +47,9 @@ export function createManifest(): ExtensionManifest {
       32: 'icons/chartviz-32.png',
       48: 'icons/chartviz-48.png',
       128: 'icons/chartviz-128.png',
+    },
+    content_security_policy: {
+      extension_pages: "script-src 'self'; object-src 'self';",
     },
     web_accessible_resources: [{
       resources: ['panel.html'],
