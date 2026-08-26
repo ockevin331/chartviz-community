@@ -9,7 +9,6 @@ pnpm --dir extension install --frozen-lockfile
 pnpm --dir extension test
 pnpm --dir extension build
 pnpm --dir extension build:edge
-node scripts/audit-source.mjs
 ```
 
 Load the generated unpacked extension from `extension/.output/chrome-mv3` or `extension/.output/edge-mv3`.

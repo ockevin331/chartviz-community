@@ -18,9 +18,9 @@ jobs:
           cache: pnpm
           cache-dependency-path: extension/pnpm-lock.yaml
       - run: pnpm --dir extension install --frozen-lockfile
+      - run: node --test tests/repository-structure.test.mjs
       - run: pnpm --dir extension test
       - run: pnpm --dir extension compile
       - run: pnpm --dir extension build
       - run: pnpm --dir extension build:edge
-      - run: node scripts/audit-source.mjs
-      - run: node --test tests/repository-boundary.test.mjs
+      - run: node --test tests/built-manifest.test.mjs
