@@ -24,6 +24,18 @@ Expected failures were observed before the Stage 7 production implementation:
 
 These failures named the missing production behavior. The new tests then drove setup/session behavior, controller transitions/request count/cancellation, exact direct-report ordering and image placement, whole-panel workflow, and remount cleanup.
 
+### Fix round RED evidence
+
+The one allowed review fix round began with focused tests for every reported gap, before the fix-round production edits:
+
+```text
+cd extension
+pnpm exec vitest run tests/provider-setup.test.tsx tests/analysis-controller.test.tsx tests/report-view.test.tsx tests/panel-workflow.test.tsx
+4 files failed; 12 tests failed; 10 tests passed
+```
+
+The failures reproduced non-cooperative late provider resolution/rejection after cancel, a stale operation blocking or overwriting an immediate new analysis, cancellation during final preparation, raw validation detail reaching the UI, the duplicate language control, password glyphs instead of SVG icons, missing report evidence correlations/pattern bias/copy fields, and missing lightbox focus handling.
+
 ## Implemented behavior
 
 - Setup provides OpenRouter/OpenAI/Gemini, provider-specific curated models, custom model IDs, masked session-only API key, eye control, flag + EN/CN language, connection test, cost notice, localized provider errors, and a required visible custom-model image-input acknowledgement.
@@ -37,6 +49,14 @@ These failures named the missing production behavior. The new tests then drove s
 - The original plus every separated annotation shares one lightbox behavior and has its own download action. Copy produces readable report text without schema/internal fields.
 - The header preserves flag language control, close messaging, and pointer drag messaging. The Stage 5 mount now handles those messages and invokes the previous host cleanup before a remount, removing the stale visibility listener.
 - No Cloud/login/account/plan/history/news/multi-timeframe/exchange/compatibility/legacy-adapter UI was added.
+
+## Fix-round hardening
+
+- Every analysis action now owns a generation token. Cancel, back/navigation, provider reconfiguration, and source changes invalidate that generation and abort the cooperative request; every state write after an asynchronous boundary checks that it still owns the current generation. Cancel also releases the request slot immediately, so a new explicit analysis can start without waiting for a non-cooperative provider.
+- Provider report validation is always exposed as the stable localized `invalid_response` error. Annotation/image construction failure is exposed as stable localized `invalid_image`; arbitrary exception messages are never rendered.
+- Market view, volume, each indicator, each level, long/short/wait scenarios, each pattern, and each signal now show readable evidence-number chips. Pattern bias is visible, and copied text includes all non-geometric report content and readable evidence correlations while excluding schema and coordinate internals.
+- The panel header is the sole language control. The API-key visibility control uses accessible eye/eye-off SVG icons.
+- The lightbox focuses its close button on open, traps forward and reverse Tab in the simple modal, and restores focus to the invoking zoom control on close.
 
 ## Dependency boundary
 
@@ -62,36 +82,22 @@ Production dependencies are unchanged. Chrome and Edge production builds complet
 
 ## GREEN and verification evidence
 
-Intermediate GREEN:
+All commands below use the repository root unless prefixed with `cd extension`:
 
 ```text
-pnpm vitest run tests/provider-setup.test.tsx tests/analysis-controller.test.tsx tests/report-view.test.tsx tests/panel-workflow.test.tsx tests/panel-visibility.test.ts
-5 files passed; 20 tests passed
+cd extension && pnpm exec vitest run tests/provider-setup.test.tsx tests/analysis-controller.test.tsx tests/report-view.test.tsx tests/panel-workflow.test.tsx
+4 files passed; 22 tests passed
 
-pnpm compile
-exit 0
-```
+cd extension && pnpm test
+23 files passed; 478 tests passed
 
-Full gates:
-
-```text
-pnpm --dir extension vitest run ...
-pnpm 11 parsed this documented spelling as a missing `extension` command (exit 1).
-The equivalent accepted form was used immediately:
-
-pnpm --dir=extension exec vitest run tests/provider-setup.test.tsx tests/analysis-controller.test.tsx tests/report-view.test.tsx tests/panel-workflow.test.tsx
-4 files passed; 14 tests passed
-
-pnpm --dir=extension test
-23 files passed; 470 tests passed
-
-pnpm --dir=extension compile
+cd extension && pnpm compile
 exit 0
 
-pnpm --dir=extension build
+cd extension && pnpm build
 Chrome MV3 build exit 0; panel HTML/JS/CSS, background, manifest, and icons emitted
 
-pnpm --dir=extension build:edge
+cd extension && pnpm build:edge
 Edge MV3 build exit 0; matching panel HTML/JS/CSS, background, manifest, and icons emitted
 
 node --test tests/built-manifest.test.mjs tests/repository-structure.test.mjs
@@ -100,8 +106,6 @@ node --test tests/built-manifest.test.mjs tests/repository-structure.test.mjs
 git diff --check
 exit 0
 ```
-
-The final pre-commit verification is rerun after this report so the commit is based on fresh evidence.
 
 ## Remaining risks
 

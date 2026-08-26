@@ -47,6 +47,7 @@ button, input, select { font: inherit; }
 .password-field { position: relative; display: block; }
 .password-field input { padding-right: 44px !important; }
 .password-field button { position: absolute; top: 50%; right: 4px; display: grid; width: 34px; height: 34px; padding: 0; place-items: center; border: 0; color: #aab2c3; background: transparent; transform: translateY(-50%); cursor: pointer; }
+.password-field button:hover { color: #eef0f5; }
 .cost-notice { margin: 0; color: #858d9b; font-size: 10px; }
 .capture-warning { margin: 0; padding: 8px 10px; border: 1px solid rgb(245 158 11 / 30%); border-radius: 8px; color: #d7b86c; background: rgb(245 158 11 / 8%); font-size: 10px; }
 .setup-error, .error { margin: 0; padding: 9px 10px; border: 1px solid rgb(239 68 68 / 28%); border-radius: 8px; color: #ffaaaa; background: rgb(239 68 68 / 8%); font-size: 10px; }
@@ -100,6 +101,8 @@ button, input, select { font: inherit; }
 .analysis-list header, .analysis-list footer { display: flex; justify-content: space-between; gap: 8px; }
 .analysis-list header span, .analysis-list footer { color: #9099a7; font-size: 10px; }
 .analysis-list p { margin: 7px 0 0; color: #adb5c1; font-size: 11px; }
+.evidence-refs { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+.evidence-chip { display: inline-flex; align-items: center; min-height: 22px; padding: 3px 7px; border: 1px solid #3d4658; border-radius: 999px; color: #bfc8ff; background: #252b3b; font-size: 9px; font-weight: 700; line-height: 1; }
 .level-list { display: grid; gap: 8px; }
 .level-list article { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 8px; overflow: hidden; padding: 10px 10px 10px 16px; border-radius: 9px; background: #1d2028; }
 .level-list article::before { position: absolute; inset: 0 auto 0 0; width: 5px; content: ''; background: #6b7280; }
@@ -107,6 +110,7 @@ button, input, select { font: inherit; }
 .level-list span, .level-list small { color: #929aa8; font-size: 10px; }
 .level-list strong { justify-self: end; }
 .level-list p, .level-list small { grid-column: 1 / -1; margin: 0; }
+.level-list .evidence-refs { grid-column: 1 / -1; }
 .level-annotation, .signal-annotation, .pattern-annotation { margin-top: 12px; padding-top: 12px; border-top: 1px solid #303641; }
 .scenario, .pattern { margin-top: 8px; padding: 11px; border-radius: 9px; background: #1d2028; }
 .scenario p, .pattern p { margin: 6px 0; color: #b9c0cc; font-size: 11px; }

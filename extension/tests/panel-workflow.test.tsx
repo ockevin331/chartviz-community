@@ -34,11 +34,32 @@ describe('direct Community panel workflow', () => {
     const postMessage = vi.spyOn(window.parent, 'postMessage');
     render(<App dependencies={{ loadConfig: async () => null }} />);
     await screen.findByRole('heading', { name: 'Provider setup' });
+    expect(screen.getAllByRole('button', { name: 'Language' })).toHaveLength(1);
     await userEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(postMessage).toHaveBeenCalledWith({ source: 'chartviz', type: 'panel-close' }, '*');
     const header = screen.getByTestId('drag-handle');
     header.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1, screenX: 20, screenY: 20 }));
     header.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 1, screenX: 25, screenY: 22 }));
     await waitFor(() => expect(postMessage).toHaveBeenCalledWith({ source: 'chartviz', type: 'panel-drag', dx: 5, dy: 2 }, '*'));
+  });
+
+  it('localizes a malformed provider report without exposing validation or schema details', async () => {
+    const user = userEvent.setup();
+    const provider: VisionProvider = {
+      kind: 'openrouter', validateConfig: () => ({ ok: true }), testConnection: async () => undefined,
+      analyze: async () => ({ schemaVersion: 'private-bad-version', chart: { privatePath: 'chart.timeframe' } } as never),
+    };
+    render(<App dependencies={{
+      loadConfig: async () => ({ provider: 'openrouter', apiKey: 'key', model: 'google/gemini-3.7-flash', customModel: false }),
+      readUpload: async () => processedImage,
+      getProvider: () => provider,
+    }} />);
+    await screen.findByRole('heading', { name: 'Choose chart image' });
+    await user.upload(screen.getByLabelText('Upload one chart image'), new File(['chart'], 'chart.png', { type: 'image/png' }));
+    await user.click(await screen.findByRole('button', { name: 'Analyze screenshot' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('The provider returned an invalid report.');
+    expect(document.body.textContent).not.toMatch(/schemaVersion|private-bad-version|chart\.timeframe|invalid_type|Zod/i);
   });
 });

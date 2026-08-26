@@ -88,11 +88,11 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
       <div className="header-actions" onPointerDown={(event) => event.stopPropagation()}><LanguageMenu language={language} onChange={setLanguage} /><button className="toolbar-button close-button" type="button" aria-label={t.close} onClick={() => window.parent.postMessage({ source: 'chartviz', type: 'panel-close' }, '*')}><CloseIcon /></button></div>
     </header>
     {loading && <section className="backend-loading" role="status">…</section>}
-    {!loading && state.status === 'setup' && <ProviderSetup language={language} onLanguageChange={setLanguage} onConfigured={controller.configure} testConnection={(config, signal) => dependencies.getProvider(config.provider).testConnection(config, signal)} />}
+    {!loading && state.status === 'setup' && <ProviderSetup language={language} onConfigured={controller.configure} testConnection={(config, signal) => dependencies.getProvider(config.provider).testConnection(config, signal)} />}
     {!loading && state.status === 'source' && <ImageSourcePicker language={language} capture={dependencies.capture} readUpload={dependencies.readUpload} onSelected={controller.selectImage} />}
     {state.status === 'preview' && state.image && <ImagePreview language={language} image={state.image} onZoom={setLightbox} onChange={controller.chooseAnotherImage} onAnalyze={() => void controller.analyze({ instrument: null, timeframe: null }, language)} />}
     {state.status === 'analyzing' && state.image && <><ImagePreview language={language} image={state.image} analyzing onZoom={setLightbox} onChange={controller.chooseAnotherImage} onAnalyze={() => undefined} /><AnalysisProgress language={language} progress={state.progress} onCancel={controller.cancel} /></>}
-    {state.status === 'failed' && <AnalysisError language={language} error={state.error} onBack={controller.returnToPreview} />}
+    {state.status === 'failed' && <AnalysisError language={language} errorCode={state.errorCode} onBack={controller.returnToPreview} />}
     {state.status === 'cancelled' && <AnalysisError language={language} cancelled onBack={controller.returnToPreview} />}
     {state.status === 'completed' && state.image && state.report && state.annotations && <ReportView language={language} original={state.image} report={state.report} annotations={state.annotations} />}
     {lightbox && <ImageLightbox language={language} image={lightbox} onClose={() => setLightbox(null)} />}
