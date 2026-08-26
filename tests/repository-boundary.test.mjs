@@ -10,6 +10,9 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 const trackedFiles = () => execFileSync('git', ['ls-files'], { cwd: repositoryRoot, encoding: 'utf8' })
   .split('\n')
   .filter(Boolean);
+const withExplicitGlobalFetch = (sources) => sources.map((source) => (
+  source.replaceAll('fetch(', 'globalThis.fetch(')
+));
 
 test('contains the Stage 1 extension configuration without legacy product directories', () => {
   assert.equal(existsSync(path.join(repositoryRoot, 'extension', 'package.json')), true);
@@ -468,7 +471,7 @@ test('rejects every non-approved transport mutation inside the OpenRouter file',
 test('stops exact-origin resolution at every nearer runtime binding', () => {
   const file = 'extension/src/providers/openrouter-provider.ts';
   const approved = 'https://openrouter.ai/api/v1/chat/completions';
-  const shadowedSources = [
+  const shadowedSources = withExplicitGlobalFetch([
     `const openRouterUrl = "${approved}"; function send(openRouterUrl) { fetch(openRouterUrl); }`,
     `const openRouterUrl = "${approved}"; const send = (openRouterUrl) => fetch(openRouterUrl);`,
     `const openRouterUrl = "${approved}"; function send(openRouterUrl = "${approved}") { fetch(openRouterUrl); }`,
@@ -485,7 +488,7 @@ test('stops exact-origin resolution at every nearer runtime binding', () => {
     'import { openRouterUrl } from "./provider-types"; fetch(openRouterUrl);',
     `const openRouterUrl = "${approved}"; { class openRouterUrl {} fetch(openRouterUrl); }`,
     `const openRouterUrl = "${approved}"; { function openRouterUrl() {} fetch(openRouterUrl); }`,
-  ];
+  ]);
 
   for (const source of shadowedSources) {
     assert.ok(
@@ -494,12 +497,12 @@ test('stops exact-origin resolution at every nearer runtime binding', () => {
     );
   }
 
-  const allowedSources = [
+  const allowedSources = withExplicitGlobalFetch([
     `const openRouterUrl = "${approved}"; fetch(openRouterUrl);`,
     `const openRouterUrl = "${approved}"; { fetch(openRouterUrl); }`,
     `const openRouterUrl = "${approved}"; try { run(); } catch (openRouterUrl) { consume(openRouterUrl); } fetch(openRouterUrl);`,
     `const openRouterUrl = "https://evil.test/api"; { const openRouterUrl = "${approved}"; fetch(openRouterUrl); }`,
-  ];
+  ]);
   for (const source of allowedSources) {
     assert.deepEqual(findForbiddenCapabilities(source, file), [], `provable nearest const must pass: ${source}`);
   }
@@ -515,7 +518,7 @@ test('stops exact-origin resolution at every nearer runtime binding', () => {
 test('models TypeScript runtime value bindings as exact-origin shadow barriers', () => {
   const file = 'extension/src/providers/openrouter-provider.ts';
   const approved = 'https://openrouter.ai/api/v1/chat/completions';
-  const shadowedSources = [
+  const shadowedSources = withExplicitGlobalFetch([
     `const u = "${approved}"; { enum u { Value } void String(u); fetch(u as unknown as string); }`,
     `const u = "${approved}"; { fetch(u as unknown as string); enum u { Value } }`,
     `const u = "${approved}"; function send() { enum u { Value } fetch(u as unknown as string); }`,
@@ -528,7 +531,7 @@ test('models TypeScript runtime value bindings as exact-origin shadow barriers',
     `const u = "${approved}"; { fetch(u as unknown as string); using u = resource; }`,
     `const u = "${approved}"; async function send() { await using u = resource; fetch(u as unknown as string); }`,
     `const u = "${approved}"; async function send() { fetch(u as unknown as string); await using u = resource; }`,
-  ];
+  ]);
 
   for (const source of shadowedSources) {
     assert.ok(
@@ -537,11 +540,11 @@ test('models TypeScript runtime value bindings as exact-origin shadow barriers',
     );
   }
 
-  const exportedRuntimeSources = [
+  const exportedRuntimeSources = withExplicitGlobalFetch([
     'export enum u { Value } fetch(u as unknown as string);',
     'export namespace u { export const value = 1; } fetch(u as unknown as string);',
     'export module u { export const value = 1; } fetch(u as unknown as string);',
-  ];
+  ]);
   for (const source of exportedRuntimeSources) {
     assert.ok(
       findForbiddenCapabilities(source, file).includes('network behavior'),
@@ -553,7 +556,7 @@ test('models TypeScript runtime value bindings as exact-origin shadow barriers',
 test('keeps using declarations lexical and type-only declarations out of runtime resolution', () => {
   const file = 'extension/src/providers/openrouter-provider.ts';
   const approved = 'https://openrouter.ai/api/v1/chat/completions';
-  const allowedSources = [
+  const allowedSources = withExplicitGlobalFetch([
     `function send() { const u = "${approved}"; { using u = resource; consume(u); } fetch(u); }`,
     `async function send() { const u = "${approved}"; { await using u = resource; consume(u); } fetch(u); }`,
     `const u = "${approved}"; { enum shadow { Value } consume(shadow); } fetch(u);`,
@@ -571,7 +574,7 @@ test('keeps using declarations lexical and type-only declarations out of runtime
     `declare const u: string; const u = "${approved}"; fetch(u);`,
     `declare function u(): void; const u = "${approved}"; fetch(u);`,
     `declare class u {} const u = "${approved}"; fetch(u);`,
-  ];
+  ]);
 
   for (const source of allowedSources) {
     assert.deepEqual(
@@ -585,7 +588,7 @@ test('keeps using declarations lexical and type-only declarations out of runtime
 test('scopes runtime namespace import aliases to their enclosing module block', () => {
   const file = 'extension/src/providers/openrouter-provider.ts';
   const approved = 'https://openrouter.ai/api/v1/chat/completions';
-  const shadowedSources = [
+  const shadowedSources = withExplicitGlobalFetch([
     `const u = "${approved}"; namespace inner { import u = value.path; fetch(u as unknown as string); }`,
     `const u = "${approved}"; namespace inner { fetch(u as unknown as string); import u = value.path; }`,
     `const u = "${approved}"; namespace inner { export import u = value.path; fetch(u as unknown as string); }`,
@@ -593,7 +596,7 @@ test('scopes runtime namespace import aliases to their enclosing module block', 
     `const u = "${approved}"; namespace outer { namespace inner { import u = value.path; fetch(u as unknown as string); } }`,
     `const u = "${approved}"; namespace outer.inner { import u = value.path; fetch(u as unknown as string); }`,
     `const u = "${approved}"; namespace inner { import u = value.first; fetch(u as unknown as string); } namespace inner { import u = value.second; consume(u); }`,
-  ];
+  ]);
 
   for (const source of shadowedSources) {
     assert.ok(
@@ -602,13 +605,13 @@ test('scopes runtime namespace import aliases to their enclosing module block', 
     );
   }
 
-  const disjointSources = [
+  const disjointSources = withExplicitGlobalFetch([
     `const u = "${approved}"; namespace inner { import u = value.path; consume(u); } fetch(u);`,
     `const u = "${approved}"; namespace inner { export import u = value.path; consume(u); } fetch(u);`,
     `const u = "${approved}"; namespace inner { import u = require("./provider-types"); consume(u); } fetch(u);`,
     `const u = "${approved}"; namespace outer { namespace inner { import u = value.path; consume(u); } fetch(u); }`,
     `const u = "${approved}"; namespace inner { import u = value.path; consume(u); } namespace inner { const other = 1; } fetch(u);`,
-  ];
+  ]);
 
   for (const source of disjointSources) {
     assert.deepEqual(
@@ -630,7 +633,7 @@ test('scopes runtime namespace import aliases to their enclosing module block', 
 test('erases ambient import bindings without weakening static module gates', () => {
   const file = 'extension/src/providers/openrouter-provider.ts';
   const approved = 'https://openrouter.ai/api/v1/chat/completions';
-  const allowedSources = [
+  const allowedSources = withExplicitGlobalFetch([
     `declare namespace ambientScope { import u = value.path; } const u = "${approved}"; fetch(u);`,
     `declare namespace ambientScope { export import u = value.path; } const u = "${approved}"; fetch(u);`,
     `declare namespace outer { namespace inner { import u = value.path; } } const u = "${approved}"; fetch(u);`,
@@ -639,7 +642,7 @@ test('erases ambient import bindings without weakening static module gates', () 
     `declare module "pkg" { import { value as u } from "./provider-types"; } const u = "${approved}"; fetch(u);`,
     `declare module "pkg" { import * as u from "./provider-types"; } const u = "${approved}"; fetch(u);`,
     `declare module "pkg" { import type { u } from "./provider-types"; } const u = "${approved}"; fetch(u);`,
-  ];
+  ]);
 
   for (const source of allowedSources) {
     assert.deepEqual(
@@ -776,6 +779,134 @@ test('requires Gemini fixed template boundaries and exact model encoding', () =>
       `Gemini transport mutation must fail: ${source}`,
     );
   }
+});
+
+test('requires an unshadowed globalThis binding for every approved provider fetch', () => {
+  const transports = [
+    [
+      'extension/src/providers/openrouter-provider.ts',
+      'const endpoint = "https://openrouter.ai/api/v1/chat/completions";',
+      'globalThis.fetch(endpoint, init);',
+    ],
+    [
+      'extension/src/providers/openai-provider.ts',
+      '',
+      'globalThis.fetch("https://api.openai.com/v1/responses", init);',
+    ],
+    [
+      'extension/src/providers/gemini-provider.ts',
+      '',
+      'globalThis.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`, init);',
+    ],
+  ];
+
+  for (const [file, setup, call] of transports) {
+    const shadowedSources = [
+      `${setup} function send(globalThis) { ${call} }`,
+      `${setup} const send = (globalThis) => { ${call} };`,
+      `${setup} function send(globalThis = window) { ${call} }`,
+      `${setup} function send({ globalThis }) { ${call} }`,
+      `${setup} function send(...globalThis) { ${call} }`,
+      `${setup} { let globalThis = window; ${call} }`,
+      `${setup} { ${call} let globalThis = window; }`,
+      `${setup} { const globalThis = window; ${call} }`,
+      `${setup} function send() { ${call} var globalThis = window; }`,
+      `import { globalThis } from "./provider-types"; ${setup} ${call}`,
+      `${setup} try { run(); } catch (globalThis) { ${call} }`,
+      `${setup} for (const globalThis of globals) { ${call} }`,
+      `${setup} { class globalThis {} ${call} }`,
+      `${setup} { function globalThis() {} ${call} }`,
+      `${setup} { enum globalThis { Value } ${call} }`,
+      `${setup} { ${call} enum globalThis { Value } }`,
+      `${setup} { namespace globalThis { export const fetch = other; } ${call} }`,
+    ];
+    for (const source of shadowedSources) {
+      assert.ok(
+        findForbiddenCapabilities(source, file).includes('network behavior'),
+        `${file} must reject a shadowed globalThis fetch: ${source}`,
+      );
+    }
+  }
+});
+
+test('rejects writes to approved global transport primitives anywhere in provider files', () => {
+  const transports = [
+    [
+      'extension/src/providers/openrouter-provider.ts',
+      'const endpoint = "https://openrouter.ai/api/v1/chat/completions"; globalThis.fetch(endpoint, init);',
+    ],
+    [
+      'extension/src/providers/openai-provider.ts',
+      'globalThis.fetch("https://api.openai.com/v1/responses", init);',
+    ],
+    [
+      'extension/src/providers/gemini-provider.ts',
+      'globalThis.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`, init);',
+    ],
+  ];
+  const fetchMutations = [
+    'globalThis.fetch = replacement;',
+    'globalThis["fetch"] = replacement;',
+    'window.fetch = replacement;',
+    'Reflect.set(globalThis, "fetch", replacement);',
+    'Reflect.defineProperty(globalThis, "fetch", { value: replacement });',
+    'Reflect.deleteProperty(globalThis, "fetch");',
+    'Object.defineProperty(globalThis, "fetch", { value: replacement });',
+    'Object.defineProperties(globalThis, { fetch: { value: replacement } });',
+    'Object.assign(globalThis, { fetch: replacement });',
+    'delete globalThis.fetch;',
+    'globalThis.fetch++;',
+    'const root = globalThis; Reflect.set(root, "fetch", replacement);',
+    'const root = window; root["fetch"] = replacement;',
+    'function mutate() { const root = globalThis; Object.defineProperty(root, "fetch", { value: replacement }); }',
+  ];
+
+  for (const [file, call] of transports) {
+    for (const mutation of fetchMutations) {
+      for (const source of [`${mutation} ${call}`, `${call} ${mutation}`]) {
+        assert.ok(
+          findForbiddenCapabilities(source, file).includes('network behavior'),
+          `${file} must reject fetch primitive mutation: ${source}`,
+        );
+      }
+    }
+  }
+
+  const geminiFile = 'extension/src/providers/gemini-provider.ts';
+  const geminiCall = 'globalThis.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`, init);';
+  const encoderMutations = [
+    'encodeURIComponent = replacement;',
+    'globalThis.encodeURIComponent = replacement;',
+    'globalThis["encodeURIComponent"] = replacement;',
+    'window.encodeURIComponent = replacement;',
+    'Reflect.set(globalThis, "encodeURIComponent", replacement);',
+    'Reflect.defineProperty(globalThis, "encodeURIComponent", { value: replacement });',
+    'Reflect.deleteProperty(globalThis, "encodeURIComponent");',
+    'Object.defineProperty(window, "encodeURIComponent", { value: replacement });',
+    'Object.defineProperties(globalThis, { encodeURIComponent: { value: replacement } });',
+    'Object.assign(window, { encodeURIComponent: replacement });',
+    'delete globalThis.encodeURIComponent;',
+    'globalThis.encodeURIComponent++;',
+    'const root = globalThis; Reflect.set(root, "encodeURIComponent", replacement);',
+    'const root = window; root.encodeURIComponent = replacement;',
+    'function mutate() { const root = globalThis; Object.defineProperty(root, "encodeURIComponent", { value: replacement }); }',
+  ];
+  for (const mutation of encoderMutations) {
+    for (const source of [`${mutation} ${geminiCall}`, `${geminiCall} ${mutation}`]) {
+      assert.ok(
+        findForbiddenCapabilities(source, geminiFile).includes('network behavior'),
+        `Gemini must reject encoder mutation: ${source}`,
+      );
+    }
+  }
+
+  assert.ok(
+    findForbiddenCapabilities(
+      `globalThis = fakeGlobal; ${geminiCall}`,
+      geminiFile,
+    ).includes('network behavior'),
+    'assigning the globalThis binding itself must fail closed',
+  );
 });
 
 test('built manifests resolve their action popup artifacts after build and audit', () => {

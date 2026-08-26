@@ -102,29 +102,128 @@ function parseOpenAiStructuredJson(payload: unknown): unknown {
   return parseJsonText(openAiOutputText(payload), 'openai');
 }
 
+const maxThoughtSignatureLength = 16_384;
+const safeGeminiPayloadKeys = ['candidates', 'createTime', 'modelVersion', 'promptFeedback', 'responseId', 'usageMetadata'];
+const safeGeminiCandidateKeys = ['avgLogprobs', 'content', 'finishReason', 'index', 'safetyRatings'];
+const safeGeminiUsageKeys = [
+  'cacheTokensDetails',
+  'cachedContentTokenCount',
+  'candidatesTokenCount',
+  'candidatesTokensDetails',
+  'promptTokenCount',
+  'promptTokensDetails',
+  'thoughtsTokenCount',
+  'toolUsePromptTokenCount',
+  'toolUsePromptTokensDetails',
+  'totalTokenCount',
+  'trafficType',
+];
+
+function isBoundedBase64(value: unknown): value is string {
+  return typeof value === 'string'
+    && value.length > 0
+    && value.length <= maxThoughtSignatureLength
+    && value.length % 4 === 0
+    && /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value);
+}
+
+function isSafeSafetyRating(value: unknown): value is Record<string, unknown> {
+  if (!isRecord(value)
+    || !hasOnlyKeys(value, ['blocked', 'category', 'probability', 'probabilityScore', 'severity', 'severityScore'])
+    || typeof value.category !== 'string'
+    || typeof value.probability !== 'string') return false;
+  if ('blocked' in value && typeof value.blocked !== 'boolean') return false;
+  if ('severity' in value && typeof value.severity !== 'string') return false;
+  for (const score of [value.probabilityScore, value.severityScore]) {
+    if (score !== undefined && (typeof score !== 'number' || !Number.isFinite(score) || score < 0 || score > 1)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function hasSafeUnblockedRatings(value: unknown): boolean {
+  return Array.isArray(value)
+    && value.every((rating) => isSafeSafetyRating(rating) && rating.blocked !== true);
+}
+
+function isSafePromptFeedback(value: unknown): boolean {
+  if (!isRecord(value)
+    || !hasOnlyKeys(value, ['blockReason', 'blockReasonMessage', 'safetyRatings'])) return false;
+  if ('blockReason' in value && value.blockReason !== null && value.blockReason !== '') return false;
+  if ('blockReasonMessage' in value && typeof value.blockReasonMessage !== 'string') return false;
+  return !('safetyRatings' in value) || hasSafeUnblockedRatings(value.safetyRatings);
+}
+
+function isNonnegativeInteger(value: unknown): boolean {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+function isSafeTokenDetails(value: unknown): boolean {
+  return Array.isArray(value) && value.every((detail) => isRecord(detail)
+    && hasOnlyKeys(detail, ['modality', 'tokenCount'])
+    && typeof detail.modality === 'string'
+    && isNonnegativeInteger(detail.tokenCount));
+}
+
+function isSafeUsageMetadata(value: unknown): boolean {
+  if (!isRecord(value) || !hasOnlyKeys(value, safeGeminiUsageKeys)) return false;
+  const detailKeys = new Set([
+    'cacheTokensDetails',
+    'candidatesTokensDetails',
+    'promptTokensDetails',
+    'toolUsePromptTokensDetails',
+  ]);
+  for (const [key, entry] of Object.entries(value)) {
+    if (detailKeys.has(key)) {
+      if (!isSafeTokenDetails(entry)) return false;
+    } else if (key === 'trafficType') {
+      if (typeof entry !== 'string') return false;
+    } else if (!isNonnegativeInteger(entry)) return false;
+  }
+  return true;
+}
+
 function geminiOutputText(payload: unknown): string {
-  if (!isRecord(payload)) return invalidResponse('gemini');
-  if ('promptFeedback' in payload) {
-    if (!isRecord(payload.promptFeedback)) return invalidResponse('gemini');
-    if (payload.promptFeedback.blockReason !== undefined
-      && payload.promptFeedback.blockReason !== null
-      && payload.promptFeedback.blockReason !== '') return invalidResponse('gemini');
+  if (!isRecord(payload) || !hasOnlyKeys(payload, safeGeminiPayloadKeys)) return invalidResponse('gemini');
+  if ('promptFeedback' in payload && !isSafePromptFeedback(payload.promptFeedback)) return invalidResponse('gemini');
+  if ('usageMetadata' in payload && !isSafeUsageMetadata(payload.usageMetadata)) return invalidResponse('gemini');
+  for (const stringKey of ['createTime', 'modelVersion', 'responseId']) {
+    if (stringKey in payload && typeof payload[stringKey] !== 'string') return invalidResponse('gemini');
   }
   if (!Array.isArray(payload.candidates) || payload.candidates.length !== 1) {
     return invalidResponse('gemini');
   }
   const candidate = payload.candidates[0];
-  if (!isRecord(candidate) || candidate.finishReason !== 'STOP' || !isRecord(candidate.content)) {
+  if (!isRecord(candidate)
+    || !hasOnlyKeys(candidate, safeGeminiCandidateKeys)
+    || candidate.finishReason !== 'STOP'
+    || !isRecord(candidate.content)) {
+    return invalidResponse('gemini');
+  }
+  if ('safetyRatings' in candidate && !hasSafeUnblockedRatings(candidate.safetyRatings)) {
+    return invalidResponse('gemini');
+  }
+  if ('index' in candidate && !isNonnegativeInteger(candidate.index)) return invalidResponse('gemini');
+  if ('avgLogprobs' in candidate
+    && (typeof candidate.avgLogprobs !== 'number' || !Number.isFinite(candidate.avgLogprobs))) {
     return invalidResponse('gemini');
   }
   const content = candidate.content;
-  if (content.role !== 'model' || !Array.isArray(content.parts) || content.parts.length !== 1) {
+  if (!hasOnlyKeys(content, ['parts', 'role'])
+    || content.role !== 'model'
+    || !Array.isArray(content.parts)
+    || content.parts.length !== 1) {
     return invalidResponse('gemini');
   }
   const part = content.parts[0];
   if (!isRecord(part)
-    || !hasOnlyKeys(part, ['text'])
-    || typeof part.text !== 'string') return invalidResponse('gemini');
+    || !hasOnlyKeys(part, ['text', 'thought', 'thoughtSignature'])
+    || typeof part.text !== 'string'
+    || ('thought' in part && part.thought !== false)
+    || ('thoughtSignature' in part && !isBoundedBase64(part.thoughtSignature))) {
+    return invalidResponse('gemini');
+  }
   return part.text;
 }
 

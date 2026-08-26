@@ -381,9 +381,11 @@ function inspectScriptSyntax(source, file) {
     const moduleSpecifiers = new Set();
     const identifiers = new Set();
     const bindingsByScope = new Map();
+    const globalAliasEdges = [];
     const networkCalls = [];
     let networkBehavior = false;
     let networkReferenceOutsideCalls = false;
+    let protectedGlobalMutation = false;
     let dynamicImport = false;
 
     const addModuleSpecifier = (node) => {
@@ -411,6 +413,21 @@ function inspectScriptSyntax(source, file) {
           ? literalText(node.initializer)
           : null;
         for (const name of bindingNames(node.name)) addBinding(scope, name, staticText);
+        if (typeScriptAst.isIdentifier(node.name) && node.initializer) {
+          const initializer = unwrapExpression(node.initializer);
+          if (typeScriptAst.isIdentifier(initializer)) {
+            globalAliasEdges.push([node.name.text, initializer.text]);
+          }
+        }
+      }
+
+      if (typeScriptAst.isBinaryExpression(node)
+        && node.operatorToken.kind === typeScriptAst.SyntaxKind.EqualsToken) {
+        const left = unwrapExpression(node.left);
+        const right = unwrapExpression(node.right);
+        if (typeScriptAst.isIdentifier(left) && typeScriptAst.isIdentifier(right)) {
+          globalAliasEdges.push([left.text, right.text]);
+        }
       }
 
       if (typeScriptAst.isFunctionLikeDeclaration(node)) {
@@ -467,6 +484,17 @@ function inspectScriptSyntax(source, file) {
     };
     collectBindings(sourceFile);
 
+    const globalObjectAliases = new Set(['globalThis', 'window']);
+    for (let changed = true; changed;) {
+      changed = false;
+      for (const [alias, source] of globalAliasEdges) {
+        if (globalObjectAliases.has(source) && !globalObjectAliases.has(alias)) {
+          globalObjectAliases.add(alias);
+          changed = true;
+        }
+      }
+    }
+
     const resolvedStaticText = (node) => {
       const direct = literalText(node);
       if (direct !== null) return direct;
@@ -488,7 +516,86 @@ function inspectScriptSyntax(source, file) {
       return false;
     };
 
+    const protectedPrimitives = new Set(['encodeURIComponent', 'fetch']);
+    const isGlobalObjectReference = (node) => {
+      const target = unwrapExpression(node);
+      return typeScriptAst.isIdentifier(target) && globalObjectAliases.has(target.text);
+    };
+    const mutationProperty = (node) => {
+      const target = unwrapExpression(node);
+      if (typeScriptAst.isPropertyAccessExpression(target)) return target.name.text;
+      if (typeScriptAst.isElementAccessExpression(target)) return literalText(target.argumentExpression);
+      return undefined;
+    };
+    const isProtectedMutationTarget = (node) => {
+      const target = unwrapExpression(node);
+      if (typeScriptAst.isIdentifier(target)) {
+        return target.text === 'globalThis' || protectedPrimitives.has(target.text);
+      }
+      if (!typeScriptAst.isPropertyAccessExpression(target)
+        && !typeScriptAst.isElementAccessExpression(target)) return false;
+      const receiver = unwrapExpression(target.expression);
+      const property = mutationProperty(target);
+      if (typeScriptAst.isIdentifier(receiver) && protectedPrimitives.has(receiver.text)) return true;
+      return isGlobalObjectReference(receiver)
+        && (property === undefined || protectedPrimitives.has(property));
+    };
+    const containsProtectedMutationTarget = (node) => {
+      if (isProtectedMutationTarget(node)) return true;
+      let found = false;
+      node.forEachChild((child) => {
+        if (!found && containsProtectedMutationTarget(child)) found = true;
+      });
+      return found;
+    };
+    const callMember = (expression) => {
+      const target = unwrapExpression(expression);
+      if (!typeScriptAst.isPropertyAccessExpression(target)
+        && !typeScriptAst.isElementAccessExpression(target)) return null;
+      const receiver = unwrapExpression(target.expression);
+      if (!typeScriptAst.isIdentifier(receiver)) return null;
+      return { receiver: receiver.text, method: mutationProperty(target) };
+    };
+    const objectLiteralMayMutateProtected = (node) => {
+      const target = unwrapExpression(node);
+      if (!typeScriptAst.isObjectLiteralExpression(target)) return true;
+      return target.properties.some((property) => {
+        const name = propertyNameText(property.name);
+        return name === null || protectedPrimitives.has(name);
+      });
+    };
+    const callMutatesProtectedGlobal = (node) => {
+      const member = callMember(node.expression);
+      if (member === null) return false;
+      const target = node.arguments[0];
+      if (!target || !isGlobalObjectReference(target)) return false;
+      if (member.receiver === 'Reflect'
+        && ['defineProperty', 'deleteProperty', 'set'].includes(member.method)) {
+        const property = literalText(node.arguments[1]);
+        return property === null || protectedPrimitives.has(property);
+      }
+      if (member.receiver !== 'Object') return false;
+      if (member.method === 'defineProperty') {
+        const property = literalText(node.arguments[1]);
+        return property === null || protectedPrimitives.has(property);
+      }
+      if (member.method === 'defineProperties' || member.method === 'assign') {
+        return node.arguments.slice(1).some(objectLiteralMayMutateProtected);
+      }
+      return false;
+    };
+
     const visit = (node) => {
+      if (typeScriptAst.isBinaryExpression(node)
+        && typeScriptAst.isAssignmentOperator(node.operatorToken.kind)
+        && containsProtectedMutationTarget(node.left)) protectedGlobalMutation = true;
+      if ((typeScriptAst.isPrefixUnaryExpression(node) || typeScriptAst.isPostfixUnaryExpression(node))
+        && (node.operator === typeScriptAst.SyntaxKind.PlusPlusToken
+          || node.operator === typeScriptAst.SyntaxKind.MinusMinusToken)
+        && containsProtectedMutationTarget(node.operand)) protectedGlobalMutation = true;
+      if (typeScriptAst.isDeleteExpression(node)
+        && containsProtectedMutationTarget(node.expression)) protectedGlobalMutation = true;
+
       if (typeScriptAst.isIdentifier(node)) {
         if (!isModuleSyntaxIdentifier(node, sourceFile)) identifiers.add(node.text);
         if (isRuntimeNetworkIdentifier(node, sourceFile)) {
@@ -522,6 +629,7 @@ function inspectScriptSyntax(source, file) {
         && typeScriptAst.isExternalModuleReference(node.moduleReference)) {
         addModuleSpecifier(node.moduleReference.expression);
       } else if (typeScriptAst.isCallExpression(node)) {
+        if (callMutatesProtectedGlobal(node)) protectedGlobalMutation = true;
         if (node.expression.kind === typeScriptAst.SyntaxKind.ImportKeyword) {
           networkBehavior = true;
           dynamicImport = true;
@@ -538,7 +646,9 @@ function inspectScriptSyntax(source, file) {
           networkCalls.push({
             primitive,
             target: resolvedStaticText(node.arguments[0]),
-            directGlobalFetch: primitive === 'fetch' && isDirectGlobalFetch(node.expression),
+            directGlobalFetch: primitive === 'fetch'
+              && isDirectGlobalFetch(node.expression)
+              && !hasRuntimeBinding(node.expression, 'globalThis'),
             exactGeminiEndpoint: primitive === 'fetch'
               && isExactGeminiEndpoint(node.arguments[0])
               && !hasRuntimeBinding(node.arguments[0], 'encodeURIComponent'),
@@ -557,6 +667,7 @@ function inspectScriptSyntax(source, file) {
       networkCalls,
       networkBehavior,
       networkReferenceOutsideCalls,
+      protectedGlobalMutation,
       syntaxDiagnostics,
     };
   } catch {
@@ -592,6 +703,7 @@ export function findForbiddenCapabilities(source, file = '') {
       networkBehavior: false,
       networkCalls: [],
       networkReferenceOutsideCalls: false,
+      protectedGlobalMutation: false,
       syntaxDiagnostics: [],
     };
   const matches = [];
@@ -603,6 +715,8 @@ export function findForbiddenCapabilities(source, file = '') {
     && !syntax.networkReferenceOutsideCalls
     && syntax.networkCalls.length === 1
     && syntax.networkCalls[0].primitive === 'fetch'
+    && syntax.networkCalls[0].directGlobalFetch
+    && !syntax.protectedGlobalMutation
     && syntax.networkCalls[0].target === 'https://openrouter.ai/api/v1/chat/completions';
   const approvedOpenAiNetwork = normalizedFile === approvedOpenAiTransportPath
     && syntax.networkBehavior
@@ -611,6 +725,7 @@ export function findForbiddenCapabilities(source, file = '') {
     && syntax.networkCalls.length === 1
     && syntax.networkCalls[0].primitive === 'fetch'
     && syntax.networkCalls[0].directGlobalFetch
+    && !syntax.protectedGlobalMutation
     && syntax.networkCalls[0].target === 'https://api.openai.com/v1/responses';
   const approvedGeminiNetwork = normalizedFile === approvedGeminiTransportPath
     && syntax.networkBehavior
@@ -619,6 +734,7 @@ export function findForbiddenCapabilities(source, file = '') {
     && syntax.networkCalls.length === 1
     && syntax.networkCalls[0].primitive === 'fetch'
     && syntax.networkCalls[0].directGlobalFetch
+    && !syntax.protectedGlobalMutation
     && syntax.networkCalls[0].exactGeminiEndpoint;
   if (syntax.networkBehavior
     && !approvedOpenRouterNetwork

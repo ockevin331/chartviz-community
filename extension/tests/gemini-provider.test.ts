@@ -38,6 +38,14 @@ const config: ProviderConfig = {
   customModel: true,
 };
 
+const safeRating = {
+  category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
+  probability: 'NEGLIGIBLE',
+  blocked: false,
+};
+
+const validThoughtSignature = 'AQIDBA==';
+
 function request(
   signal = new AbortController().signal,
   image: VisionRequest['image'] = { mediaType: 'image/png', dataUrl: 'data:image/png;base64,AAAA' },
@@ -116,6 +124,143 @@ describe('Gemini generateContent analyze', () => {
     });
     expect(String(url)).not.toContain(config.apiKey);
     expect(JSON.stringify(body)).not.toContain(config.apiKey);
+  });
+
+  it('accepts bounded official thought and safety metadata around one final text part', async () => {
+    const fetchImpl = vi.fn(async () => envelopeResponse({
+      candidates: [{
+        content: {
+          role: 'model',
+          parts: [{ text: JSON.stringify(validReport), thoughtSignature: validThoughtSignature, thought: false }],
+        },
+        finishReason: 'STOP',
+        index: 0,
+        avgLogprobs: -0.125,
+        safetyRatings: [safeRating],
+      }],
+      promptFeedback: { safetyRatings: [safeRating] },
+      usageMetadata: {
+        promptTokenCount: 10,
+        candidatesTokenCount: 20,
+        totalTokenCount: 30,
+        thoughtsTokenCount: 4,
+      },
+      modelVersion: 'gemini-3.7-flash',
+      responseId: 'response-safe-id',
+      createTime: '2026-08-26T00:00:00Z',
+    }));
+    const provider = providerWithFetch(fetchImpl);
+
+    await expect(provider.analyze(config, request())).resolves.toEqual(validReport);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['non-string signature', 123],
+    ['empty signature', ''],
+    ['invalid Base64 signature', 'not_base64'],
+    ['oversized signature', 'A'.repeat(16_388)],
+  ])('rejects %s thoughtSignature', async (_name, thoughtSignature) => {
+    const fetchImpl = vi.fn(async () => envelopeResponse({
+      candidates: [{
+        content: { role: 'model', parts: [{ text: JSON.stringify(validReport), thoughtSignature }] },
+        finishReason: 'STOP',
+      }],
+    }));
+    const provider = providerWithFetch(fetchImpl);
+
+    await expect(provider.analyze(config, request())).rejects.toMatchObject({ code: 'invalid_response' });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects thought content and unknown part metadata even with valid final text', async () => {
+    for (const metadata of [
+      { thought: true },
+      { unknownMetadata: 'unsafe' },
+    ]) {
+      const fetchImpl = vi.fn(async () => envelopeResponse({
+        candidates: [{
+          content: { role: 'model', parts: [{ text: JSON.stringify(validReport), ...metadata }] },
+          finishReason: 'STOP',
+        }],
+      }));
+      const provider = providerWithFetch(fetchImpl);
+
+      await expect(provider.analyze(config, request())).rejects.toMatchObject({ code: 'invalid_response' });
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it.each([
+    ['prompt safety blocked', {
+      ...responseEnvelope(JSON.stringify(validReport)),
+      promptFeedback: { safetyRatings: [{ ...safeRating, blocked: true }] },
+    }],
+    ['candidate safety blocked', {
+      candidates: [{
+        ...(responseEnvelope(JSON.stringify(validReport)).candidates[0]),
+        safetyRatings: [{ ...safeRating, blocked: true }],
+      }],
+    }],
+    ['malformed safety rating', {
+      ...responseEnvelope(JSON.stringify(validReport)),
+      promptFeedback: { safetyRatings: [{ ...safeRating, blocked: 'false' }] },
+    }],
+    ['payload execution metadata', {
+      ...responseEnvelope(JSON.stringify(validReport)), functionCall: { name: 'tool' },
+    }],
+    ['candidate execution metadata', {
+      candidates: [{ ...(responseEnvelope(JSON.stringify(validReport)).candidates[0]), toolResponse: {} }],
+    }],
+    ['content execution metadata', {
+      candidates: [{
+        ...responseEnvelope(JSON.stringify(validReport)).candidates[0],
+        content: {
+          ...responseEnvelope(JSON.stringify(validReport)).candidates[0].content,
+          functionResponse: { name: 'tool' },
+        },
+      }],
+    }],
+    ['unknown payload metadata', {
+      ...responseEnvelope(JSON.stringify(validReport)), unknownMetadata: {},
+    }],
+    ['unknown candidate metadata', {
+      candidates: [{ ...(responseEnvelope(JSON.stringify(validReport)).candidates[0]), unknownMetadata: {} }],
+    }],
+    ['unknown content metadata', {
+      candidates: [{
+        ...responseEnvelope(JSON.stringify(validReport)).candidates[0],
+        content: { ...responseEnvelope(JSON.stringify(validReport)).candidates[0].content, unknownMetadata: {} },
+      }],
+    }],
+  ])('rejects %s around an otherwise valid STOP response', async (_name, envelope) => {
+    const fetchImpl = vi.fn(async () => envelopeResponse(envelope));
+    const provider = providerWithFetch(fetchImpl);
+
+    await expect(provider.analyze(config, request())).rejects.toMatchObject({ code: 'invalid_response' });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    'functionCall',
+    'functionResponse',
+    'toolCall',
+    'toolResponse',
+    'executableCode',
+    'codeExecutionResult',
+    'fileData',
+    'inlineData',
+  ])('rejects executable or non-text part key %s', async (key) => {
+    const fetchImpl = vi.fn(async () => envelopeResponse({
+      candidates: [{
+        content: { role: 'model', parts: [{ text: JSON.stringify(validReport), [key]: {} }] },
+        finishReason: 'STOP',
+      }],
+    }));
+    const provider = providerWithFetch(fetchImpl);
+
+    await expect(provider.analyze(config, request())).rejects.toMatchObject({ code: 'invalid_response' });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it('encodes the complete trimmed custom model as one path segment without allowing a custom origin or query', async () => {
@@ -343,6 +488,22 @@ describe('Gemini connection test card', () => {
       },
       candidateCount: 1,
     });
+  });
+
+  it('accepts a valid thoughtSignature on the one final connection text part', async () => {
+    const fetchImpl = vi.fn(async () => envelopeResponse({
+      candidates: [{
+        content: {
+          role: 'model',
+          parts: [{ text: '{"seenImage":true}', thoughtSignature: validThoughtSignature }],
+        },
+        finishReason: 'STOP',
+      }],
+    }));
+    const provider = providerWithFetch(fetchImpl);
+
+    await expect(provider.testConnection(config, new AbortController().signal)).resolves.toBeUndefined();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it.each([
