@@ -3,27 +3,39 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../entrypoints/panel/App';
+import type { ChartContext } from '../src/domain/chart-context';
 import type { VisionProvider } from '../src/providers/provider-types';
 import { annotatedImages, communityReport, processedImage } from './community-ui-fixtures';
 
 afterEach(cleanup);
 
+const chartContext: ChartContext = {
+  site: 'tradingview', pageType: 'advanced-chart',
+  url: 'https://www.tradingview.com/chart/3c8vMvO3/?symbol=BITSTAMP%3ABTCUSD',
+  symbol: 'BTCUSD', exchange: 'BITSTAMP', timeframe: '15m',
+  chart: { id: 'Chart #1', bounds: { x: 10, y: 60, width: 1100, height: 650 } },
+  viewport: { width: 1280, height: 800, devicePixelRatio: 2 },
+};
+
+const inspect = async () => chartContext;
+const capture = async () => ({ image: processedImage, context: chartContext });
+
 describe('direct Community panel workflow', () => {
-  it('runs configured source → preview → analyzing → completed with one request and no internal detail', async () => {
+  it('runs detected chart → capture → analyzing → completed with one request and no internal detail', async () => {
     const user = userEvent.setup();
     const analyze = vi.fn(async () => communityReport);
     const provider: VisionProvider = { kind: 'openrouter', validateConfig: () => ({ ok: true }), testConnection: async () => undefined, analyze };
     render(<App dependencies={{
       loadConfig: async () => ({ provider: 'openrouter', apiKey: 'key', model: 'google/gemini-3.7-flash', customModel: false }),
-      readUpload: async () => processedImage,
+      inspect,
+      capture,
       getProvider: () => provider,
       buildAnnotations: async () => annotatedImages,
     }} />);
-    await screen.findByRole('heading', { name: 'Choose chart image' });
-    const input = screen.getByLabelText('Upload one chart image');
-    await user.upload(input, new File(['chart'], 'chart.png', { type: 'image/png' }));
-    await screen.findByRole('img', { name: 'Chart ready for analysis' });
-    await user.click(screen.getByRole('button', { name: 'Analyze screenshot' }));
+    await screen.findByRole('heading', { name: 'Detected chart' });
+    expect(await screen.findByText('BTCUSD')).toBeTruthy();
+    expect(document.querySelector('input[type="file"]')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Capture and analyze' }));
     await screen.findByText('Reading chart');
     await screen.findByText('Higher lows remain visible.');
     expect(analyze).toHaveBeenCalledTimes(1);
@@ -53,16 +65,17 @@ describe('direct Community panel workflow', () => {
     const provider: VisionProvider = { kind: 'openrouter', validateConfig: () => ({ ok: true }), testConnection: async () => undefined, analyze };
     render(<App dependencies={{
       loadConfig: async () => ({ provider: 'openrouter', apiKey: 'key', model: 'openai/gpt-5.6-terra', customModel: false }),
-      readUpload: async () => processedImage,
+      inspect: vi.fn(inspect),
+      capture,
       getProvider: () => provider,
     }} />);
-    await screen.findByRole('heading', { name: 'Choose chart image' });
-    await user.upload(screen.getByLabelText('Upload one chart image'), new File(['chart'], 'chart.png', { type: 'image/png' }));
-    await screen.findByRole('img', { name: 'Chart ready for analysis' });
+    await screen.findByRole('heading', { name: 'Detected chart' });
+    await screen.findByText('BTCUSD');
 
     await user.click(screen.getByRole('button', { name: 'Refresh' }));
 
-    expect(await screen.findByRole('heading', { name: 'Choose chart image' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Detected chart' })).toBeTruthy();
+    await screen.findByText('BTCUSD');
     expect(analyze).not.toHaveBeenCalled();
   });
 
@@ -74,12 +87,12 @@ describe('direct Community panel workflow', () => {
     };
     render(<App dependencies={{
       loadConfig: async () => ({ provider: 'openrouter', apiKey: 'key', model: 'google/gemini-3.7-flash', customModel: false }),
-      readUpload: async () => processedImage,
+      inspect,
+      capture,
       getProvider: () => provider,
     }} />);
-    await screen.findByRole('heading', { name: 'Choose chart image' });
-    await user.upload(screen.getByLabelText('Upload one chart image'), new File(['chart'], 'chart.png', { type: 'image/png' }));
-    await user.click(await screen.findByRole('button', { name: 'Analyze screenshot' }));
+    await screen.findByRole('heading', { name: 'Detected chart' });
+    await user.click(await screen.findByRole('button', { name: 'Capture and analyze' }));
 
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain('The provider returned an invalid report.');

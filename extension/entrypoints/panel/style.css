@@ -78,14 +78,19 @@ button, input { font: inherit; }
 .setup-success { margin: 0; padding: 9px 10px; border: 1px solid rgb(65 191 125 / 24%); border-radius: 8px; color: #91dfb5; background: rgb(32 117 73 / 10%); font-size: 10px; }
 .provider-actions, .preview-actions { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; }
 .capture-source h2 { margin-bottom: 8px; }
-.muted { color: #777f8d; }
-.mode-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.mode-switch button { display: grid; gap: 3px; min-height: 64px; padding: 9px; border: 1px solid #303641; border-radius: 9px; color: #b8beca; background: #1d2028; text-align: left; cursor: pointer; }
-.mode-switch button:hover { border-color: #6978f5; color: #eef0ff; background: #252b49; }
-.mode-switch button:disabled { opacity: .48; }
-.mode-switch b { font-size: 12px; }
-.mode-switch span { color: #858d9b; font-size: 10px; }
-.file-input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.chart-capture-source { display: grid; gap: 12px; }
+.chart-capture-source .section-heading p { margin: 5px 0 0; color: #8f96a3; font-size: 10px; }
+.chart-waiting { margin: 0; color: #a8b0be; }
+.chart-context { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin: 0; }
+.chart-context div { min-width: 0; padding: 9px; border: 1px solid #2c323e; border-radius: 9px; background: #12161d; }
+.chart-context dt { margin-bottom: 4px; color: #7f8897; font-size: 9px; text-transform: uppercase; }
+.chart-context dd { overflow: hidden; margin: 0; color: #eef1f6; font-size: 11px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.chart-guidance { padding: 11px; border: 1px solid rgb(230 174 84 / 28%); border-radius: 9px; color: #dfc18c; background: rgb(158 110 34 / 9%); }
+.chart-guidance strong { color: #f0d39e; font-size: 12px; }
+.chart-guidance p { margin: 5px 0 0; font-size: 10px; }
+.supported-site-links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.supported-site-links a { padding: 4px 7px; border: 1px solid rgb(65 191 125 / 24%); border-radius: 999px; color: #9cdeb9; background: rgb(32 117 73 / 10%); font-size: 9px; text-decoration: none; }
+.refresh-detection { width: 100%; }
 .annotated-image { display: grid; }
 .preview-stage { position: relative; overflow: hidden; width: 100%; padding: 0; border: 0; border-radius: 8px; background: #0d0f14; }
 .preview-stage.zoomable { cursor: zoom-in; }
