@@ -2,6 +2,8 @@ export function mountFloatingPanel(panelUrl: string): void {
   const panelId = 'chartviz-community-panel';
   const existing = document.getElementById(panelId);
   if (existing) {
+    const cleanup = (existing as HTMLElement & { __chartvizCleanup?: () => void }).__chartvizCleanup;
+    cleanup?.();
     existing.remove();
   }
 
@@ -52,16 +54,31 @@ export function mountFloatingPanel(panelUrl: string): void {
 
   const panelOrigin = new URL(panelUrl).origin;
   let automaticRestoreTimer: number | undefined;
-  const onVisibilityMessage = (event: MessageEvent) => {
+  const onPanelMessage = (event: MessageEvent) => {
     if (
       event.source !== iframe.contentWindow
       || event.origin !== panelOrigin
-      || event.data?.type !== 'chartviz-panel-visibility'
-      || typeof event.data.visible !== 'boolean'
-      || !Number.isInteger(event.data.requestId)
     ) {
       return;
     }
+
+    if (event.data?.source === 'chartviz' && event.data.type === 'panel-close') {
+      unmount();
+      return;
+    }
+    if (event.data?.source === 'chartviz' && event.data.type === 'panel-drag') {
+      if (!Number.isFinite(event.data.dx) || !Number.isFinite(event.data.dy)) return;
+      const rect = host.getBoundingClientRect();
+      const left = Math.min(Math.max(8, rect.left + event.data.dx), window.innerWidth - rect.width - 8);
+      const top = Math.min(Math.max(8, rect.top + event.data.dy), window.innerHeight - rect.height - 8);
+      Object.assign(host.style, { left: `${left}px`, top: `${top}px`, right: 'auto' });
+      return;
+    }
+    if (
+      event.data?.type !== 'chartviz-panel-visibility'
+      || typeof event.data.visible !== 'boolean'
+      || !Number.isInteger(event.data.requestId)
+    ) return;
 
     host.style.visibility = event.data.visible ? 'visible' : 'hidden';
     if (automaticRestoreTimer !== undefined) {
@@ -84,11 +101,12 @@ export function mountFloatingPanel(panelUrl: string): void {
     if (automaticRestoreTimer !== undefined) {
       window.clearTimeout(automaticRestoreTimer);
     }
-    window.removeEventListener('message', onVisibilityMessage);
+    window.removeEventListener('message', onPanelMessage);
     host.remove();
   };
+  (host as HTMLDivElement & { __chartvizCleanup?: () => void }).__chartvizCleanup = unmount;
   close.addEventListener('click', unmount);
-  window.addEventListener('message', onVisibilityMessage);
+  window.addEventListener('message', onPanelMessage);
   host.append(iframe, close);
   document.documentElement.append(host);
 }

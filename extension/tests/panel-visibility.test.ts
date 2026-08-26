@@ -152,4 +152,48 @@ describe('panel visibility lifecycle', () => {
 
     expect(host?.style.visibility).toBe('visible');
   });
+
+  it('remounting removes the previous panel visibility listener', () => {
+    const elements = new Map<string, FakeElement>();
+    const messageListeners = new Set<EventListener>();
+
+    class FakeElement {
+      id = '';
+      style: Record<string, string> = {};
+      children: FakeElement[] = [];
+      contentWindow: { postMessage: ReturnType<typeof vi.fn> } | null = null;
+      src = '';
+      title = '';
+      type = '';
+      textContent = '';
+
+      constructor(readonly tagName: string) {
+        if (tagName === 'iframe') this.contentWindow = { postMessage: vi.fn() };
+      }
+
+      append(...children: FakeElement[]) { this.children.push(...children); }
+      addEventListener() {}
+      remove() { if (this.id) elements.delete(this.id); }
+      setAttribute() {}
+    }
+
+    const root = new FakeElement('html');
+    root.append = (...children: FakeElement[]) => children.forEach((child) => elements.set(child.id, child));
+    vi.stubGlobal('document', {
+      createElement: (tagName: string) => new FakeElement(tagName),
+      documentElement: root,
+      getElementById: (id: string) => elements.get(id) ?? null,
+    });
+    vi.stubGlobal('window', {
+      addEventListener: (type: string, listener: EventListener) => { if (type === 'message') messageListeners.add(listener); },
+      clearTimeout,
+      removeEventListener: (type: string, listener: EventListener) => { if (type === 'message') messageListeners.delete(listener); },
+      setTimeout,
+    });
+
+    mountFloatingPanel('chrome-extension://fixture/panel.html');
+    mountFloatingPanel('chrome-extension://fixture/panel.html');
+
+    expect(messageListeners.size).toBe(1);
+  });
 });
