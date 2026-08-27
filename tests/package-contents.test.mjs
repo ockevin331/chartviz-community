@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -50,7 +50,7 @@ function expectedManifest() {
     host_permissions: [...expectedProviderOrigins, ...expectedChartHosts],
     action: { default_icon: expectedIcons },
     web_accessible_resources: [{
-      resources: ['panel.html'],
+      resources: ['panel.html', 'chunks/*', 'assets/*'],
       matches: ['http://*/*', 'https://*/*'],
       use_dynamic_url: true,
     }],
@@ -158,7 +158,7 @@ function assertManifestContract(browser) {
   assert.deepEqual(manifest.action, { default_icon: expectedIcons });
   assert.deepEqual(manifest.icons, expectedIcons);
   assert.deepEqual(manifest.web_accessible_resources, [{
-    resources: ['panel.html'],
+    resources: ['panel.html', 'chunks/*', 'assets/*'],
     matches: ['http://*/*', 'https://*/*'],
     use_dynamic_url: true,
   }]);
@@ -168,12 +168,24 @@ function assertManifestContract(browser) {
     ...manifest.content_scripts.flatMap((entry) => entry.js),
     ...Object.values(manifest.action.default_icon),
     ...Object.values(manifest.icons),
-    ...manifest.web_accessible_resources.flatMap((entry) => entry.resources),
+    ...manifest.web_accessible_resources
+      .flatMap((entry) => entry.resources)
+      .filter((entry) => !entry.endsWith('/*')),
   ];
   for (const entry of referencedFiles) {
     assert.doesNotThrow(
       () => readFileSync(path.join(artifactRoot, entry)),
       `${browser} is missing referenced extension file ${entry}`,
+    );
+  }
+  for (const resource of manifest.web_accessible_resources
+    .flatMap((entry) => entry.resources)
+    .filter((entry) => entry.endsWith('/*'))) {
+    const directory = resource.slice(0, -2);
+    assert.equal(
+      readdirSync(path.join(artifactRoot, directory)).length > 0,
+      true,
+      `${browser} is missing packaged files for ${resource}`,
     );
   }
   return manifest;

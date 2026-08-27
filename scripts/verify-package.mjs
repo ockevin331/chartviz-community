@@ -243,6 +243,21 @@ function assertReferencedFile(entries, entry, label) {
   assert.equal(entries.has(entry), true, `${label} is missing referenced extension file ${entry}`);
 }
 
+function assertReferencedResource(entries, resource, label) {
+  if (!resource.endsWith('/*')) {
+    assertReferencedFile(entries, resource, label);
+    return;
+  }
+
+  const directory = resource.slice(0, -1);
+  validateEntryName(directory, { directory: true });
+  assert.equal(
+    [...entries.keys()].some((entry) => entry.startsWith(directory)),
+    true,
+    `${label} has no packaged files for web-accessible resource ${resource}`,
+  );
+}
+
 function verifyManifest(entries, label) {
   const manifestEntry = entries.get('manifest.json');
   assert.ok(manifestEntry, `${label} is missing manifest.json`);
@@ -273,7 +288,7 @@ function verifyManifest(entries, label) {
   assert.deepEqual(manifest.action, { default_icon: expectedIcons }, `${label} has an unexpected action`);
   assert.deepEqual(manifest.icons, expectedIcons, `${label} has unexpected extension icons`);
   assert.deepEqual(manifest.web_accessible_resources, [{
-    resources: ['panel.html'],
+    resources: ['panel.html', 'chunks/*', 'assets/*'],
     matches: ['http://*/*', 'https://*/*'],
     use_dynamic_url: true,
   }], `${label} has unexpected web-accessible origins or resources`);
@@ -282,7 +297,7 @@ function verifyManifest(entries, label) {
   for (const entry of Object.values(manifest.action.default_icon)) assertReferencedFile(entries, entry, label);
   for (const entry of Object.values(manifest.icons)) assertReferencedFile(entries, entry, label);
   for (const resource of manifest.web_accessible_resources.flatMap((entry) => entry.resources)) {
-    assertReferencedFile(entries, resource, label);
+    assertReferencedResource(entries, resource, label);
   }
   assertReferencedFile(entries, manifest.background.service_worker, label);
   for (const script of manifest.content_scripts.flatMap((entry) => entry.js)) {
