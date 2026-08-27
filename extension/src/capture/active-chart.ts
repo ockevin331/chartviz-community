@@ -1,6 +1,7 @@
 import { browser } from 'wxt/browser';
 import type { ChartContext } from '../domain/chart-context';
 import type { CaptureResponse, ChartContextResponse } from '../domain/chart-messages';
+import type { SupportedCaptureTimeframe } from '../domain/chart-messages';
 import type { ChartAvailabilityFailure } from '../sites/supported-sites';
 import type { ProcessedImage } from './image-types';
 import { processImage } from './process-image';
@@ -13,10 +14,17 @@ export type CapturedChart = {
 export type ActiveChartClient = {
   inspect(): Promise<ChartContext>;
   capture(signal: AbortSignal): Promise<CapturedChart>;
+  captureMany(
+    timeframes: readonly SupportedCaptureTimeframe[],
+    signal: AbortSignal,
+  ): Promise<readonly CapturedChart[]>;
 };
 
 type ActiveChartDependencies = {
-  sendMessage(message: { type: 'chartviz/active-chart/inspect' | 'chartviz/active-chart/capture' }): Promise<unknown>;
+  sendMessage(message: {
+    type: 'chartviz/active-chart/inspect' | 'chartviz/active-chart/capture';
+    timeframes?: SupportedCaptureTimeframe[];
+  }): Promise<unknown>;
   dataUrlToBlob(dataUrl: string): Blob;
   processImage(blob: Blob): Promise<ProcessedImage>;
 };
@@ -85,6 +93,33 @@ function assertCaptureResponse(response: unknown): Extract<CaptureResponse, { ok
   throw responseError(response, 'Unable to capture the active chart.');
 }
 
+function assertMultiCaptureResponse(
+  response: unknown,
+  expected: readonly SupportedCaptureTimeframe[],
+): NonNullable<Extract<CaptureResponse, { ok: true }>['captures']> {
+  const captured = assertCaptureResponse(response);
+  if (!Array.isArray(captured.captures) || captured.captures.length !== expected.length) {
+    throw new Error('ChartViz did not receive a complete ordered capture set.');
+  }
+  for (let index = 0; index < expected.length; index += 1) {
+    const item = captured.captures[index];
+    if (!item
+      || item.timeframe !== expected[index]
+      || !isChartContext(item.context)
+      || item.context.timeframe?.toLowerCase() !== expected[index]
+      || !/^data:image\/(?:png|jpeg);base64,/i.test(item.previewDataUrl)) {
+      throw new Error('ChartViz did not receive a complete ordered capture set.');
+    }
+  }
+  return captured.captures;
+}
+
+function validateRequestedTimeframes(values: readonly SupportedCaptureTimeframe[]): void {
+  if (values.length < 1 || values.length > 3 || new Set(values).size !== values.length) {
+    throw new Error('Choose between one and three distinct timeframes.');
+  }
+}
+
 function browserDataUrlToBlob(dataUrl: string): Blob {
   const match = /^data:(image\/(?:png|jpeg));base64,(.+)$/i.exec(dataUrl);
   if (!match) throw new Error('The captured chart image is invalid.');
@@ -115,6 +150,26 @@ export function createActiveChartClient(overrides: Partial<ActiveChartDependenci
       const image = await dependencies.processImage(blob);
       signal.throwIfAborted();
       return { image, context: captured.context };
+    },
+    async captureMany(timeframes, signal) {
+      signal.throwIfAborted();
+      validateRequestedTimeframes(timeframes);
+      const response = await dependencies.sendMessage({
+        type: 'chartviz/active-chart/capture',
+        timeframes: [...timeframes],
+      });
+      signal.throwIfAborted();
+      const captureSet = assertMultiCaptureResponse(response, timeframes);
+      const results: CapturedChart[] = [];
+      for (const captured of captureSet) {
+        signal.throwIfAborted();
+        const blob = dependencies.dataUrlToBlob(captured.previewDataUrl);
+        signal.throwIfAborted();
+        const image = await dependencies.processImage(blob);
+        signal.throwIfAborted();
+        results.push({ image, context: captured.context });
+      }
+      return results;
     },
   };
 }

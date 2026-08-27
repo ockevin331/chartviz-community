@@ -17,6 +17,7 @@ export type { ProgressMessage } from '../../analysis/runtime/analysis-runtime';
 export type AnalysisState = {
   status: 'setup' | 'source' | 'preview' | 'analyzing' | 'completed' | 'failed' | 'cancelled';
   image: ProcessedImage | null;
+  captures: readonly AnalysisCapture[];
   report: CommunityReportV3 | null;
   annotations: AnnotatedReportImages | null;
   errorCode: AnalysisRuntimeErrorCode | 'unknown' | null;
@@ -27,6 +28,7 @@ export type AnalysisState = {
 const INITIAL_STATE: AnalysisState = {
   status: 'setup',
   image: null,
+  captures: [],
   report: null,
   annotations: null,
   errorCode: null,
@@ -44,6 +46,7 @@ export function useAnalysisController() {
   const runtimeRef = useRef<AnalysisRuntime | null>(null);
   const activeRuntimeRef = useRef<AnalysisRuntime | null>(null);
   const imageRef = useRef<ProcessedImage | null>(null);
+  const capturesRef = useRef<readonly AnalysisCapture[]>([]);
   const generationRef = useRef(0);
 
   const invalidateOperation = useCallback(() => {
@@ -62,6 +65,7 @@ export function useAnalysisController() {
     }
     runtimeRef.current = runtime;
     imageRef.current = null;
+    capturesRef.current = [];
     setState({ ...INITIAL_STATE, status: 'source' });
   }, [invalidateOperation]);
 
@@ -72,6 +76,7 @@ export function useAnalysisController() {
   const selectImage = useCallback((image: ProcessedImage) => {
     invalidateOperation();
     imageRef.current = image;
+    capturesRef.current = [];
     setState({
       ...INITIAL_STATE,
       status: 'preview',
@@ -79,9 +84,26 @@ export function useAnalysisController() {
     });
   }, [invalidateOperation]);
 
+  const selectCaptures = useCallback((captures: readonly AnalysisCapture[]) => {
+    if (captures.length < 1 || captures.length > 3) {
+      throw new RangeError('Analysis requires between one and three captures.');
+    }
+    invalidateOperation();
+    const stored = [...captures];
+    capturesRef.current = stored;
+    imageRef.current = stored[0]!.image;
+    setState({
+      ...INITIAL_STATE,
+      status: 'preview',
+      image: stored[0]!.image,
+      captures: stored,
+    });
+  }, [invalidateOperation]);
+
   const chooseAnotherImage = useCallback(() => {
     invalidateOperation();
     imageRef.current = null;
+    capturesRef.current = [];
     setState({
       ...INITIAL_STATE,
       status: runtimeRef.current ? 'source' : 'setup',
@@ -91,6 +113,7 @@ export function useAnalysisController() {
   const refresh = useCallback(() => {
     invalidateOperation();
     imageRef.current = null;
+    capturesRef.current = [];
     setState({
       ...INITIAL_STATE,
       status: runtimeRef.current ? 'source' : 'setup',
@@ -121,8 +144,11 @@ export function useAnalysisController() {
     }));
 
     try {
+      const captures = capturesRef.current.length
+        ? capturesRef.current
+        : [{ image, context: pageContext }];
       const outcome = await runtime.analyze({
-        captures: [{ image, context: pageContext }],
+        captures,
         outputLanguage,
         onProgress(message) {
           if (generationRef.current !== operationGeneration) return;
@@ -139,6 +165,7 @@ export function useAnalysisController() {
       setState({
         status: 'completed',
         image,
+        captures,
         report: outcome.report,
         annotations: outcome.annotations,
         errorCode: null,
@@ -217,6 +244,7 @@ export function useAnalysisController() {
     configure,
     updateRuntime,
     selectImage,
+    selectCaptures,
     chooseAnotherImage,
     refresh,
     analyze,

@@ -101,6 +101,52 @@ describe('active chart client', () => {
     await expect(client.capture(controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
     expect(processImage).not.toHaveBeenCalled();
   });
+
+  it('converts all labeled multi-timeframe captures in response order', async () => {
+    const frames = ['4h', '1h', '15m'] as const;
+    const processImage = vi.fn(async (blob: Blob) => ({
+      ...processed,
+      dataUrl: `data:image/jpeg;base64,${btoa(await blob.text())}`,
+    }));
+    const client = createActiveChartClient({
+      sendMessage: async () => ({
+        ok: true,
+        context: { ...context, timeframe: '4h' },
+        previewDataUrl: 'data:image/png;base64,NGg=',
+        captures: frames.map((timeframe) => ({
+          timeframe,
+          context: { ...context, timeframe },
+          previewDataUrl: `data:image/png;base64,${btoa(timeframe)}`,
+        })),
+      }),
+      dataUrlToBlob: (dataUrl) => new Blob([atob(dataUrl.split(',')[1]!)], { type: 'image/png' }),
+      processImage,
+    });
+
+    const captures = await client.captureMany(frames, new AbortController().signal);
+
+    expect(captures.map((capture) => capture.context.timeframe)).toEqual(frames);
+    expect(captures.map((capture) => atob(capture.image.dataUrl.split(',')[1]!))).toEqual(frames);
+    expect(processImage).toHaveBeenCalledTimes(3);
+  });
+
+  it('rejects incomplete multi-capture responses before processing images', async () => {
+    const processImage = vi.fn(async () => processed);
+    const client = createActiveChartClient({
+      sendMessage: async () => ({
+        ok: true,
+        context,
+        previewDataUrl: 'data:image/png;base64,MTVt',
+        captures: [{ timeframe: '4h', context: { ...context, timeframe: '4h' }, previewDataUrl: 'data:image/png;base64,NGg=' }],
+      }),
+      dataUrlToBlob: () => new Blob(),
+      processImage,
+    });
+
+    await expect(client.captureMany(['4h', '1h', '15m'], new AbortController().signal))
+      .rejects.toThrow('complete ordered capture set');
+    expect(processImage).not.toHaveBeenCalled();
+  });
 });
 
 function backgroundFixture(initialTimeframe = '5m') {

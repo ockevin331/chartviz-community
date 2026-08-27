@@ -50,6 +50,36 @@ function setup(runtime: AnalysisRuntime = fakeRuntime()) {
 }
 
 describe('useAnalysisController runtime boundary', () => {
+  it('submits a stored three-chart capture set unchanged to a capable runtime', async () => {
+    const directRuntime = fakeRuntime();
+    const runtime = {
+      ...directRuntime,
+      mode: 'cloud' as const,
+      capabilities: () => ({ multiTimeframe: true, maxTimeframes: 3 as const }),
+    };
+    const captures = (['4h', '1h', '15m'] as const).map((timeframe, index) => ({
+      image: { ...processedImage, dataUrl: `${processedImage.dataUrl}-${index}` },
+      context: { instrument: 'BTC/USDT', timeframe },
+    }));
+    const hook = renderHook(() => useAnalysisController());
+
+    act(() => {
+      hook.result.current.configure(runtime);
+      hook.result.current.selectCaptures(captures);
+    });
+    await act(async () => hook.result.current.analyze(
+      { instrument: 'ignored', timeframe: 'ignored' },
+      'en',
+    ));
+
+    expect(runtime.analyze).toHaveBeenCalledWith(expect.objectContaining({
+      captures,
+      outputLanguage: 'en',
+    }));
+    expect(hook.result.current.state.image).toEqual(captures[0]!.image);
+    expect(hook.result.current.state.captures).toEqual(captures);
+  });
+
   it('submits one capture to the runtime and exposes only concise progress', async () => {
     const runtime = fakeRuntime(async (input) => {
       input.onProgress?.('reading_chart');
@@ -143,6 +173,7 @@ describe('useAnalysisController runtime boundary', () => {
     expect(result.current.state).toMatchObject({
       status: 'source',
       image: null,
+      captures: [],
       report: null,
       annotations: null,
     });
@@ -270,6 +301,7 @@ describe('useAnalysisController runtime boundary', () => {
     expect(result.current.state).toEqual({
       status: 'source',
       image: null,
+      captures: [],
       report: null,
       annotations: null,
       progress: [],
