@@ -1,11 +1,11 @@
 import { useState } from 'react';
+import type { AnalysisRuntimeErrorCode } from '../../analysis/runtime/analysis-runtime';
 import type { AnalysisDiagnostic } from '../../providers/provider-diagnostics';
-import type { AnalysisErrorCode } from '../../providers/provider-errors';
 import { translations, type Language } from './LanguageMenu';
 
 type Props = {
   language: Language;
-  errorCode?: AnalysisErrorCode | 'unknown' | null;
+  errorCode?: AnalysisRuntimeErrorCode | 'unknown' | null;
   cancelled?: boolean;
   diagnostic?: AnalysisDiagnostic | null;
   onBack(): void;

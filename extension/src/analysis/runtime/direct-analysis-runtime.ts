@@ -1,0 +1,147 @@
+import { buildAnnotations as buildReportAnnotations } from '../../annotations/build-annotations';
+import type { AnnotatedReportImages } from '../../annotations/annotation-types';
+import type { ProcessedImage } from '../../capture/image-types';
+import {
+  attachProviderFailureDetail,
+  createAnalysisDiagnostic,
+} from '../../providers/provider-diagnostics';
+import { ProviderError } from '../../providers/provider-errors';
+import { providerRegistry } from '../../providers/provider-registry';
+import type {
+  ProviderConfig,
+  ProviderKind,
+  StructuredVisionProvider,
+} from '../../providers/provider-types';
+import {
+  runThreeStageAnalysis,
+  type ThreeStageAnalysisInput,
+} from '../stages/analysis-pipeline';
+import type { CommunityReportV3 } from '../stages/community-report-v3';
+import {
+  AnalysisRuntimeFailure,
+  type AnalysisRuntime,
+  type AnalysisRuntimeInput,
+  type AnalysisRuntimeOutcome,
+} from './analysis-runtime';
+
+export type DirectAnalysisRuntimeDependencies = Readonly<{
+  getProvider(kind: ProviderKind): StructuredVisionProvider;
+  runAnalysis(input: ThreeStageAnalysisInput): Promise<CommunityReportV3>;
+  buildAnnotations(
+    image: ProcessedImage,
+    report: CommunityReportV3,
+  ): Promise<AnnotatedReportImages>;
+  createRequestId(): string;
+  now(): number;
+}>;
+
+function createRequestId(): string {
+  const randomUuid = globalThis.crypto?.randomUUID;
+  return typeof randomUuid === 'function'
+    ? randomUuid.call(globalThis.crypto)
+    : `cv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+const defaultDependencies: DirectAnalysisRuntimeDependencies = {
+  getProvider: (kind) => providerRegistry.get(kind),
+  runAnalysis: runThreeStageAnalysis,
+  buildAnnotations: buildReportAnnotations,
+  createRequestId,
+  now: () => Date.now(),
+};
+
+const directCapabilities = Object.freeze({
+  multiTimeframe: false,
+  maxTimeframes: 1,
+} as const);
+
+export class DirectAnalysisRuntime implements AnalysisRuntime {
+  readonly mode = 'direct' as const;
+  private readonly config: ProviderConfig;
+  private readonly dependencies: DirectAnalysisRuntimeDependencies;
+  private activeController: AbortController | null = null;
+
+  constructor(
+    config: ProviderConfig,
+    dependencies: Partial<DirectAnalysisRuntimeDependencies> = {},
+  ) {
+    this.config = config;
+    this.dependencies = { ...defaultDependencies, ...dependencies };
+  }
+
+  capabilities(): typeof directCapabilities {
+    return directCapabilities;
+  }
+
+  async analyze(input: AnalysisRuntimeInput): Promise<AnalysisRuntimeOutcome> {
+    if (input.captures.length !== 1) {
+      throw new AnalysisRuntimeFailure('multi_timeframe_requires_cloud');
+    }
+
+    const capture = input.captures[0]!;
+    const controller = new AbortController();
+    const startedAt = this.dependencies.now();
+    const requestId = this.dependencies.createRequestId();
+    this.activeController = controller;
+
+    try {
+      const provider = this.dependencies.getProvider(this.config.provider);
+      const report = await this.dependencies.runAnalysis({
+        config: this.config,
+        provider,
+        image: {
+          mediaType: capture.image.mediaType,
+          dataUrl: capture.image.dataUrl,
+        },
+        context: {
+          ...capture.context,
+          site: null,
+          exchange: null,
+        },
+        outputLanguage: input.outputLanguage,
+        signal: controller.signal,
+        onProgress: input.onProgress,
+      });
+
+      let annotations: AnnotatedReportImages;
+      try {
+        annotations = await this.dependencies.buildAnnotations(capture.image, report);
+      } catch {
+        throw attachProviderFailureDetail(
+          new ProviderError('invalid_image', {
+            params: { provider: this.config.provider },
+          }),
+          { stage: 'annotation_rendering', issues: [] },
+        );
+      }
+      return { report, annotations };
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new AnalysisRuntimeFailure('cancelled');
+      }
+      if (error instanceof ProviderError) {
+        if (error.code === 'cancelled') {
+          throw new AnalysisRuntimeFailure('cancelled');
+        }
+        throw new AnalysisRuntimeFailure(
+          error.code,
+          createAnalysisDiagnostic({
+            error,
+            provider: this.config.provider,
+            model: this.config.model,
+            requestId,
+            startedAt,
+            finishedAt: this.dependencies.now(),
+          }),
+        );
+      }
+      throw new AnalysisRuntimeFailure('unknown');
+    } finally {
+      if (this.activeController === controller) this.activeController = null;
+    }
+  }
+
+  cancel(): void {
+    this.activeController?.abort(new DOMException('Cancelled', 'AbortError'));
+  }
+}

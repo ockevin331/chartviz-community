@@ -21,6 +21,19 @@ const diagnostic: AnalysisDiagnostic = {
 };
 
 describe('AnalysisError diagnostics', () => {
+  it.each([
+    ['en', 'Multi-timeframe analysis is available through ChartViz Cloud.'],
+    ['zh-CN', '多周期分析由 ChartViz Cloud 提供，直连模型暂不支持。'],
+  ] as const)('localizes the Direct multi-timeframe boundary in %s', (language, message) => {
+    render(<AnalysisError
+      language={language}
+      errorCode="multi_timeframe_requires_cloud"
+      onBack={() => undefined}
+    />);
+
+    expect(screen.getByRole('alert')).toHaveProperty('textContent', message);
+  });
+
   it('shows only the three concise public progress messages', () => {
     render(<AnalysisProgress
       language="en"
