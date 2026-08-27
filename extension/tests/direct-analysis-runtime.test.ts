@@ -56,7 +56,7 @@ describe('DirectAnalysisRuntime', () => {
   it('runs the unchanged pipeline and annotations once for one capture', async () => {
     const progress = vi.fn();
     const runAnalysis = vi.fn(async (input: any) => {
-      input.onProgress?.('organizing_evidence');
+      input.onProgress?.('reviewing_clues');
       return communityReport;
     });
     const { runtime, getProvider, buildAnnotations } = setup({ runAnalysis });
@@ -90,7 +90,7 @@ describe('DirectAnalysisRuntime', () => {
     expect(buildAnnotations).toHaveBeenCalledTimes(1);
     expect(buildAnnotations).toHaveBeenCalledWith(processedImage, communityReport);
     expect(outcome).toEqual({ report: communityReport, annotations: annotatedImages });
-    expect(progress).toHaveBeenCalledWith('organizing_evidence');
+    expect(progress).toHaveBeenCalledWith('reviewing_clues');
   });
 
   it('rejects multiple captures before resolving or calling a provider', async () => {

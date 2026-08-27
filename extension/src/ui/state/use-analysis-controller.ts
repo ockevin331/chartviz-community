@@ -37,7 +37,10 @@ const INITIAL_STATE: AnalysisState = {
 };
 
 const REQUIRED_COMPLETION_PROGRESS: ProgressMessage[] = [
-  'organizing_evidence',
+  'preparing',
+  'reading_chart',
+  'reviewing_clues',
+  'checking_signals',
   'preparing_result',
 ];
 
@@ -131,7 +134,7 @@ export function useAnalysisController() {
     const operationGeneration = generationRef.current + 1;
     generationRef.current = operationGeneration;
     activeRuntimeRef.current = runtime;
-    let currentProgress: ProgressMessage[] = ['reading_chart'];
+    let currentProgress: ProgressMessage[] = ['preparing'];
 
     setState((current) => ({
       ...current,

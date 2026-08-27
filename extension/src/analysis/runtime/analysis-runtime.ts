@@ -6,7 +6,12 @@ import type { CommunityReportV3 } from '../stages/community-report-v3';
 import type { OutputLanguage, StagePageContext } from '../stages/shared-stage-types';
 import type { AnalysisMode } from '../analysis-mode';
 
-export type ProgressMessage = 'reading_chart' | 'organizing_evidence' | 'preparing_result';
+export type ProgressMessage =
+  | 'preparing'
+  | 'reading_chart'
+  | 'reviewing_clues'
+  | 'checking_signals'
+  | 'preparing_result';
 
 export type AnalysisCapabilities = Readonly<{
   multiTimeframe: boolean;

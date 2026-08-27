@@ -118,7 +118,13 @@ describe('three-stage analysis pipeline', () => {
     expect(provider.calls[1]?.userPrompt).not.toMatch(/Output language|Simplified Chinese/);
     expect(provider.calls[2]?.userPrompt).toContain('Output language: English.');
     expect(new Set(provider.calls.map(({ signal }) => signal)).size).toBe(1);
-    expect(progress).toEqual(['reading_chart', 'organizing_evidence', 'preparing_result']);
+    expect(progress).toEqual([
+      'preparing',
+      'reading_chart',
+      'reviewing_clues',
+      'checking_signals',
+      'preparing_result',
+    ]);
     expect(report.schemaVersion).toBe('community-3.0');
     expect(report.tradeSignals[0]?.stopLoss.yRatio).toBeCloseTo(0.42, 6);
     expect(report.tradeSignals[0]?.riskReward).toBe('1:2');

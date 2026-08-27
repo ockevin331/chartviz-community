@@ -19,7 +19,12 @@ import type { OutputLanguage, StagePageContext } from './shared-stage-types';
 import { communityVisualFactsJsonSchema, parseCommunityVisualFacts } from './visual-facts';
 import { buildVisualExtractionPrompt } from './visual-extraction-prompt';
 
-export type AnalysisPipelineProgress = 'reading_chart' | 'organizing_evidence' | 'preparing_result';
+export type AnalysisPipelineProgress =
+  | 'preparing'
+  | 'reading_chart'
+  | 'reviewing_clues'
+  | 'checking_signals'
+  | 'preparing_result';
 
 export type ThreeStageAnalysisInput = {
   config: ProviderConfig;
@@ -80,6 +85,7 @@ function semanticError(
 
 export async function runThreeStageAnalysis(input: ThreeStageAnalysisInput): Promise<CommunityReportV3> {
   assertActive(input);
+  input.onProgress?.('preparing');
   input.onProgress?.('reading_chart');
   const visualPrompt = buildVisualExtractionPrompt(input.context);
   let visualRaw;
@@ -101,7 +107,7 @@ export async function runThreeStageAnalysis(input: ThreeStageAnalysisInput): Pro
   catch (error) { return semanticError(error, input, 'visual_extraction_semantics'); }
 
   assertActive(input);
-  input.onProgress?.('organizing_evidence');
+  input.onProgress?.('reviewing_clues');
   const signalPrompt = buildSignalExtractionPrompt({ context: input.context, facts: visualFacts });
   let signalRaw;
   try {
@@ -123,7 +129,7 @@ export async function runThreeStageAnalysis(input: ThreeStageAnalysisInput): Pro
 
   const evidence = mergeCommunityEvidence(visualFacts, signalFacts);
   assertActive(input);
-  input.onProgress?.('preparing_result');
+  input.onProgress?.('checking_signals');
   const reasoningPrompt = buildEvidenceReasoningPrompt({
     context: input.context, evidence, outputLanguage: input.outputLanguage,
   });
@@ -140,6 +146,10 @@ export async function runThreeStageAnalysis(input: ThreeStageAnalysisInput): Pro
   } catch (error) {
     return classifiedError(error, input, 'evidence_reasoning_transport', 'report_shape', 'report_semantics');
   }
-  try { return validateCommunityReportV3Semantics(reportRaw, evidence, input.outputLanguage); }
+  try {
+    const report = validateCommunityReportV3Semantics(reportRaw, evidence, input.outputLanguage);
+    input.onProgress?.('preparing_result');
+    return report;
+  }
   catch (error) { return semanticError(error, input, 'report_semantics'); }
 }

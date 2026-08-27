@@ -33,8 +33,10 @@ function runtimeWith(analyze: AnalysisRuntime['analyze']): AnalysisRuntime {
 describe('V3 analysis controller integration', () => {
   it('passes the selected language and one capture through the runtime while exposing public progress only', async () => {
     const analyze = vi.fn(async (input: AnalysisRuntimeInput) => {
+      input.onProgress?.('preparing');
       input.onProgress?.('reading_chart');
-      input.onProgress?.('organizing_evidence');
+      input.onProgress?.('reviewing_clues');
+      input.onProgress?.('checking_signals');
       input.onProgress?.('preparing_result');
       return {
         report: parseCommunityReportV3(structuredClone(validReportV3)),
@@ -55,7 +57,9 @@ describe('V3 analysis controller integration', () => {
     expect(result.current.state.status).toBe('completed');
     expect(result.current.state.report?.schemaVersion).toBe('community-3.0');
     expect(result.current.state.report?.conclusion.direction).toBe('sideways');
-    expect(result.current.state.progress).toEqual(['reading_chart', 'organizing_evidence', 'preparing_result']);
+    expect(result.current.state.progress).toEqual([
+      'preparing', 'reading_chart', 'reviewing_clues', 'checking_signals', 'preparing_result',
+    ]);
   });
 
   it('retains an exact safe runtime stage without adding secrets to the diagnostic', async () => {

@@ -34,16 +34,15 @@ describe('AnalysisError diagnostics', () => {
     expect(screen.getByRole('alert')).toHaveProperty('textContent', message);
   });
 
-  it('shows only the three concise public progress messages', () => {
+  it('shows only concise public progress messages', () => {
     render(<AnalysisProgress
       language="en"
-      progress={['reading_chart', 'organizing_evidence']}
+      progress={['preparing', 'reading_chart']}
       onCancel={() => undefined}
     />);
 
-    expect(screen.getByText('Reading chart')).toBeTruthy();
-    expect(screen.getByText('Reviewing evidence')).toBeTruthy();
-    expect(screen.getByText('Preparing result')).toBeTruthy();
+    expect(screen.getByText('Preparing the analysis…')).toBeTruthy();
+    expect(screen.getByText('Reading the chart…')).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/visual extraction|signal extraction|evidence reasoning|schema/i);
   });
 

@@ -82,8 +82,10 @@ describe('useAnalysisController runtime boundary', () => {
 
   it('submits one capture to the runtime and exposes only concise progress', async () => {
     const runtime = fakeRuntime(async (input) => {
+      input.onProgress?.('preparing');
       input.onProgress?.('reading_chart');
-      input.onProgress?.('organizing_evidence');
+      input.onProgress?.('reviewing_clues');
+      input.onProgress?.('checking_signals');
       input.onProgress?.('preparing_result');
       return outcome;
     });
@@ -107,7 +109,7 @@ describe('useAnalysisController runtime boundary', () => {
       status: 'completed',
       report: communityReport,
       annotations: annotatedImages,
-      progress: ['reading_chart', 'organizing_evidence', 'preparing_result'],
+      progress: ['preparing', 'reading_chart', 'reviewing_clues', 'checking_signals', 'preparing_result'],
     });
   });
 
@@ -128,7 +130,7 @@ describe('useAnalysisController runtime boundary', () => {
       );
     });
     expect(hook.result.current.state.status).toBe('analyzing');
-    expect(hook.result.current.state.progress).toEqual(['reading_chart']);
+    expect(hook.result.current.state.progress).toEqual(['preparing']);
 
     pending.resolve(outcome);
     await act(async () => analysis);
