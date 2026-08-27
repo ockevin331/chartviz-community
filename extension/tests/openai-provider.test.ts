@@ -3,33 +3,13 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { communityJsonSchema } from '../src/analysis/community-json-schema';
+import { parseCommunityReport, type CommunityReport } from '../src/analysis/community-report';
 import { ProviderError, type AnalysisErrorCode } from '../src/providers/provider-errors';
 import { OpenAiProvider } from '../src/providers/openai-provider';
-import type { ProviderConfig, VisionRequest } from '../src/providers/provider-types';
+import type { ProviderConfig, StructuredGenerationRequest, VisionRequest } from '../src/providers/provider-types';
+import { communityReport } from './community-ui-fixtures';
 
-const validReport = {
-  schemaVersion: 'community-1.0',
-  chart: { instrument: 'BTC/USDT', timeframe: '15m', limitations: [] },
-  marketView: {
-    bias: 'unclear', phase: 'unclear', strength: 'unclear', summary: 'The visible chart is mixed.', evidenceIds: [],
-  },
-  evidence: [],
-  volume: null,
-  indicators: [],
-  levels: [],
-  scenarios: {
-    long: {
-      condition: 'Wait for visible resistance to break.', entry: 'Enter only after confirmation.', stop: 'Below visible support.', targets: [], reason: 'Confirmation is not visible yet.', evidenceIds: [],
-    },
-    short: {
-      condition: 'Wait for visible support to fail.', entry: 'Enter only after confirmation.', stop: 'Above visible resistance.', targets: [], reason: 'Breakdown confirmation is not visible yet.', evidenceIds: [],
-    },
-    wait: { condition: 'Wait while structure remains mixed.', reason: 'The screenshot is inconclusive.', evidenceIds: [] },
-  },
-  patterns: [],
-  signals: [],
-  riskNotice: 'Educational screenshot analysis only.',
-};
+const validReport = communityReport;
 
 const config: ProviderConfig = {
   provider: 'openai',
@@ -38,11 +18,14 @@ const config: ProviderConfig = {
   customModel: true,
 };
 
-function request(signal = new AbortController().signal): VisionRequest {
+function request(signal = new AbortController().signal): StructuredGenerationRequest<CommunityReport> {
   return {
     image: { mediaType: 'image/png', dataUrl: 'data:image/png;base64,AAAA' },
-    prompt: { system: 'Screenshot-only system prompt.', user: 'Analyze this screenshot.' },
+    systemPrompt: 'Screenshot-only system prompt.',
+    userPrompt: 'Analyze this screenshot.',
+    schemaName: 'community_report',
     jsonSchema: communityJsonSchema,
+    parse: parseCommunityReport,
     signal,
   };
 }
@@ -95,7 +78,7 @@ describe('OpenAI Responses analyze', () => {
     ));
     const provider = providerWithFetch(fetchImpl);
 
-    await expect(provider.analyze(config, request())).resolves.toEqual(validReport);
+    await expect(provider.generateStructured(config, request())).resolves.toEqual(validReport);
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0]!;
@@ -140,7 +123,7 @@ describe('OpenAI Responses analyze', () => {
     const fetchImpl = vi.fn(async () => ({ ok: false, status, json }) as unknown as Response);
     const provider = providerWithFetch(fetchImpl);
 
-    await expect(provider.analyze(config, request())).rejects.toMatchObject({
+    await expect(provider.generateStructured(config, request())).rejects.toMatchObject({
       code, httpStatus: status, params: { provider: 'openai' },
     });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -151,10 +134,10 @@ describe('OpenAI Responses analyze', () => {
     const fetchImpl = vi.fn();
     const provider = providerWithFetch(fetchImpl);
 
-    await expect(provider.analyze({ ...config, apiKey: ' ' }, request())).rejects.toMatchObject({
+    await expect(provider.generateStructured({ ...config, apiKey: ' ' }, request())).rejects.toMatchObject({
       code: 'invalid_config', params: { field: 'apiKey' },
     });
-    await expect(provider.analyze({ ...config, provider: 'gemini' }, request())).rejects.toMatchObject({
+    await expect(provider.generateStructured({ ...config, provider: 'gemini' }, request())).rejects.toMatchObject({
       code: 'invalid_config', params: { field: 'model' },
     });
     expect(fetchImpl).not.toHaveBeenCalled();
@@ -169,7 +152,7 @@ describe('OpenAI Responses analyze', () => {
     const fetchImpl = vi.fn();
     const provider = providerWithFetch(fetchImpl);
 
-    await expect(provider.analyze(config, { ...request(), image })).rejects.toMatchObject({
+    await expect(provider.generateStructured(config, { ...request(), image })).rejects.toMatchObject({
       code: 'invalid_image', params: { provider: 'openai' },
     });
     expect(fetchImpl).not.toHaveBeenCalled();
@@ -181,7 +164,7 @@ describe('OpenAI Responses analyze', () => {
       init?.signal?.addEventListener('abort', () => reject(new DOMException('abort secret', 'AbortError')));
     }));
     const abortProvider = providerWithFetch(abortFetch);
-    const abortOperation = abortProvider.analyze(config, request(controller.signal));
+    const abortOperation = abortProvider.generateStructured(config, request(controller.signal));
     controller.abort();
     await expect(abortOperation).rejects.toMatchObject({ code: 'cancelled' });
     expect(abortFetch).toHaveBeenCalledTimes(1);
@@ -191,7 +174,7 @@ describe('OpenAI Responses analyze', () => {
       init?.signal?.addEventListener('abort', () => reject(new DOMException('timeout secret', 'AbortError')));
     }));
     const timeoutProvider = providerWithFetch(timeoutFetch, 25);
-    const timeoutOperation = timeoutProvider.analyze(config, request());
+    const timeoutOperation = timeoutProvider.generateStructured(config, request());
     const timeoutAssertion = expect(timeoutOperation).rejects.toMatchObject({ code: 'network_timeout' });
     await vi.advanceTimersByTimeAsync(25);
     await timeoutAssertion;
@@ -200,7 +183,7 @@ describe('OpenAI Responses analyze', () => {
 
     const networkFetch = vi.fn(async () => { throw new TypeError('network secret'); });
     const networkProvider = providerWithFetch(networkFetch);
-    await expect(networkProvider.analyze(config, request())).rejects.toMatchObject({ code: 'network_timeout' });
+    await expect(networkProvider.generateStructured(config, request())).rejects.toMatchObject({ code: 'network_timeout' });
     expect(networkFetch).toHaveBeenCalledTimes(1);
   });
 
@@ -211,7 +194,7 @@ describe('OpenAI Responses analyze', () => {
     }));
     const abortFetch = vi.fn(async () => ({ ok: true, status: 200, json: abortJson }) as unknown as Response);
     const abortProvider = providerWithFetch(abortFetch);
-    const abortOperation = abortProvider.analyze(config, request(controller.signal));
+    const abortOperation = abortProvider.generateStructured(config, request(controller.signal));
     await vi.waitFor(() => expect(abortJson).toHaveBeenCalledTimes(1));
     controller.abort();
     await expect(abortOperation).rejects.toMatchObject({ code: 'cancelled' });
@@ -227,7 +210,7 @@ describe('OpenAI Responses analyze', () => {
       return { ok: true, status: 200, json: timeoutJson } as unknown as Response;
     });
     const timeoutProvider = providerWithFetch(timeoutFetch, 25);
-    const timeoutOperation = timeoutProvider.analyze(config, request());
+    const timeoutOperation = timeoutProvider.generateStructured(config, request());
     const timeoutAssertion = expect(timeoutOperation).rejects.toMatchObject({ code: 'network_timeout' });
     await vi.advanceTimersByTimeAsync(25);
     await timeoutAssertion;
@@ -286,7 +269,7 @@ describe('OpenAI Responses analyze', () => {
     const fetchImpl = vi.fn(async () => response());
     const provider = providerWithFetch(fetchImpl);
 
-    await expect(provider.analyze(config, request())).rejects.toMatchObject({ code: 'invalid_response' });
+    await expect(provider.generateStructured(config, request())).rejects.toMatchObject({ code: 'invalid_response' });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
@@ -300,7 +283,7 @@ describe('OpenAI Responses analyze', () => {
     let caught: unknown;
 
     try {
-      await provider.analyze({ ...config, apiKey: secret }, request());
+      await provider.generateStructured({ ...config, apiKey: secret }, request());
     } catch (error) {
       caught = error;
     }

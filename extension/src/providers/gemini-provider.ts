@@ -1,10 +1,9 @@
 import testCardDataUrl from '../../assets/provider-test-card.png?inline';
-import { communityJsonSchema } from '../analysis/community-json-schema';
-import type { CommunityReport } from '../analysis/community-report';
 import { getModelsForProvider } from './model-catalog';
 import { ProviderError, type AnalysisErrorCode } from './provider-errors';
-import { normalizeProviderConfig, type ProviderConfig, type ValidationResult, type VisionProvider, type VisionRequest } from './provider-types';
-import { assertGeminiConnectionResponse, parseGeminiCommunityResponse } from './response-parser';
+import { normalizeProviderConfig, type ProviderConfig, type StructuredGenerationRequest, type StructuredVisionProvider, type ValidationResult, type VisionRequest } from './provider-types';
+import { assertGeminiConnectionResponse, extractGeminiStructuredValue } from './response-parser';
+import { parseStructuredResponse } from './structured-response';
 
 const defaultTimeoutMs = 45_000;
 
@@ -47,7 +46,7 @@ function parseInlineImage(image: VisionRequest['image']): InlineImage {
   return { mimeType: image.mediaType, data: encoded };
 }
 
-export class GeminiProvider implements VisionProvider {
+export class GeminiProvider implements StructuredVisionProvider {
   readonly kind = 'gemini' as const;
   private readonly timeoutMs: number;
 
@@ -66,16 +65,17 @@ export class GeminiProvider implements VisionProvider {
     return { ok: true };
   }
 
-  async analyze(config: ProviderConfig, request: VisionRequest): Promise<CommunityReport> {
+  async generateStructured<T>(config: ProviderConfig, request: StructuredGenerationRequest<T>): Promise<T> {
     const body = this.buildBody(
       config,
-      request.prompt.system,
-      request.prompt.user,
-      parseInlineImage(request.image),
-      communityJsonSchema,
+      request.systemPrompt,
+      request.userPrompt,
+      request.image ? parseInlineImage(request.image) : undefined,
+      request.jsonSchema,
     );
     const normalizedConfig = { ...config, model: config.model.trim() };
-    return parseGeminiCommunityResponse(await this.send(normalizedConfig, request.signal, body));
+    const payload = await this.send(normalizedConfig, request.signal, body);
+    return parseStructuredResponse(this.kind, extractGeminiStructuredValue(payload), request.parse);
   }
 
   async testConnection(config: ProviderConfig, signal: AbortSignal): Promise<void> {
@@ -94,21 +94,20 @@ export class GeminiProvider implements VisionProvider {
     config: ProviderConfig,
     systemPrompt: string,
     userPrompt: string,
-    image: InlineImage,
+    image: InlineImage | undefined,
     schema: Record<string, unknown>,
   ): Record<string, unknown> {
     const validation = this.validateConfig(config);
     if (!validation.ok) {
       throw new ProviderError('invalid_config', { params: { field: validation.field } });
     }
+    const parts: Array<Record<string, unknown>> = [{ text: userPrompt }];
+    if (image !== undefined) parts.push({ inlineData: image });
     return {
       systemInstruction: { parts: [{ text: systemPrompt }] },
       contents: [{
         role: 'user',
-        parts: [
-          { text: userPrompt },
-          { inlineData: image },
-        ],
+        parts,
       }],
       generationConfig: {
         responseMimeType: 'application/json',

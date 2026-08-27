@@ -3,33 +3,13 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { communityJsonSchema } from '../src/analysis/community-json-schema';
+import { parseCommunityReport, type CommunityReport } from '../src/analysis/community-report';
 import { ProviderError, type AnalysisErrorCode } from '../src/providers/provider-errors';
 import { OpenRouterProvider } from '../src/providers/openrouter-provider';
-import type { ProviderConfig, VisionRequest } from '../src/providers/provider-types';
+import type { ProviderConfig, StructuredGenerationRequest } from '../src/providers/provider-types';
+import { communityReport } from './community-ui-fixtures';
 
-const validReport = {
-  schemaVersion: 'community-1.0',
-  chart: { instrument: 'BTC/USDT', timeframe: '15m', limitations: [] },
-  marketView: {
-    bias: 'unclear', phase: 'unclear', strength: 'unclear', summary: 'The visible chart is mixed.', evidenceIds: [],
-  },
-  evidence: [],
-  volume: null,
-  indicators: [],
-  levels: [],
-  scenarios: {
-    long: {
-      condition: 'Wait for visible resistance to break.', entry: 'Enter only after confirmation.', stop: 'Below visible support.', targets: [], reason: 'Confirmation is not visible yet.', evidenceIds: [],
-    },
-    short: {
-      condition: 'Wait for visible support to fail.', entry: 'Enter only after confirmation.', stop: 'Above visible resistance.', targets: [], reason: 'Breakdown confirmation is not visible yet.', evidenceIds: [],
-    },
-    wait: { condition: 'Wait while structure remains mixed.', reason: 'The screenshot is inconclusive.', evidenceIds: [] },
-  },
-  patterns: [],
-  signals: [],
-  riskNotice: 'Educational screenshot analysis only.',
-};
+const validReport = communityReport;
 
 const config: ProviderConfig = {
   provider: 'openrouter',
@@ -38,11 +18,14 @@ const config: ProviderConfig = {
   customModel: true,
 };
 
-function request(signal = new AbortController().signal): VisionRequest {
+function request(signal = new AbortController().signal): StructuredGenerationRequest<CommunityReport> {
   return {
     image: { mediaType: 'image/png', dataUrl: 'data:image/png;base64,AAAA' },
-    prompt: { system: 'Screenshot-only system prompt.', user: 'Analyze this screenshot.' },
+    systemPrompt: 'Screenshot-only system prompt.',
+    userPrompt: 'Analyze this screenshot.',
+    schemaName: 'community_report',
     jsonSchema: communityJsonSchema,
+    parse: parseCommunityReport,
     signal,
   };
 }
@@ -84,7 +67,7 @@ describe('OpenRouter analyze', () => {
     ));
     const provider = providerWithFetch(fetchImpl);
 
-    await expect(provider.analyze(config, request())).resolves.toEqual(validReport);
+    await expect(provider.generateStructured(config, request())).resolves.toEqual(validReport);
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0]!;
@@ -129,7 +112,7 @@ describe('OpenRouter analyze', () => {
     const fetchImpl = vi.fn(async () => ({ ok: false, status, json }) as unknown as Response);
     const provider = providerWithFetch(fetchImpl);
 
-    const operation = provider.analyze(config, request());
+    const operation = provider.generateStructured(config, request());
 
     await expect(operation).rejects.toMatchObject({ code, httpStatus: status, params: { provider: 'openrouter' } });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -140,7 +123,7 @@ describe('OpenRouter analyze', () => {
     const fetchImpl = vi.fn();
     const provider = providerWithFetch(fetchImpl);
 
-    await expect(provider.analyze({ ...config, apiKey: ' ' }, request())).rejects.toMatchObject({
+    await expect(provider.generateStructured({ ...config, apiKey: ' ' }, request())).rejects.toMatchObject({
       code: 'invalid_config', params: { field: 'apiKey' },
     });
     expect(fetchImpl).not.toHaveBeenCalled();
@@ -152,7 +135,7 @@ describe('OpenRouter analyze', () => {
     }));
     const controller = new AbortController();
     const provider = providerWithFetch(fetchImpl);
-    const operation = provider.analyze(config, request(controller.signal));
+    const operation = provider.generateStructured(config, request(controller.signal));
 
     controller.abort();
 
@@ -170,7 +153,7 @@ describe('OpenRouter analyze', () => {
     const fetchImpl = vi.fn(async () => envelopeResponse({ choices: [{ message }] }));
     const provider = providerWithFetch(fetchImpl);
 
-    await expect(provider.analyze(config, request())).rejects.toMatchObject({ code: 'invalid_response' });
+    await expect(provider.generateStructured(config, request())).rejects.toMatchObject({ code: 'invalid_response' });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
@@ -186,7 +169,7 @@ describe('OpenRouter analyze', () => {
     let caught: unknown;
 
     try {
-      await provider.analyze(config, request());
+      await provider.generateStructured(config, request());
     } catch (error) {
       caught = error;
     }
@@ -203,7 +186,7 @@ describe('OpenRouter analyze', () => {
     }));
     const fetchImpl = vi.fn(async () => ({ ok: true, status: 200, json }) as unknown as Response);
     const provider = providerWithFetch(fetchImpl);
-    const operation = provider.analyze(config, request(controller.signal));
+    const operation = provider.generateStructured(config, request(controller.signal));
 
     await vi.waitFor(() => expect(json).toHaveBeenCalledTimes(1));
     controller.abort();
@@ -218,7 +201,7 @@ describe('OpenRouter analyze', () => {
       init?.signal?.addEventListener('abort', () => reject(new DOMException('timeout detail', 'AbortError')));
     }));
     const provider = providerWithFetch(timeoutFetch, 25);
-    const timedOperation = provider.analyze(config, request());
+    const timedOperation = provider.generateStructured(config, request());
     const timeoutAssertion = expect(timedOperation).rejects.toMatchObject({ code: 'network_timeout' });
 
     await vi.advanceTimersByTimeAsync(25);
@@ -228,7 +211,7 @@ describe('OpenRouter analyze', () => {
 
     const networkFetch = vi.fn(async () => { throw new TypeError('upstream secret detail'); });
     const networkProvider = providerWithFetch(networkFetch);
-    await expect(networkProvider.analyze(config, request())).rejects.toMatchObject({ code: 'network_timeout' });
+    await expect(networkProvider.generateStructured(config, request())).rejects.toMatchObject({ code: 'network_timeout' });
     expect(networkFetch).toHaveBeenCalledTimes(1);
   });
 
@@ -242,7 +225,7 @@ describe('OpenRouter analyze', () => {
     const fetchImpl = vi.fn(async () => response());
     const provider = providerWithFetch(fetchImpl);
 
-    await expect(provider.analyze(config, request())).rejects.toMatchObject({ code: 'invalid_response' });
+    await expect(provider.generateStructured(config, request())).rejects.toMatchObject({ code: 'invalid_response' });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
@@ -258,7 +241,7 @@ describe('OpenRouter analyze', () => {
     let caught: unknown;
 
     try {
-      await provider.analyze({ ...config, apiKey: secret }, request());
+      await provider.generateStructured({ ...config, apiKey: secret }, request());
     } catch (error) {
       caught = error;
     }

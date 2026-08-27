@@ -10,9 +10,24 @@ export type ProviderConfig = {
   customModel: boolean;
 };
 
+export type SupportedImageMediaType = 'image/png' | 'image/jpeg' | 'image/webp';
+
+export type StructuredGenerationRequest<T> = {
+  systemPrompt: string;
+  userPrompt: string;
+  image?: {
+    mediaType: SupportedImageMediaType;
+    dataUrl: string;
+  };
+  schemaName: string;
+  jsonSchema: Record<string, unknown>;
+  parse(value: unknown): T;
+  signal: AbortSignal;
+};
+
 export type VisionRequest = {
   image: {
-    mediaType: 'image/png' | 'image/jpeg' | 'image/webp';
+    mediaType: SupportedImageMediaType;
     dataUrl: string;
   };
   prompt: ProviderPrompt;
@@ -24,10 +39,18 @@ export type ValidationResult =
   | { ok: true }
   | { ok: false; field: 'apiKey' | 'model'; code: 'invalid_config' };
 
-export interface VisionProvider {
+interface ProviderTransport {
   readonly kind: ProviderKind;
   validateConfig(config: ProviderConfig): ValidationResult;
   testConnection(config: ProviderConfig, signal: AbortSignal): Promise<void>;
+}
+
+export interface StructuredVisionProvider extends ProviderTransport {
+  generateStructured<T>(config: ProviderConfig, request: StructuredGenerationRequest<T>): Promise<T>;
+}
+
+/** @deprecated Task 3 migrates the controller to StructuredVisionProvider. */
+export interface VisionProvider extends ProviderTransport {
   analyze(config: ProviderConfig, request: VisionRequest): Promise<CommunityReport>;
 }
 

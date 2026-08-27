@@ -1,10 +1,9 @@
 import testCardDataUrl from '../../assets/provider-test-card.png?inline';
-import { communityJsonSchema } from '../analysis/community-json-schema';
-import type { CommunityReport } from '../analysis/community-report';
 import { getModelsForProvider } from './model-catalog';
 import { ProviderError, type AnalysisErrorCode } from './provider-errors';
-import { normalizeProviderConfig, type ProviderConfig, type ValidationResult, type VisionProvider, type VisionRequest } from './provider-types';
-import { assertOpenAiConnectionResponse, parseOpenAiCommunityResponse } from './response-parser';
+import { normalizeProviderConfig, type ProviderConfig, type StructuredGenerationRequest, type StructuredVisionProvider, type ValidationResult, type VisionRequest } from './provider-types';
+import { assertOpenAiConnectionResponse, extractOpenAiStructuredValue } from './response-parser';
+import { parseStructuredResponse } from './structured-response';
 
 const openAiUrl = 'https://api.openai.com/v1/responses';
 const defaultTimeoutMs = 45_000;
@@ -43,7 +42,7 @@ function validImageDataUrl(image: VisionRequest['image']): boolean {
     && encoded.length % 4 === 0;
 }
 
-export class OpenAiProvider implements VisionProvider {
+export class OpenAiProvider implements StructuredVisionProvider {
   readonly kind = 'openai' as const;
   private readonly timeoutMs: number;
 
@@ -62,19 +61,20 @@ export class OpenAiProvider implements VisionProvider {
     return { ok: true };
   }
 
-  async analyze(config: ProviderConfig, request: VisionRequest): Promise<CommunityReport> {
-    if (!validImageDataUrl(request.image)) {
+  async generateStructured<T>(config: ProviderConfig, request: StructuredGenerationRequest<T>): Promise<T> {
+    if (request.image && !validImageDataUrl(request.image)) {
       throw new ProviderError('invalid_image', { params: { provider: this.kind } });
     }
     const body = this.buildBody(
       config,
-      request.prompt.system,
-      request.prompt.user,
-      request.image.dataUrl,
-      'community_report',
-      communityJsonSchema,
+      request.systemPrompt,
+      request.userPrompt,
+      request.image?.dataUrl,
+      request.schemaName,
+      request.jsonSchema,
     );
-    return parseOpenAiCommunityResponse(await this.send(config, request.signal, body));
+    const payload = await this.send(config, request.signal, body);
+    return parseStructuredResponse(this.kind, extractOpenAiStructuredValue(payload), request.parse);
   }
 
   async testConnection(config: ProviderConfig, signal: AbortSignal): Promise<void> {
@@ -93,7 +93,7 @@ export class OpenAiProvider implements VisionProvider {
     config: ProviderConfig,
     instructions: string,
     prompt: string,
-    imageUrl: string,
+    imageUrl: string | undefined,
     schemaName: string,
     schema: Record<string, unknown>,
   ): Record<string, unknown> {
@@ -101,15 +101,14 @@ export class OpenAiProvider implements VisionProvider {
     if (!validation.ok) {
       throw new ProviderError('invalid_config', { params: { field: validation.field } });
     }
+    const content: Array<Record<string, unknown>> = [{ type: 'input_text', text: prompt }];
+    if (imageUrl !== undefined) content.push({ type: 'input_image', image_url: imageUrl });
     return {
       model: config.model.trim(),
       instructions,
       input: [{
         role: 'user',
-        content: [
-          { type: 'input_text', text: prompt },
-          { type: 'input_image', image_url: imageUrl },
-        ],
+        content,
       }],
       text: { format: { type: 'json_schema', name: schemaName, schema, strict: true } },
       store: false,

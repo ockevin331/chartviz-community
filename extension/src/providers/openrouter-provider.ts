@@ -1,10 +1,9 @@
 import testCardDataUrl from '../../assets/provider-test-card.png?inline';
-import { communityJsonSchema } from '../analysis/community-json-schema';
-import type { CommunityReport } from '../analysis/community-report';
 import { getModelsForProvider } from './model-catalog';
 import { ProviderError, type AnalysisErrorCode } from './provider-errors';
-import { normalizeProviderConfig, type ProviderConfig, type ValidationResult, type VisionProvider, type VisionRequest } from './provider-types';
-import { assertOpenRouterConnectionResponse, parseOpenRouterCommunityResponse } from './response-parser';
+import { normalizeProviderConfig, type ProviderConfig, type StructuredGenerationRequest, type StructuredVisionProvider, type ValidationResult } from './provider-types';
+import { assertOpenRouterConnectionResponse, extractOpenRouterStructuredValue } from './response-parser';
+import { parseStructuredResponse } from './structured-response';
 
 const openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
 const defaultTimeoutMs = 45_000;
@@ -39,7 +38,7 @@ function statusCode(status: number): AnalysisErrorCode {
   return 'invalid_response';
 }
 
-export class OpenRouterProvider implements VisionProvider {
+export class OpenRouterProvider implements StructuredVisionProvider {
   readonly kind = 'openrouter' as const;
   private readonly timeoutMs: number;
 
@@ -62,19 +61,20 @@ export class OpenRouterProvider implements VisionProvider {
     return { ok: true };
   }
 
-  async analyze(config: ProviderConfig, request: VisionRequest): Promise<CommunityReport> {
+  async generateStructured<T>(config: ProviderConfig, request: StructuredGenerationRequest<T>): Promise<T> {
+    const userContent: RequestContent = [{ type: 'text', text: request.userPrompt }];
+    if (request.image) {
+      userContent.push({ type: 'image_url', image_url: { url: request.image.dataUrl } });
+    }
     const body = this.buildBody(
       config,
-      request.prompt.system,
-      [
-        { type: 'text', text: request.prompt.user },
-        { type: 'image_url', image_url: { url: request.image.dataUrl } },
-      ],
-      'community_report',
-      communityJsonSchema,
+      request.systemPrompt,
+      userContent,
+      request.schemaName,
+      request.jsonSchema,
     );
     const payload = await this.send(config, request.signal, body);
-    return parseOpenRouterCommunityResponse(payload);
+    return parseStructuredResponse(this.kind, extractOpenRouterStructuredValue(payload), request.parse);
   }
 
   async testConnection(config: ProviderConfig, signal: AbortSignal): Promise<void> {

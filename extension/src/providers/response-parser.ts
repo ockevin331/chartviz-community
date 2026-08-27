@@ -1,23 +1,28 @@
 import { parseCommunityReport, type CommunityReport } from '../analysis/community-report';
+import { attachProviderFailureDetail, type ProviderDiagnosticStage, type ProviderDiagnosticIssue } from './provider-diagnostics';
 import { ProviderError } from './provider-errors';
 import type { ProviderKind } from './provider-types';
+import { parseStructuredResponse } from './structured-response';
 
-function invalidResponse(provider: ProviderKind): never {
-  throw new ProviderError('invalid_response', { params: { provider } });
+function invalidResponse(provider: ProviderKind, stage: ProviderDiagnosticStage, issues: readonly ProviderDiagnosticIssue[] = []): never {
+  throw attachProviderFailureDetail(
+    new ProviderError('invalid_response', { params: { provider } }),
+    { stage, issues },
+  );
 }
 
 function structuredAssistantContent(payload: unknown): string {
-  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return invalidResponse('openrouter');
+  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return invalidResponse('openrouter', 'response_envelope');
   const choices = (payload as Record<string, unknown>).choices;
-  if (!Array.isArray(choices) || choices.length !== 1) return invalidResponse('openrouter');
+  if (!Array.isArray(choices) || choices.length !== 1) return invalidResponse('openrouter', 'response_envelope');
   const choice = choices[0];
-  if (choice === null || typeof choice !== 'object' || Array.isArray(choice)) return invalidResponse('openrouter');
+  if (choice === null || typeof choice !== 'object' || Array.isArray(choice)) return invalidResponse('openrouter', 'response_envelope');
   const message = (choice as Record<string, unknown>).message;
-  if (message === null || typeof message !== 'object' || Array.isArray(message)) return invalidResponse('openrouter');
+  if (message === null || typeof message !== 'object' || Array.isArray(message)) return invalidResponse('openrouter', 'response_envelope');
   const messageRecord = message as Record<string, unknown>;
-  if (messageRecord.role !== 'assistant') return invalidResponse('openrouter');
+  if (messageRecord.role !== 'assistant') return invalidResponse('openrouter', 'response_envelope');
   const content = messageRecord.content;
-  if (typeof content !== 'string') return invalidResponse('openrouter');
+  if (typeof content !== 'string') return invalidResponse('openrouter', 'response_envelope');
   return content;
 }
 
@@ -25,11 +30,11 @@ function parseJsonText(content: string, provider: ProviderKind): unknown {
   try {
     return JSON.parse(content);
   } catch {
-    return invalidResponse(provider);
+    return invalidResponse(provider, 'json_parse');
   }
 }
 
-function parseOpenRouterStructuredJson(payload: unknown): unknown {
+export function extractOpenRouterStructuredValue(payload: unknown): unknown {
   const content = structuredAssistantContent(payload);
   return parseJsonText(content, 'openrouter');
 }
@@ -70,13 +75,13 @@ function openAiOutputText(payload: unknown): string {
     || payload.status !== 'completed'
     || ('error' in payload && payload.error !== null)
     || !Array.isArray(payload.output)) {
-    return invalidResponse('openai');
+    return invalidResponse('openai', 'response_envelope');
   }
 
   let message: Record<string, unknown> | null = null;
   for (const item of payload.output) {
     if (isSafeReasoningItem(item)) continue;
-    if (!isRecord(item) || item.type !== 'message' || message !== null) return invalidResponse('openai');
+    if (!isRecord(item) || item.type !== 'message' || message !== null) return invalidResponse('openai', 'response_envelope');
     message = item;
   }
   if (message === null
@@ -85,7 +90,7 @@ function openAiOutputText(payload: unknown): string {
     || message.status !== 'completed'
     || message.role !== 'assistant'
     || !Array.isArray(message.content)
-    || message.content.length !== 1) return invalidResponse('openai');
+    || message.content.length !== 1) return invalidResponse('openai', 'response_envelope');
   const content = message.content[0];
   if (!isRecord(content)
     || content.type !== 'output_text'
@@ -93,12 +98,12 @@ function openAiOutputText(payload: unknown): string {
     || !hasOnlyKeys(content, ['annotations', 'logprobs', 'text', 'type'])
     || ('annotations' in content && !Array.isArray(content.annotations))
     || ('logprobs' in content && content.logprobs !== null && !Array.isArray(content.logprobs))) {
-    return invalidResponse('openai');
+    return invalidResponse('openai', 'response_envelope');
   }
   return content.text;
 }
 
-function parseOpenAiStructuredJson(payload: unknown): unknown {
+export function extractOpenAiStructuredValue(payload: unknown): unknown {
   return parseJsonText(openAiOutputText(payload), 'openai');
 }
 
@@ -185,36 +190,36 @@ function isSafeUsageMetadata(value: unknown): boolean {
 }
 
 function geminiOutputText(payload: unknown): string {
-  if (!isRecord(payload) || !hasOnlyKeys(payload, safeGeminiPayloadKeys)) return invalidResponse('gemini');
-  if ('promptFeedback' in payload && !isSafePromptFeedback(payload.promptFeedback)) return invalidResponse('gemini');
-  if ('usageMetadata' in payload && !isSafeUsageMetadata(payload.usageMetadata)) return invalidResponse('gemini');
+  if (!isRecord(payload) || !hasOnlyKeys(payload, safeGeminiPayloadKeys)) return invalidResponse('gemini', 'response_envelope');
+  if ('promptFeedback' in payload && !isSafePromptFeedback(payload.promptFeedback)) return invalidResponse('gemini', 'response_envelope');
+  if ('usageMetadata' in payload && !isSafeUsageMetadata(payload.usageMetadata)) return invalidResponse('gemini', 'response_envelope');
   for (const stringKey of ['createTime', 'modelVersion', 'responseId']) {
-    if (stringKey in payload && typeof payload[stringKey] !== 'string') return invalidResponse('gemini');
+    if (stringKey in payload && typeof payload[stringKey] !== 'string') return invalidResponse('gemini', 'response_envelope');
   }
   if (!Array.isArray(payload.candidates) || payload.candidates.length !== 1) {
-    return invalidResponse('gemini');
+    return invalidResponse('gemini', 'response_envelope');
   }
   const candidate = payload.candidates[0];
   if (!isRecord(candidate)
     || !hasOnlyKeys(candidate, safeGeminiCandidateKeys)
     || candidate.finishReason !== 'STOP'
     || !isRecord(candidate.content)) {
-    return invalidResponse('gemini');
+    return invalidResponse('gemini', 'response_envelope');
   }
   if ('safetyRatings' in candidate && !hasSafeUnblockedRatings(candidate.safetyRatings)) {
-    return invalidResponse('gemini');
+    return invalidResponse('gemini', 'response_envelope');
   }
-  if ('index' in candidate && !isNonnegativeInteger(candidate.index)) return invalidResponse('gemini');
+  if ('index' in candidate && !isNonnegativeInteger(candidate.index)) return invalidResponse('gemini', 'response_envelope');
   if ('avgLogprobs' in candidate
     && (typeof candidate.avgLogprobs !== 'number' || !Number.isFinite(candidate.avgLogprobs))) {
-    return invalidResponse('gemini');
+    return invalidResponse('gemini', 'response_envelope');
   }
   const content = candidate.content;
   if (!hasOnlyKeys(content, ['parts', 'role'])
     || content.role !== 'model'
     || !Array.isArray(content.parts)
     || content.parts.length !== 1) {
-    return invalidResponse('gemini');
+    return invalidResponse('gemini', 'response_envelope');
   }
   const part = content.parts[0];
   if (!isRecord(part)
@@ -222,55 +227,40 @@ function geminiOutputText(payload: unknown): string {
     || typeof part.text !== 'string'
     || ('thought' in part && part.thought !== false)
     || ('thoughtSignature' in part && !isBoundedBase64(part.thoughtSignature))) {
-    return invalidResponse('gemini');
+    return invalidResponse('gemini', 'response_envelope');
   }
   return part.text;
 }
 
-function parseGeminiStructuredJson(payload: unknown): unknown {
+export function extractGeminiStructuredValue(payload: unknown): unknown {
   return parseJsonText(geminiOutputText(payload), 'gemini');
 }
 
 function assertConnectionValue(parsed: unknown, provider: ProviderKind): void {
-  if (!isRecord(parsed)) return invalidResponse(provider);
-  if (Object.keys(parsed).length !== 1 || parsed.seenImage !== true) return invalidResponse(provider);
+  if (!isRecord(parsed)) return invalidResponse(provider, 'report_shape');
+  if (Object.keys(parsed).length !== 1 || parsed.seenImage !== true) return invalidResponse(provider, 'report_shape');
 }
 
 export function parseOpenRouterCommunityResponse(payload: unknown): CommunityReport {
-  try {
-    return parseCommunityReport(parseOpenRouterStructuredJson(payload));
-  } catch (error) {
-    if (error instanceof ProviderError) throw error;
-    return invalidResponse('openrouter');
-  }
+  return parseStructuredResponse('openrouter', extractOpenRouterStructuredValue(payload), parseCommunityReport);
 }
 
 export function assertOpenRouterConnectionResponse(payload: unknown): void {
-  assertConnectionValue(parseOpenRouterStructuredJson(payload), 'openrouter');
+  assertConnectionValue(extractOpenRouterStructuredValue(payload), 'openrouter');
 }
 
 export function parseOpenAiCommunityResponse(payload: unknown): CommunityReport {
-  try {
-    return parseCommunityReport(parseOpenAiStructuredJson(payload));
-  } catch (error) {
-    if (error instanceof ProviderError) throw error;
-    return invalidResponse('openai');
-  }
+  return parseStructuredResponse('openai', extractOpenAiStructuredValue(payload), parseCommunityReport);
 }
 
 export function assertOpenAiConnectionResponse(payload: unknown): void {
-  assertConnectionValue(parseOpenAiStructuredJson(payload), 'openai');
+  assertConnectionValue(extractOpenAiStructuredValue(payload), 'openai');
 }
 
 export function parseGeminiCommunityResponse(payload: unknown): CommunityReport {
-  try {
-    return parseCommunityReport(parseGeminiStructuredJson(payload));
-  } catch (error) {
-    if (error instanceof ProviderError) throw error;
-    return invalidResponse('gemini');
-  }
+  return parseStructuredResponse('gemini', extractGeminiStructuredValue(payload), parseCommunityReport);
 }
 
 export function assertGeminiConnectionResponse(payload: unknown): void {
-  assertConnectionValue(parseGeminiStructuredJson(payload), 'gemini');
+  assertConnectionValue(extractGeminiStructuredValue(payload), 'gemini');
 }
