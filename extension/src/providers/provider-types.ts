@@ -51,6 +51,7 @@ export interface StructuredVisionProvider extends ProviderTransport {
 
 /** @deprecated Task 3 migrates the controller to StructuredVisionProvider. */
 export interface VisionProvider extends ProviderTransport {
+  generateStructured?<T>(config: ProviderConfig, request: StructuredGenerationRequest<T>): Promise<T>;
   analyze(config: ProviderConfig, request: VisionRequest): Promise<CommunityReport>;
 }
 

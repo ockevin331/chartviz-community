@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { buildCommunityPrompt } from '../../src/analysis/community-prompt';
 import { parseCommunityReport, type CommunityReport } from '../../src/analysis/community-report';
+import { runThreeStageAnalysis } from '../../src/analysis/stages/analysis-pipeline';
 import { buildAnnotations } from '../../src/annotations/build-annotations';
 import type { AnnotatedReportImages } from '../../src/annotations/annotation-types';
 import { activeChartClient, type CapturedChart } from '../../src/capture/active-chart';
@@ -38,6 +39,7 @@ const defaultDependencies: AppDependencies = {
 export function App({ dependencies: overrides }: { dependencies?: Partial<AppDependencies> } = {}) {
   const dependencies = useMemo(() => ({ ...defaultDependencies, ...(overrides ?? {}) }), [overrides]);
   const controllerDependencies = useMemo<AnalysisControllerDependencies>(() => ({
+    runAnalysis: runThreeStageAnalysis,
     getProvider: dependencies.getProvider,
     buildPrompt: buildCommunityPrompt,
     validateReport: parseCommunityReport,
@@ -114,7 +116,7 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     {!loading && state.status === 'source' && <ChartCaptureSource key={contextRevision} language={language} inspect={dependencies.inspect} capture={dependencies.capture} onCaptured={analyzeCaptured} />}
     {state.status === 'preview' && state.image && <ImagePreview language={language} image={state.image} onZoom={setLightbox} onChange={captureAgain} onAnalyze={retryAnalysis} />}
     {state.status === 'analyzing' && state.image && <><ImagePreview language={language} image={state.image} analyzing onZoom={setLightbox} onChange={captureAgain} onAnalyze={() => undefined} /><AnalysisProgress language={language} progress={state.progress} onCancel={controller.cancel} /></>}
-    {state.status === 'failed' && <AnalysisError language={language} errorCode={state.errorCode} onBack={controller.returnToPreview} />}
+    {state.status === 'failed' && <AnalysisError language={language} errorCode={state.errorCode} diagnostic={state.diagnostic} onBack={controller.returnToPreview} />}
     {state.status === 'cancelled' && <AnalysisError language={language} cancelled onBack={controller.returnToPreview} />}
     {state.status === 'completed' && state.image && state.report && state.annotations && <ReportView language={language} original={state.image} report={state.report} annotations={state.annotations} />}
     {lightbox && <ImageLightbox language={language} image={lightbox} onClose={() => setLightbox(null)} />}

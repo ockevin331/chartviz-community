@@ -6,7 +6,15 @@ export type ProviderDiagnosticStage =
   | 'response_envelope'
   | 'json_parse'
   | 'report_shape'
-  | 'report_semantics';
+  | 'report_semantics'
+  | 'visual_extraction_transport'
+  | 'visual_extraction_shape'
+  | 'visual_extraction_semantics'
+  | 'signal_extraction_transport'
+  | 'signal_extraction_shape'
+  | 'signal_extraction_semantics'
+  | 'evidence_reasoning_transport'
+  | 'annotation_rendering';
 
 export type ProviderDiagnosticIssue = Readonly<{
   path: string;

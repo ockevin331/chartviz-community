@@ -11,6 +11,7 @@ export function withLegacyCommunityAnalysis(provider: StructuredVisionProvider):
     kind: provider.kind,
     validateConfig: (config) => provider.validateConfig(config),
     testConnection: (config, signal) => provider.testConnection(config, signal),
+    generateStructured: (config, request) => provider.generateStructured(config, request),
     analyze: (config, request) => provider.generateStructured(config, {
       systemPrompt: request.prompt.system,
       userPrompt: request.prompt.user,
