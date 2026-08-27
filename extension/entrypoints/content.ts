@@ -5,8 +5,10 @@ import type { ChartContext } from '../src/domain/chart-context';
 import type {
   ChartContextResponse,
   PanelResponse,
+  SupportedCaptureTimeframe,
 } from '../src/domain/chart-messages';
 import { collectActiveChartContext, waitForActiveChartReady } from '../src/sites/collect-context';
+import { setActiveChartTimeframe } from '../src/sites/set-timeframe';
 import { supportedContentMatches } from '../src/sites/supported-sites';
 import { installUpbitFrameTimeframeReceiver } from '../src/sites/upbit/frame-timeframe';
 
@@ -22,7 +24,12 @@ export type ContentHandlerDependencies = {
   panel: ContentPanel;
   collectContext(): Promise<ChartContext>;
   waitForReady(): Promise<ChartContext>;
+  setTimeframe?(timeframe: SupportedCaptureTimeframe): Promise<void>;
 };
+
+function isSupportedCaptureTimeframe(value: unknown): value is SupportedCaptureTimeframe {
+  return value === '5m' || value === '15m' || value === '1h' || value === '4h' || value === '1d';
+}
 
 function publicError(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
@@ -43,6 +50,17 @@ export function createContentMessageHandler(dependencies: ContentHandlerDependen
       return dependencies.waitForReady()
         .then((context) => ({ ok: true, context }) as const)
         .catch((error) => ({ ok: false, error: publicError(error, 'The chart is still loading.') }) as const);
+    }
+    if (
+      record.type === 'chartviz/chart/timeframe'
+      && isSupportedCaptureTimeframe(record.timeframe)
+      && Object.keys(record).sort().join('\0') === 'timeframe\0type'
+    ) {
+      const setTimeframe = dependencies.setTimeframe ?? setActiveChartTimeframe;
+      return setTimeframe(record.timeframe)
+        .then(() => dependencies.collectContext())
+        .then((context) => ({ ok: true, context }) as const)
+        .catch((error) => ({ ok: false, error: publicError(error, 'Unable to switch timeframe.') }) as const);
     }
     if (record.type === 'chartviz/panel/toggle' && Object.keys(record).length === 1) {
       return Promise.resolve(dependencies.panel.setVisible(!dependencies.panel.isVisible()));

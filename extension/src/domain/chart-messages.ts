@@ -3,6 +3,11 @@ import type { ChartAvailabilityFailure } from '../sites/supported-sites';
 
 export type GetChartContextMessage = { type: 'chartviz/context/get' };
 export type WaitForChartReadyMessage = { type: 'chartviz/chart/ready' };
+export type SupportedCaptureTimeframe = '5m' | '15m' | '1h' | '4h' | '1d';
+export type SetChartTimeframeMessage = {
+  type: 'chartviz/chart/timeframe';
+  timeframe: SupportedCaptureTimeframe;
+};
 export type ToggleFloatingPanelMessage = { type: 'chartviz/panel/toggle' };
 export type SetFloatingPanelVisibilityMessage = {
   type: 'chartviz/panel/visibility';
@@ -15,6 +20,7 @@ export type CaptureActiveChartMessage = { type: 'chartviz/active-chart/capture' 
 export type ContentMessage =
   | GetChartContextMessage
   | WaitForChartReadyMessage
+  | SetChartTimeframeMessage
   | ToggleFloatingPanelMessage
   | SetFloatingPanelVisibilityMessage;
 

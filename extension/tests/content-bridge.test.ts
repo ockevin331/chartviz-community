@@ -35,6 +35,42 @@ describe('content-script chart bridge', () => {
     expect(waitForReady).toHaveBeenCalledTimes(1);
   });
 
+  it('switches the requested timeframe before returning the recollected context', async () => {
+    const panel = panelFixture();
+    const switchedContext = { ...context, timeframe: '4h' };
+    const collectContext = vi.fn(async () => switchedContext);
+    const setTimeframe = vi.fn(async () => undefined);
+    const onMessage = createContentMessageHandler({
+      panel,
+      collectContext,
+      waitForReady: async () => switchedContext,
+      setTimeframe,
+    });
+
+    await expect(onMessage({ type: 'chartviz/chart/timeframe', timeframe: '4h' })).resolves.toEqual({
+      ok: true,
+      context: switchedContext,
+    });
+    expect(setTimeframe).toHaveBeenCalledWith('4h');
+    expect(collectContext).toHaveBeenCalledTimes(1);
+  });
+
+  it('bounds timeframe switch failures without recollecting stale context', async () => {
+    const collectContext = vi.fn(async () => context);
+    const onMessage = createContentMessageHandler({
+      panel: panelFixture(),
+      collectContext,
+      waitForReady: async () => context,
+      setTimeframe: async () => { throw new Error('The chart did not switch to 1h.'); },
+    });
+
+    await expect(onMessage({ type: 'chartviz/chart/timeframe', timeframe: '1h' })).resolves.toEqual({
+      ok: false,
+      error: 'The chart did not switch to 1h.',
+    });
+    expect(collectContext).not.toHaveBeenCalled();
+  });
+
   it('toggles and explicitly hides or restores the page panel', async () => {
     const panel = panelFixture();
     const onMessage = createContentMessageHandler({
