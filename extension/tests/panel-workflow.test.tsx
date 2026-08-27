@@ -11,6 +11,7 @@ import {
 } from '../src/analysis/runtime/analysis-runtime';
 import { ChartAvailabilityError } from '../src/capture/active-chart';
 import { unavailableCloudGateway } from '../src/cloud/cloud-gateway';
+import type { CloudAnalysisGateway } from '../src/cloud/cloud-gateway';
 import type { ChartContext } from '../src/domain/chart-context';
 import type { AnalysisDiagnostic } from '../src/providers/provider-diagnostics';
 import { annotatedImages, communityReport, processedImage } from './community-ui-fixtures';
@@ -44,6 +45,18 @@ function fakeRuntime(
   };
 }
 
+function fakeCloudRuntime(): AnalysisRuntime & {
+  analyze: ReturnType<typeof vi.fn<(input: AnalysisRuntimeInput) => Promise<AnalysisRuntimeOutcome>>>;
+  cancel: ReturnType<typeof vi.fn<() => void>>;
+} {
+  return {
+    mode: 'cloud',
+    capabilities: () => ({ multiTimeframe: true, maxTimeframes: 3 }),
+    analyze: vi.fn(async () => outcome),
+    cancel: vi.fn(),
+  };
+}
+
 const directModeDependencies = {
   loadMode: async () => 'direct' as const,
   saveMode: async () => undefined,
@@ -53,11 +66,13 @@ const directModeDependencies = {
 describe('direct Community panel workflow', () => {
   it('defaults a new installation to the unavailable Cloud tab without inspecting the page', async () => {
     const inspectPage = vi.fn(inspect);
+    const createDirectRuntime = vi.fn(() => fakeRuntime());
     render(<App dependencies={{
       loadConfig: async () => null,
       loadMode: async () => 'cloud',
       saveMode: async () => undefined,
       cloudGateway: unavailableCloudGateway,
+      createDirectRuntime,
       inspect: inspectPage,
     }} />);
 
@@ -65,6 +80,54 @@ describe('direct Community panel workflow', () => {
     expect(screen.getByText('Cloud connection will be enabled in a later update.')).toBeTruthy();
     expect(screen.queryByLabelText('API key')).toBeNull();
     expect(inspectPage).not.toHaveBeenCalled();
+    expect(createDirectRuntime).not.toHaveBeenCalled();
+  });
+
+  it('keeps Direct single-frame and opens Cloud settings from multi-timeframe guidance', async () => {
+    const user = userEvent.setup();
+    const captureChart = vi.fn(capture);
+    render(<App dependencies={{
+      loadConfig: async () => ({ provider: 'openrouter', apiKey: 'key', model: 'google/gemini-3.7-flash', customModel: false }),
+      ...directModeDependencies,
+      inspect,
+      capture: captureChart,
+      createDirectRuntime: () => fakeRuntime(),
+    }} />);
+
+    await screen.findByText('BTCUSD');
+    await user.click(screen.getByRole('button', { name: /Multi-timeframe/ }));
+    expect(screen.getByRole('button', { name: /Single timeframe/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('status').textContent).toContain('Multi-timeframe analysis is available through ChartViz Cloud.');
+    expect(captureChart).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'View Cloud settings' }));
+    expect(screen.getByRole('dialog', { name: 'Analysis settings' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'ChartViz Cloud' })).toHaveProperty('ariaSelected', 'true');
+  });
+
+  it('uses an available injected Cloud runtime to enable the multi-timeframe card', async () => {
+    const user = userEvent.setup();
+    const runtime = fakeCloudRuntime();
+    const cloudGateway: CloudAnalysisGateway = {
+      availability: () => ({ available: true }),
+      runtime: () => runtime,
+    };
+    const createDirectRuntime = vi.fn(() => fakeRuntime());
+    render(<App dependencies={{
+      loadConfig: async () => null,
+      loadMode: async () => 'cloud',
+      saveMode: async () => undefined,
+      cloudGateway,
+      createDirectRuntime,
+      inspect,
+      capture,
+    }} />);
+
+    await screen.findByText('BTCUSD');
+    await user.click(screen.getByRole('button', { name: /Multi-timeframe/ }));
+
+    expect(screen.getByRole('button', { name: /Multi-timeframe/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(createDirectRuntime).not.toHaveBeenCalled();
   });
 
   it('opens Direct setup when its mode is saved but the session key has expired', async () => {

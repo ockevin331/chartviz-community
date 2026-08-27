@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { AnalysisMode } from '../../src/analysis/analysis-mode';
 import { DirectAnalysisRuntime } from '../../src/analysis/runtime/direct-analysis-runtime';
-import type { AnalysisRuntime } from '../../src/analysis/runtime/analysis-runtime';
+import type { AnalysisCapabilities, AnalysisRuntime } from '../../src/analysis/runtime/analysis-runtime';
 import { activeChartClient, type CapturedChart } from '../../src/capture/active-chart';
-import { unavailableCloudGateway, type CloudAnalysisGateway } from '../../src/cloud/cloud-gateway';
+import { resolveCloudRuntime, unavailableCloudGateway, type CloudAnalysisGateway } from '../../src/cloud/cloud-gateway';
 import type { ChartContext } from '../../src/domain/chart-context';
 import { providerRegistry } from '../../src/providers/provider-registry';
 import type { ProviderConfig } from '../../src/providers/provider-types';
@@ -54,11 +54,17 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
   const [setupMode, setSetupMode] = useState<AnalysisMode>('cloud');
   const [settingsMode, setSettingsMode] = useState<AnalysisMode>('cloud');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [analysisCapabilities, setAnalysisCapabilities] = useState<AnalysisCapabilities | null>(null);
   const [contextRevision, setContextRevision] = useState(0);
   const [lightbox, setLightbox] = useState<LightboxImage | null>(null);
   const lastContext = useRef<ChartContext | null>(null);
   const dragPosition = useRef<{ x: number; y: number } | null>(null);
   const t = translations[language];
+
+  const activateRuntime = useCallback((runtime: AnalysisRuntime) => {
+    setAnalysisCapabilities(runtime.capabilities());
+    controller.configure(runtime);
+  }, [controller.configure]);
 
   useEffect(() => {
     let current = true;
@@ -71,11 +77,14 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
       setSetupMode(mode);
       setSettingsMode(mode);
       if (mode === 'direct' && config) {
-        controller.configure(dependencies.createDirectRuntime(config));
+        activateRuntime(dependencies.createDirectRuntime(config));
+      } else if (mode === 'cloud') {
+        const runtime = resolveCloudRuntime(dependencies.cloudGateway);
+        if (runtime) activateRuntime(runtime);
       }
     })().finally(() => { if (current) setLoading(false); });
     return () => { current = false; };
-  }, [dependencies.loadConfig, dependencies.loadMode, dependencies.createDirectRuntime, controller.configure]);
+  }, [dependencies.loadConfig, dependencies.loadMode, dependencies.createDirectRuntime, dependencies.cloudGateway, activateRuntime]);
 
   const refreshAll = useCallback(() => {
     lastContext.current = null;
@@ -113,7 +122,7 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     setProviderConfig(config);
     setActiveMode('direct');
     setSetupMode('direct');
-    controller.configure(dependencies.createDirectRuntime(config));
+    activateRuntime(dependencies.createDirectRuntime(config));
   }
 
   function finishSettings(config: ProviderConfig) {
@@ -122,6 +131,7 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     setActiveMode('direct');
     setSettingsMode('direct');
     const runtime = dependencies.createDirectRuntime(config);
+    setAnalysisCapabilities(runtime.capabilities());
     if (wasDirect) controller.updateRuntime(runtime);
     else controller.configure(runtime);
     setSettingsOpen(false);
@@ -129,6 +139,11 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
 
   function openSettings() {
     setSettingsMode(activeMode);
+    setSettingsOpen(true);
+  }
+
+  function openCloudSettings() {
+    setSettingsMode('cloud');
     setSettingsOpen(true);
   }
 
@@ -153,7 +168,7 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     </header>
     {loading && <section className="backend-loading" role="status">…</section>}
     {!loading && state.status === 'setup' && <AnalysisModeSettings language={language} variant="setup" activeMode={activeMode} selectedMode={setupMode} onSelectedModeChange={setSetupMode} initialDirectConfig={providerConfig} saveDirectConfig={dependencies.saveConfig} saveMode={dependencies.saveMode} onDirectActivated={finishInitialSetup} testConnection={dependencies.testDirectConnection} cloudGateway={dependencies.cloudGateway} />}
-    {!loading && state.status === 'source' && <ChartCaptureSource key={contextRevision} language={language} inspect={dependencies.inspect} capture={dependencies.capture} onCaptured={analyzeCaptured} />}
+    {!loading && state.status === 'source' && analysisCapabilities && <ChartCaptureSource key={contextRevision} language={language} capabilities={analysisCapabilities} inspect={dependencies.inspect} capture={dependencies.capture} onCaptured={analyzeCaptured} onOpenCloudSettings={openCloudSettings} />}
     {state.status === 'preview' && state.image && <ImagePreview language={language} image={state.image} onZoom={setLightbox} onChange={captureAgain} onAnalyze={retryAnalysis} />}
     {state.status === 'analyzing' && state.image && <><ImagePreview language={language} image={state.image} analyzing onZoom={setLightbox} onChange={captureAgain} onAnalyze={() => undefined} /><AnalysisProgress language={language} progress={state.progress} onCancel={controller.cancel} /></>}
     {state.status === 'failed' && <AnalysisError language={language} errorCode={state.errorCode} diagnostic={state.diagnostic} onBack={retryAnalysis} />}

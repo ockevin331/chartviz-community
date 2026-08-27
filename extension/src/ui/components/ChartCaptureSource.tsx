@@ -15,11 +15,11 @@ import { CaptureModeSelector, type CaptureMode } from './CaptureModeSelector';
 
 type ChartCaptureSourceProps = {
   language: Language;
-  capabilities?: AnalysisCapabilities;
+  capabilities: AnalysisCapabilities;
   inspect(): Promise<ChartContext>;
   capture(signal: AbortSignal): Promise<CapturedChart>;
   onCaptured(captured: CapturedChart): void;
-  onOpenCloudSettings?(): void;
+  onOpenCloudSettings(): void;
 };
 
 function publicMessage(error: unknown, fallback: string): string {
@@ -28,11 +28,11 @@ function publicMessage(error: unknown, fallback: string): string {
 
 export function ChartCaptureSource({
   language,
-  capabilities = { multiTimeframe: false, maxTimeframes: 1 },
+  capabilities,
   inspect,
   capture,
   onCaptured,
-  onOpenCloudSettings = () => undefined,
+  onOpenCloudSettings,
 }: ChartCaptureSourceProps) {
   const t = translations[language];
   const [context, setContext] = useState<ChartContext | null>(null);
