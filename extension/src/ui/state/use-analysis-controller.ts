@@ -1,14 +1,14 @@
 import { useCallback, useRef, useState } from 'react';
-import type { CommunityPromptInput } from '../../analysis/community-prompt';
 import { runThreeStageAnalysis, type AnalysisPipelineProgress, type ThreeStageAnalysisInput } from '../../analysis/stages/analysis-pipeline';
 import type { CommunityReportV3 } from '../../analysis/stages/community-report-v3';
+import type { OutputLanguage, StagePageContext } from '../../analysis/stages/shared-stage-types';
 import { buildAnnotations as buildReportAnnotations } from '../../annotations/build-annotations';
 import type { AnnotatedReportImages } from '../../annotations/annotation-types';
 import type { ProcessedImage } from '../../capture/image-types';
 import { providerRegistry } from '../../providers/provider-registry';
 import { attachProviderFailureDetail, createAnalysisDiagnostic, type AnalysisDiagnostic } from '../../providers/provider-diagnostics';
 import { ProviderError, type AnalysisErrorCode } from '../../providers/provider-errors';
-import type { ProviderConfig, ProviderKind, StructuredVisionProvider, VisionProvider } from '../../providers/provider-types';
+import type { ProviderConfig, ProviderKind, StructuredVisionProvider } from '../../providers/provider-types';
 
 export type ProgressMessage = 'reading_chart' | 'organizing_evidence' | 'preparing_result';
 export type AnalysisStatus = 'setup' | 'source' | 'preview' | 'analyzing' | 'completed' | 'failed' | 'cancelled';
@@ -24,7 +24,7 @@ export type AnalysisState = {
 };
 
 export type AnalysisControllerDependencies = {
-  getProvider(kind: ProviderKind): VisionProvider | StructuredVisionProvider;
+  getProvider(kind: ProviderKind): StructuredVisionProvider;
   runAnalysis(input: ThreeStageAnalysisInput): Promise<CommunityReportV3>;
   buildAnnotations(image: ProcessedImage, report: CommunityReportV3): Promise<AnnotatedReportImages>;
 };
@@ -46,12 +46,6 @@ function createRequestId(): string {
   return typeof randomUuid === 'function'
     ? randomUuid.call(globalThis.crypto)
     : `cv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function isStructuredProvider(
-  provider: VisionProvider | StructuredVisionProvider,
-): provider is StructuredVisionProvider {
-  return typeof provider.generateStructured === 'function';
 }
 
 export function useAnalysisController(dependencies: Partial<AnalysisControllerDependencies> = {}) {
@@ -99,7 +93,7 @@ export function useAnalysisController(dependencies: Partial<AnalysisControllerDe
     setState({ ...initialState, status: configRef.current ? 'source' : 'setup' });
   }, [invalidateOperation]);
 
-  const analyze = useCallback(async (pageContext: CommunityPromptInput['pageContext'], language: CommunityPromptInput['language']) => {
+  const analyze = useCallback(async (pageContext: Pick<StagePageContext, 'instrument' | 'timeframe'>, language: OutputLanguage) => {
     const config = configRef.current;
     const image = imageRef.current;
     if (!config || !image || requestRef.current) return;
@@ -115,9 +109,6 @@ export function useAnalysisController(dependencies: Partial<AnalysisControllerDe
     try {
       const deps = dependenciesRef.current;
       const provider = deps.getProvider(config.provider);
-      if (!isStructuredProvider(provider)) {
-        throw new ProviderError('invalid_config', { params: { provider: config.provider } });
-      }
       const report = await deps.runAnalysis({
         config,
         provider,

@@ -1,7 +1,7 @@
 import testCardDataUrl from '../../assets/provider-test-card.png?inline';
 import { getModelsForProvider } from './model-catalog';
 import { ProviderError, type AnalysisErrorCode } from './provider-errors';
-import { normalizeProviderConfig, type ProviderConfig, type StructuredGenerationRequest, type StructuredVisionProvider, type ValidationResult, type VisionRequest } from './provider-types';
+import { normalizeProviderConfig, type ProviderConfig, type ProviderImage, type StructuredGenerationRequest, type StructuredVisionProvider, type ValidationResult } from './provider-types';
 import { assertGeminiConnectionResponse, extractGeminiStructuredValue } from './response-parser';
 import { parseStructuredResponse } from './structured-response';
 
@@ -19,7 +19,7 @@ type GeminiProviderOptions = {
 };
 
 type InlineImage = {
-  mimeType: VisionRequest['image']['mediaType'];
+  mimeType: ProviderImage['mediaType'];
   data: string;
 };
 
@@ -37,7 +37,7 @@ function statusCode(status: number): AnalysisErrorCode {
   return 'invalid_response';
 }
 
-function parseInlineImage(image: VisionRequest['image']): InlineImage {
+function parseInlineImage(image: ProviderImage): InlineImage {
   const match = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(image.dataUrl);
   const encoded = match?.[2];
   if (match === null || match[1] !== image.mediaType || encoded === undefined || encoded.length % 4 !== 0) {

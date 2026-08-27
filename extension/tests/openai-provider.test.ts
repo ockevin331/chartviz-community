@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { communityReportV3JsonSchema, parseCommunityReportV3, type CommunityReportV3 } from '../src/analysis/stages/community-report-v3';
 import { ProviderError, type AnalysisErrorCode } from '../src/providers/provider-errors';
 import { OpenAiProvider } from '../src/providers/openai-provider';
-import type { ProviderConfig, StructuredGenerationRequest, VisionRequest } from '../src/providers/provider-types';
+import type { ProviderConfig, ProviderImage, StructuredGenerationRequest } from '../src/providers/provider-types';
 import { communityReport } from './community-ui-fixtures';
 
 const validReport = communityReport;
@@ -147,7 +147,7 @@ describe('OpenAI Responses analyze', () => {
     ['non-Base64 URL', { mediaType: 'image/png', dataUrl: 'data:image/png,AAAA' }],
     ['invalid Base64', { mediaType: 'image/png', dataUrl: 'data:image/png;base64,not_base64' }],
     ['empty Base64', { mediaType: 'image/png', dataUrl: 'data:image/png;base64,' }],
-  ] satisfies Array<[string, VisionRequest['image']]>)('rejects an invalid image data URL: %s', async (_name, image) => {
+  ] satisfies Array<[string, ProviderImage]>)('rejects an invalid image data URL: %s', async (_name, image) => {
     const fetchImpl = vi.fn();
     const provider = providerWithFetch(fetchImpl);
 

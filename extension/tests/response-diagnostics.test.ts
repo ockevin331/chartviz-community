@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { getProviderFailureDetail, validationFailureDetail } from '../src/providers/provider-diagnostics';
 import { ProviderError } from '../src/providers/provider-errors';
-import { parseOpenRouterCommunityResponse } from '../src/providers/response-parser';
+import { extractOpenRouterStructuredValue } from '../src/providers/response-parser';
+import { parseStructuredResponse } from '../src/providers/structured-response';
+import { parseCommunityReportV3 } from '../src/analysis/stages/community-report-v3';
 
 function captureFailure(payload: unknown): ProviderError {
   try {
-    parseOpenRouterCommunityResponse(payload);
+    parseStructuredResponse('openrouter', extractOpenRouterStructuredValue(payload), parseCommunityReportV3);
     throw new Error('expected parser to reject');
   } catch (error) {
     expect(error).toBeInstanceOf(ProviderError);

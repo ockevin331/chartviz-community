@@ -1,6 +1,3 @@
-import type { CommunityReport } from '../analysis/community-report';
-import type { ProviderPrompt } from '../analysis/community-prompt';
-
 export type ProviderKind = 'openrouter' | 'openai' | 'gemini';
 
 export type ProviderConfig = {
@@ -12,26 +9,18 @@ export type ProviderConfig = {
 
 export type SupportedImageMediaType = 'image/png' | 'image/jpeg' | 'image/webp';
 
+export type ProviderImage = {
+  mediaType: SupportedImageMediaType;
+  dataUrl: string;
+};
+
 export type StructuredGenerationRequest<T> = {
   systemPrompt: string;
   userPrompt: string;
-  image?: {
-    mediaType: SupportedImageMediaType;
-    dataUrl: string;
-  };
+  image?: ProviderImage;
   schemaName: string;
   jsonSchema: Record<string, unknown>;
   parse(value: unknown): T;
-  signal: AbortSignal;
-};
-
-export type VisionRequest = {
-  image: {
-    mediaType: SupportedImageMediaType;
-    dataUrl: string;
-  };
-  prompt: ProviderPrompt;
-  jsonSchema: Record<string, unknown>;
   signal: AbortSignal;
 };
 
@@ -47,12 +36,6 @@ interface ProviderTransport {
 
 export interface StructuredVisionProvider extends ProviderTransport {
   generateStructured<T>(config: ProviderConfig, request: StructuredGenerationRequest<T>): Promise<T>;
-}
-
-/** @deprecated Task 3 migrates the controller to StructuredVisionProvider. */
-export interface VisionProvider extends ProviderTransport {
-  generateStructured?<T>(config: ProviderConfig, request: StructuredGenerationRequest<T>): Promise<T>;
-  analyze(config: ProviderConfig, request: VisionRequest): Promise<CommunityReport>;
 }
 
 const providerKinds = new Set<ProviderKind>(['openrouter', 'openai', 'gemini']);

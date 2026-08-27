@@ -9,15 +9,18 @@ import type { ProviderConfig } from '../src/providers/provider-types';
 afterEach(cleanup);
 
 describe('ProviderSetup', () => {
-  it('explains setup, defaults to the recommended OpenRouter model, and never exposes Provider', async () => {
+  it('explains the three-request analysis boundary, defaults to the recommended OpenRouter model, and never exposes Provider', async () => {
     const user = userEvent.setup();
     const saveConfig = vi.fn(async () => undefined);
+    const testConnection = vi.fn(async () => undefined);
     const onConfigured = vi.fn();
-    render(<ProviderSetup language="en" saveConfig={saveConfig} testConnection={async () => undefined} onConfigured={onConfigured} />);
+    render(<ProviderSetup language="en" saveConfig={saveConfig} testConnection={testConnection} onConfigured={onConfigured} />);
 
     expect(document.querySelector('select')).toBeNull();
     expect(screen.getByText(/select a vision-capable model/i)).toBeTruthy();
     expect(screen.getByText(/sends the captured chart directly/i)).toBeTruthy();
+    expect(screen.getByText(/each analysis uses three provider requests/i)).toBeTruthy();
+    expect(screen.getByText(/failed requests are not retried automatically/i)).toBeTruthy();
     expect(screen.queryByRole('combobox', { name: 'Provider' })).toBeNull();
     expect(screen.getByRole('combobox', { name: 'Model' })).toHaveProperty('textContent', expect.stringContaining('openai/gpt-5.6-terra'));
     expect(screen.getByRole('checkbox', { name: 'Use OpenRouter' })).toHaveProperty('checked', true);
@@ -33,6 +36,7 @@ describe('ProviderSetup', () => {
 
     await waitFor(() => expect(saveConfig).toHaveBeenCalledWith({ provider: 'openrouter', apiKey: 'session-secret', model: 'openai/gpt-5.6-terra', customModel: false }));
     expect(onConfigured).toHaveBeenCalledTimes(1);
+    expect(testConnection).not.toHaveBeenCalled();
     expect(document.querySelectorAll('a[href]')).toHaveLength(0);
   });
 
@@ -141,13 +145,15 @@ describe('ProviderSetup', () => {
     expect(screen.getByRole('checkbox', { name: 'Use OpenRouter' })).toHaveProperty('checked', true);
   });
 
-  it('shows the request-cost notice and localizes provider errors', async () => {
+  it('sends exactly one request when testing the connection and localizes provider errors', async () => {
     const user = userEvent.setup();
-    render(<ProviderSetup language="zh-CN" saveConfig={async () => undefined} testConnection={async () => { throw new ProviderError('invalid_api_key'); }} onConfigured={() => undefined} />);
+    const testConnection = vi.fn(async () => { throw new ProviderError('invalid_api_key'); });
+    render(<ProviderSetup language="zh-CN" saveConfig={async () => undefined} testConnection={testConnection} onConfigured={() => undefined} />);
     await user.type(screen.getByLabelText('API 密钥'), 'bad-key');
-    expect(screen.getByText(/测试连接会向提供商发送请求并可能产生费用/)).toBeTruthy();
+    expect(screen.getByText(/测试连接会向提供商发送 1 次请求/)).toBeTruthy();
     await user.click(screen.getByRole('button', { name: '测试连接' }));
     expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('API 密钥无效'));
+    expect(testConnection).toHaveBeenCalledTimes(1);
   });
 
   it('does not duplicate the header-owned language control', () => {

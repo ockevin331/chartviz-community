@@ -1,18 +1,17 @@
 import { geminiProvider } from './gemini-provider';
-import { withLegacyCommunityAnalysis } from './legacy-community-provider';
 import { openAiProvider } from './openai-provider';
 import { openRouterProvider } from './openrouter-provider';
 import { ProviderError } from './provider-errors';
-import type { ProviderKind, VisionProvider } from './provider-types';
+import type { ProviderKind, StructuredVisionProvider } from './provider-types';
 
-const providers = new Map<ProviderKind, VisionProvider>([
-  ['openrouter', withLegacyCommunityAnalysis(openRouterProvider)],
-  ['openai', withLegacyCommunityAnalysis(openAiProvider)],
-  ['gemini', withLegacyCommunityAnalysis(geminiProvider)],
+const providers = new Map<ProviderKind, StructuredVisionProvider>([
+  ['openrouter', openRouterProvider],
+  ['openai', openAiProvider],
+  ['gemini', geminiProvider],
 ]);
 
 export const providerRegistry = Object.freeze({
-  get(kind: ProviderKind): VisionProvider {
+  get(kind: ProviderKind): StructuredVisionProvider {
     const provider = providers.get(kind);
     if (!provider) {
       throw new ProviderError('invalid_config', { params: { provider: kind } });

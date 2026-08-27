@@ -21,7 +21,7 @@ import { saveProviderConfig } from '../src/storage/provider-session';
 
 describe('provider secret boundary', () => {
   it('keeps the API key out of messages, URLs, logs, and safe validation errors', async () => {
-    const secret = 'sk-stage3-never-leak';
+    const secret = 'fixture-secret-never-leak';
     const consoleSpies = [
       vi.spyOn(console, 'debug').mockImplementation(() => undefined),
       vi.spyOn(console, 'error').mockImplementation(() => undefined),

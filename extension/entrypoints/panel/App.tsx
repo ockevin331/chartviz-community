@@ -7,7 +7,7 @@ import { activeChartClient, type CapturedChart } from '../../src/capture/active-
 import type { ProcessedImage } from '../../src/capture/image-types';
 import type { ChartContext } from '../../src/domain/chart-context';
 import { providerRegistry } from '../../src/providers/provider-registry';
-import type { ProviderConfig, ProviderKind, StructuredVisionProvider, VisionProvider } from '../../src/providers/provider-types';
+import type { ProviderConfig, ProviderKind, StructuredVisionProvider } from '../../src/providers/provider-types';
 import { loadProviderConfig } from '../../src/storage/provider-session';
 import { AnalysisError } from '../../src/ui/components/AnalysisError';
 import { AnalysisProgress } from '../../src/ui/components/AnalysisProgress';
@@ -23,7 +23,7 @@ export type AppDependencies = {
   loadConfig(): Promise<ProviderConfig | null>;
   inspect(): Promise<ChartContext>;
   capture(signal: AbortSignal): Promise<CapturedChart>;
-  getProvider(kind: ProviderKind): VisionProvider | StructuredVisionProvider;
+  getProvider(kind: ProviderKind): StructuredVisionProvider;
   runAnalysis(input: ThreeStageAnalysisInput): Promise<CommunityReportV3>;
   buildAnnotations(image: ProcessedImage, report: CommunityReportV3): Promise<AnnotatedReportImages>;
 };
@@ -115,7 +115,7 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     {!loading && state.status === 'source' && <ChartCaptureSource key={contextRevision} language={language} inspect={dependencies.inspect} capture={dependencies.capture} onCaptured={analyzeCaptured} />}
     {state.status === 'preview' && state.image && <ImagePreview language={language} image={state.image} onZoom={setLightbox} onChange={captureAgain} onAnalyze={retryAnalysis} />}
     {state.status === 'analyzing' && state.image && <><ImagePreview language={language} image={state.image} analyzing onZoom={setLightbox} onChange={captureAgain} onAnalyze={() => undefined} /><AnalysisProgress language={language} progress={state.progress} onCancel={controller.cancel} /></>}
-    {state.status === 'failed' && <AnalysisError language={language} errorCode={state.errorCode} diagnostic={state.diagnostic} onBack={controller.returnToPreview} />}
+    {state.status === 'failed' && <AnalysisError language={language} errorCode={state.errorCode} diagnostic={state.diagnostic} onBack={retryAnalysis} />}
     {state.status === 'cancelled' && <AnalysisError language={language} cancelled onBack={controller.returnToPreview} />}
     {state.status === 'completed' && state.image && state.report && state.annotations && <ReportView language={language} original={state.image} report={state.report} annotations={state.annotations} />}
     {lightbox && <ImageLightbox language={language} image={lightbox} onClose={() => setLightbox(null)} />}

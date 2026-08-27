@@ -1,8 +1,6 @@
-import { parseCommunityReport, type CommunityReport } from '../analysis/community-report';
 import { attachProviderFailureDetail, type ProviderDiagnosticStage, type ProviderDiagnosticIssue } from './provider-diagnostics';
 import { ProviderError } from './provider-errors';
 import type { ProviderKind } from './provider-types';
-import { parseStructuredResponse } from './structured-response';
 
 function invalidResponse(provider: ProviderKind, stage: ProviderDiagnosticStage, issues: readonly ProviderDiagnosticIssue[] = []): never {
   throw attachProviderFailureDetail(
@@ -241,24 +239,12 @@ function assertConnectionValue(parsed: unknown, provider: ProviderKind): void {
   if (Object.keys(parsed).length !== 1 || parsed.seenImage !== true) return invalidResponse(provider, 'report_shape');
 }
 
-export function parseOpenRouterCommunityResponse(payload: unknown): CommunityReport {
-  return parseStructuredResponse('openrouter', extractOpenRouterStructuredValue(payload), parseCommunityReport);
-}
-
 export function assertOpenRouterConnectionResponse(payload: unknown): void {
   assertConnectionValue(extractOpenRouterStructuredValue(payload), 'openrouter');
 }
 
-export function parseOpenAiCommunityResponse(payload: unknown): CommunityReport {
-  return parseStructuredResponse('openai', extractOpenAiStructuredValue(payload), parseCommunityReport);
-}
-
 export function assertOpenAiConnectionResponse(payload: unknown): void {
   assertConnectionValue(extractOpenAiStructuredValue(payload), 'openai');
-}
-
-export function parseGeminiCommunityResponse(payload: unknown): CommunityReport {
-  return parseStructuredResponse('gemini', extractGeminiStructuredValue(payload), parseCommunityReport);
 }
 
 export function assertGeminiConnectionResponse(payload: unknown): void {

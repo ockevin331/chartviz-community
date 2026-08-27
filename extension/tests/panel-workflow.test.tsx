@@ -26,7 +26,7 @@ const provider: StructuredVisionProvider = {
   generateStructured: async () => { throw new Error('The injected pipeline owns this test boundary.'); },
 };
 describe('direct Community panel workflow', () => {
-  it('runs detected chart → capture → analyzing → completed with one request and no internal detail', async () => {
+  it('starts the three-stage pipeline after capture and exposes no internal detail', async () => {
     const user = userEvent.setup();
     const analyze = vi.fn(async () => communityReport);
     render(<App dependencies={{
@@ -44,9 +44,39 @@ describe('direct Community panel workflow', () => {
     await screen.findByText('Reading chart');
     await screen.findByText('Higher lows remain visible.');
     expect(analyze).toHaveBeenCalledTimes(1);
+    expect(analyze).toHaveBeenCalledWith(expect.objectContaining({
+      provider,
+      context: expect.objectContaining({ instrument: 'BTCUSD', timeframe: '15m' }),
+      outputLanguage: 'en',
+    }));
     expect(document.body.textContent).not.toMatch(/system prompt|payload|json schema|chain-of-thought/i);
   });
 
+
+  it('restarts the three-stage pipeline only when the user explicitly retries a failure', async () => {
+    const user = userEvent.setup();
+    const analyze = vi.fn()
+      .mockRejectedValueOnce(new ProviderError('network_timeout', { params: { provider: 'openrouter' } }))
+      .mockResolvedValueOnce(communityReport);
+    render(<App dependencies={{
+      loadConfig: async () => ({ provider: 'openrouter', apiKey: 'key', model: 'google/gemini-3.7-flash', customModel: false }),
+      inspect,
+      capture,
+      getProvider: () => provider,
+      runAnalysis: analyze,
+      buildAnnotations: async () => annotatedImages,
+    }} />);
+
+    await screen.findByRole('heading', { name: 'Detected chart' });
+    await screen.findByText('BTCUSD');
+    await user.click(screen.getByRole('button', { name: 'Capture and analyze' }));
+    await screen.findByRole('alert');
+    expect(analyze).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByText('Higher lows remain visible.');
+    expect(analyze).toHaveBeenCalledTimes(2);
+  });
   it('keeps the v1 close and drag interactions on the floating panel header', async () => {
     const postMessage = vi.spyOn(window.parent, 'postMessage');
     render(<App dependencies={{ loadConfig: async () => null }} />);

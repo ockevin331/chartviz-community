@@ -137,6 +137,7 @@ export function ProviderSetup({ language, onConfigured, initialConfig = null, sa
       {customModel && <div className="custom-model-fields"><label>{t.customModelId}<input aria-label={t.customModelId} value={customModelId} onChange={(event) => { setCustomModelId(event.target.value); setMessage(null); }} /></label><p className="capture-warning" role="status">⚠ {t.multimodalWarning}</p></div>}
       <label>{t.apiKey}<span className="password-field"><input aria-label={t.apiKey} type={showKey ? 'text' : 'password'} autoComplete="off" value={apiKey} onChange={(event) => setApiKey(event.target.value)} /><button type="button" aria-label={showKey ? t.hideApiKey : t.showApiKey} onClick={() => setShowKey((value) => !value)}>{showKey ? <EyeOffIcon /> : <EyeIcon />}</button></span></label>
       <p className="privacy-notice">{t.sessionKeyPrivacy}</p>
+      <p className="cost-notice">{t.analysisRequestNotice}</p>
       <p className="cost-notice">{t.connectionCost}</p>
       {message && <p className={message.kind === 'error' ? 'setup-error' : 'setup-success'} role={message.kind === 'error' ? 'alert' : 'status'}>{message.text}</p>}
       <div className="provider-actions"><button className="secondary" type="button" disabled={!valid || testing} onClick={() => void connect()}>{testing ? t.testingConnection : t.testConnection}</button><button className="primary" type="submit" disabled={!valid}>{t.saveContinue}</button></div>

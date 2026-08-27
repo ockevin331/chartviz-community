@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { communityReportV3JsonSchema, parseCommunityReportV3, type CommunityReportV3 } from '../src/analysis/stages/community-report-v3';
 import { ProviderError, type AnalysisErrorCode } from '../src/providers/provider-errors';
 import { GeminiProvider } from '../src/providers/gemini-provider';
-import type { ProviderConfig, StructuredGenerationRequest, VisionRequest } from '../src/providers/provider-types';
+import type { ProviderConfig, ProviderImage, StructuredGenerationRequest } from '../src/providers/provider-types';
 import { communityReport } from './community-ui-fixtures';
 
 const validReport = communityReport;
@@ -27,7 +27,7 @@ const validThoughtSignature = 'AQIDBA==';
 
 function request(
   signal = new AbortController().signal,
-  image: VisionRequest['image'] = { mediaType: 'image/png', dataUrl: 'data:image/png;base64,AAAA' },
+  image: ProviderImage = { mediaType: 'image/png', dataUrl: 'data:image/png;base64,AAAA' },
 ): StructuredGenerationRequest<CommunityReportV3> {
   return {
     image,
@@ -262,7 +262,7 @@ describe('Gemini generateContent analyze', () => {
     ['image/png', 'data:image/png;base64,AAAA'],
     ['image/jpeg', 'data:image/jpeg;base64,AQID'],
     ['image/webp', 'data:image/webp;base64,BAUG'],
-  ] satisfies Array<[VisionRequest['image']['mediaType'], string]>)('preserves strict %s Base64 bytes in inlineData', async (mediaType, dataUrl) => {
+  ] satisfies Array<[ProviderImage['mediaType'], string]>)('preserves strict %s Base64 bytes in inlineData', async (mediaType, dataUrl) => {
     const fetchImpl = vi.fn(async () => successfulResponse(JSON.stringify(validReport)));
     const provider = providerWithFetch(fetchImpl);
 
@@ -280,7 +280,7 @@ describe('Gemini generateContent analyze', () => {
     ['invalid Base64', { mediaType: 'image/png', dataUrl: 'data:image/png;base64,not_base64' }],
     ['empty Base64', { mediaType: 'image/png', dataUrl: 'data:image/png;base64,' }],
     ['embedded whitespace', { mediaType: 'image/png', dataUrl: 'data:image/png;base64,AA AA' }],
-  ] satisfies Array<[string, VisionRequest['image']]>)('rejects invalid data URL form: %s', async (_name, image) => {
+  ] satisfies Array<[string, ProviderImage]>)('rejects invalid data URL form: %s', async (_name, image) => {
     const fetchImpl = vi.fn();
     const provider = providerWithFetch(fetchImpl);
 

@@ -1,7 +1,7 @@
 import testCardDataUrl from '../../assets/provider-test-card.png?inline';
 import { getModelsForProvider } from './model-catalog';
 import { ProviderError, type AnalysisErrorCode } from './provider-errors';
-import { normalizeProviderConfig, type ProviderConfig, type StructuredGenerationRequest, type StructuredVisionProvider, type ValidationResult, type VisionRequest } from './provider-types';
+import { normalizeProviderConfig, type ProviderConfig, type ProviderImage, type StructuredGenerationRequest, type StructuredVisionProvider, type ValidationResult } from './provider-types';
 import { assertOpenAiConnectionResponse, extractOpenAiStructuredValue } from './response-parser';
 import { parseStructuredResponse } from './structured-response';
 
@@ -33,7 +33,7 @@ function statusCode(status: number): AnalysisErrorCode {
   return 'invalid_response';
 }
 
-function validImageDataUrl(image: VisionRequest['image']): boolean {
+function validImageDataUrl(image: ProviderImage): boolean {
   const match = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(image.dataUrl);
   const encoded = match?.[2];
   return match !== null
