@@ -56,7 +56,7 @@ describe('AnalysisError diagnostics', () => {
     expect(screen.getByText('cv_test_123')).toBeTruthy();
     expect(screen.getByText('extension_local')).toBeTruthy();
     expect(screen.getByText('community-3.0')).toBeTruthy();
-    expect(screen.getByText(/cannot be queried on a ChartViz server/i)).toBeTruthy();
+    expect(screen.getByText(/includes the prompts and structured model outputs/i)).toBeTruthy();
     expect(screen.getByText('chart.timeframe · multiple_timeframes')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
 

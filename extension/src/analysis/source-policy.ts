@@ -72,27 +72,30 @@ function compactDurationKey(quantity: string, unit: string): string {
   return `years:${value}`;
 }
 
-function hasCompactMonthlyContext(text: string, matchIndex: number, matchLength: number): boolean {
+function hasTimeframeContext(text: string, matchIndex: number, matchLength: number): boolean {
   const before = text.slice(Math.max(0, matchIndex - 24), matchIndex);
   const after = text.slice(matchIndex + matchLength, matchIndex + matchLength + 24);
-  return /(?:\b(?:chart|timeframe|interval)\s*[:=]?\s*$|(?:图表|周期|级别|K线)\s*[:：=]?\s*$)/iu.test(before)
-    || /^\s*(?:[-–—/:]\s*)?(?:chart|timeframe|interval|candles?|view|图表|图|周期|级别|K线)\b/iu.test(after);
+  return /(?:\b(?:chart|timeframe|interval|candles?|bars?)\s*[:=]?\s*$|(?:图表|图|周期|级别|K线)\s*[:：=]?\s*$)/iu.test(before)
+    || /^\s*(?:[-–—/:]\s*)?(?:chart|timeframe|interval|candles?|bars?|view|图表|图|周期|级别|K线)/iu.test(after);
 }
 
 function collectCanonicalTimeframes(text: string, declaredTimeframe = false): string[] {
   const mentions: string[] = [];
   for (const match of text.matchAll(numericEnglishWordTimeframe)) {
+    if (!declaredTimeframe && !hasTimeframeContext(text, match.index, match[0].length)) continue;
     mentions.push(durationKey(match[1]!, match[2]!));
   }
   for (const match of text.matchAll(compactEnglishTimeframe)) {
+    if (!declaredTimeframe && !hasTimeframeContext(text, match.index, match[0].length)) continue;
     const unit = match[2]!;
-    if (unit === 'M' && !declaredTimeframe && !hasCompactMonthlyContext(text, match.index, match[0].length)) continue;
     mentions.push(compactDurationKey(match[1]!, unit));
   }
   for (const match of text.matchAll(numericChineseTimeframe)) {
+    if (!declaredTimeframe && !hasTimeframeContext(text, match.index, match[0].length)) continue;
     mentions.push(durationKey(match[1]!, match[2]!));
   }
   for (const match of text.matchAll(namedEnglishTimeframe)) {
+    if (!declaredTimeframe && !hasTimeframeContext(text, match.index, match[0].length)) continue;
     const keys: Record<string, string> = {
       hourly: 'seconds:3600',
       daily: 'seconds:86400',
@@ -105,6 +108,9 @@ function collectCanonicalTimeframes(text: string, declaredTimeframe = false): st
   }
   for (const match of text.matchAll(namedChineseTimeframe)) {
     const value = match[0];
+    if (!declaredTimeframe
+      && !/(?:线|图|级别|周期)/u.test(value)
+      && !hasTimeframeContext(text, match.index, match[0].length)) continue;
     if (/分钟/.test(value)) mentions.push('seconds:60');
     else if (/小时/.test(value)) mentions.push('seconds:3600');
     else if (/(?:每日|每天|日(?:线|图|级别|周期))/.test(value)) mentions.push('seconds:86400');
@@ -123,16 +129,40 @@ export function assertScreenshotOnlyText(text: string): void {
   }
 }
 
-export function assertSingleTimeframe(texts: readonly string[], declaredTimeframe: string | null): void {
+export type TimeframeConflict = Readonly<{
+  index: number;
+  text: string;
+  detected: readonly string[];
+}>;
+
+export function findSingleTimeframeConflict(
+  texts: readonly string[],
+  declaredTimeframe: string | null,
+): TimeframeConflict | null {
   const mentions = new Set<string>();
-  const allTexts = declaredTimeframe === null ? texts : [declaredTimeframe, ...texts];
-  for (const text of allTexts) {
-    if (explicitMultipleTimeframeClaim.test(text) || explicitChineseMultipleTimeframeClaim.test(text)) {
-      throw new Error('Report must describe exactly one visible timeframe');
+  if (declaredTimeframe !== null) {
+    const declaredMentions = collectCanonicalTimeframes(declaredTimeframe, true);
+    declaredMentions.forEach((timeframe) => mentions.add(timeframe));
+    if (explicitMultipleTimeframeClaim.test(declaredTimeframe)
+      || explicitChineseMultipleTimeframeClaim.test(declaredTimeframe)
+      || mentions.size > 1) {
+      return { index: -1, text: declaredTimeframe, detected: [...mentions] };
     }
-    collectCanonicalTimeframes(text, text === declaredTimeframe).forEach((timeframe) => mentions.add(timeframe));
   }
-  if (mentions.size > 1) {
+  for (const [index, text] of texts.entries()) {
+    if (explicitMultipleTimeframeClaim.test(text) || explicitChineseMultipleTimeframeClaim.test(text)) {
+      return { index, text, detected: collectCanonicalTimeframes(text) };
+    }
+    const detected = collectCanonicalTimeframes(text);
+    const combined = new Set([...mentions, ...detected]);
+    if (combined.size > 1) return { index, text, detected };
+    detected.forEach((timeframe) => mentions.add(timeframe));
+  }
+  return null;
+}
+
+export function assertSingleTimeframe(texts: readonly string[], declaredTimeframe: string | null): void {
+  if (findSingleTimeframeConflict(texts, declaredTimeframe) !== null) {
     throw new Error('Report must describe exactly one visible timeframe');
   }
 }

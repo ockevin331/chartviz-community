@@ -4,6 +4,7 @@ import type { ProcessedImage } from '../../capture/image-types';
 import {
   attachProviderFailureDetail,
   createAnalysisDiagnostic,
+  type AnalysisDiagnostic,
 } from '../../providers/provider-diagnostics';
 import { ProviderError } from '../../providers/provider-errors';
 import { providerRegistry } from '../../providers/provider-registry';
@@ -12,6 +13,7 @@ import type {
   ProviderKind,
   StructuredVisionProvider,
 } from '../../providers/provider-types';
+import { saveLastAnalysisFailure } from '../../storage/analysis-failure-storage';
 import {
   runThreeStageAnalysis,
   type ThreeStageAnalysisInput,
@@ -33,6 +35,7 @@ export type DirectAnalysisRuntimeDependencies = Readonly<{
   ): Promise<AnnotatedReportImages>;
   createRequestId(): string;
   now(): number;
+  saveFailureDiagnostic(diagnostic: AnalysisDiagnostic): Promise<void>;
 }>;
 
 function createRequestId(): string {
@@ -48,6 +51,7 @@ const defaultDependencies: DirectAnalysisRuntimeDependencies = {
   buildAnnotations: buildReportAnnotations,
   createRequestId,
   now: () => Date.now(),
+  saveFailureDiagnostic: saveLastAnalysisFailure,
 };
 
 const directCapabilities = Object.freeze({
@@ -123,17 +127,20 @@ export class DirectAnalysisRuntime implements AnalysisRuntime {
         if (error.code === 'cancelled') {
           throw new AnalysisRuntimeFailure('cancelled');
         }
-        throw new AnalysisRuntimeFailure(
-          error.code,
-          createAnalysisDiagnostic({
+        const diagnostic = createAnalysisDiagnostic({
             error,
             provider: this.config.provider,
             model: this.config.model,
             requestId,
             startedAt,
             finishedAt: this.dependencies.now(),
-          }),
-        );
+          });
+        try {
+          await this.dependencies.saveFailureDiagnostic(diagnostic);
+        } catch {
+          // The in-memory diagnostic must remain available even when local storage is unavailable.
+        }
+        throw new AnalysisRuntimeFailure(error.code, diagnostic);
       }
       throw new AnalysisRuntimeFailure('unknown');
     } finally {

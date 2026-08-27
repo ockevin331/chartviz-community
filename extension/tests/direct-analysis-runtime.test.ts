@@ -171,6 +171,49 @@ describe('DirectAnalysisRuntime', () => {
     expect(serialized).not.toMatch(/systemPrompt|userPrompt|rawOutput/i);
   });
 
+  it('persists the complete local failure diagnostic before returning the error', async () => {
+    const snapshot = {
+      context: { instrument: 'BTC/USDT', timeframe: '15m', site: null, exchange: null },
+      outputLanguage: 'en' as const,
+      stages: [{
+        stage: 'evidence_reasoning' as const,
+        promptVersion: 'reasoning-1.0',
+        schemaName: 'community_report_v3',
+        hasImage: false,
+        systemPrompt: 'system prompt',
+        userPrompt: 'user prompt',
+        output: { tradePlan: { summary: 'The 1h chart confirms this 15m chart.' } },
+      }],
+    };
+    const providerError = attachProviderFailureDetail(
+      new ProviderError('invalid_response', { params: { provider: 'openrouter' } }),
+      {
+        stage: 'report_semantics',
+        issues: [{
+          path: 'tradePlan.summary',
+          code: 'multiple_timeframes',
+          valuePreview: 'The 1h chart confirms this 15m chart.',
+        }],
+        snapshot,
+      },
+    );
+    const saveFailureDiagnostic = vi.fn(async () => undefined);
+    const { runtime } = setup({
+      runAnalysis: vi.fn(async () => { throw providerError; }),
+      saveFailureDiagnostic,
+    });
+
+    await expect(runtime.analyze({ captures: [capture], outputLanguage: 'en' }))
+      .rejects.toMatchObject({ code: 'invalid_response' });
+
+    expect(saveFailureDiagnostic).toHaveBeenCalledTimes(1);
+    expect(saveFailureDiagnostic).toHaveBeenCalledWith(expect.objectContaining({
+      requestId: 'runtime-request-id',
+      stage: 'report_semantics',
+      snapshot,
+    }));
+  });
+
   it('classifies annotation rendering failures without exposing the thrown message', async () => {
     const buildAnnotations = vi.fn(async () => {
       throw new Error(`canvas failed with ${config.apiKey}`);

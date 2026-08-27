@@ -143,7 +143,7 @@ describe('three-stage analysis pipeline', () => {
     expect(() => normalizeCommunityVisualFacts(nonMonotonic)).toThrow();
   });
 
-  it('stops at the failing stage and exposes only its safe stage classification', async () => {
+  it('stops at the failing stage and preserves a secret-free snapshot', async () => {
     const malformedSignals = clone(validSignalFacts) as any;
     malformedSignals.signals[0].takeProfits = [];
     const provider = new FixtureProvider([validVisualFacts, malformedSignals, validReportV3]);
@@ -156,7 +156,8 @@ describe('three-stage analysis pipeline', () => {
     expect(getProviderFailureDetail(caught)).toMatchObject({ stage: 'signal_extraction_shape' });
     expect(provider.calls).toHaveLength(2);
     const serialized = JSON.stringify(getProviderFailureDetail(caught));
-    expect(serialized).not.toMatch(/data:image|test-key|Previously validated visual facts|Validated evidence/);
+    expect(serialized).toContain('Previously validated visual facts');
+    expect(serialized).not.toMatch(/data:image|test-key|bearer\s|sk-[A-Za-z0-9_-]{8,}/i);
   });
 
   it('classifies deterministic anchor validation as visual semantics without another model call', async () => {
@@ -168,7 +169,7 @@ describe('three-stage analysis pipeline', () => {
     try { await runThreeStageAnalysis(input(provider)); }
     catch (error) { caught = error; }
 
-    expect(getProviderFailureDetail(caught)).toEqual({
+    expect(getProviderFailureDetail(caught)).toMatchObject({
       stage: 'visual_extraction_semantics',
       issues: [{ path: 'priceScaleAnchors.1', code: 'price_scale_not_monotonic' }],
     });
@@ -209,7 +210,7 @@ describe('three-stage analysis pipeline', () => {
     try { await runThreeStageAnalysis({ ...input(provider), outputLanguage: 'zh-CN' }); }
     catch (error) { caught = error; }
 
-    expect(getProviderFailureDetail(caught)).toEqual({
+    expect(getProviderFailureDetail(caught)).toMatchObject({
       stage: 'report_semantics',
       issues: [{ path: 'conclusion.summary', code: 'output_language_mismatch' }],
     });
@@ -225,7 +226,7 @@ describe('three-stage analysis pipeline', () => {
     try { await runThreeStageAnalysis(input(provider)); }
     catch (error) { caught = error; }
 
-    expect(getProviderFailureDetail(caught)).toEqual({
+    expect(getProviderFailureDetail(caught)).toMatchObject({
       stage: 'report_semantics',
       issues: [{ path: 'tradePlan.summary', code: 'internal_evidence_id_exposed' }],
     });
@@ -258,6 +259,50 @@ describe('three-stage analysis pipeline', () => {
 
     expect(report.chart).toEqual({ instrument: 'BTC/USDT', timeframe: '15m' });
     expect(provider.calls).toHaveLength(3);
+  });
+
+  it('preserves the exact offending field and three-stage failure snapshot', async () => {
+    const alteredReport = clone(validReportV3) as any;
+    alteredReport.tradePlan.summary = 'The 1h chart confirms this 15m chart.';
+    const provider = new FixtureProvider([validVisualFacts, validSignalFacts, alteredReport]);
+    let caught: unknown;
+
+    try { await runThreeStageAnalysis(input(provider)); }
+    catch (error) { caught = error; }
+
+    expect(getProviderFailureDetail(caught)).toMatchObject({
+      stage: 'report_semantics',
+      issues: [{
+        path: 'tradePlan.summary',
+        code: 'multiple_timeframes',
+        valuePreview: 'The 1h chart confirms this 15m chart.',
+      }],
+      snapshot: {
+        context,
+        outputLanguage: 'en',
+        stages: [
+          {
+            stage: 'visual_extraction', promptVersion: 'visual-1.0',
+            schemaName: 'community_visual_facts', hasImage: true,
+            output: validVisualFacts,
+          },
+          {
+            stage: 'signal_extraction', promptVersion: 'signals-1.0',
+            schemaName: 'community_signal_facts', hasImage: true,
+            output: validSignalFacts,
+          },
+          {
+            stage: 'evidence_reasoning', promptVersion: 'reasoning-1.0',
+            schemaName: 'community_report_v3', hasImage: false,
+            output: alteredReport,
+          },
+        ],
+      },
+    });
+    const snapshot = (getProviderFailureDetail(caught) as any)?.snapshot;
+    expect(snapshot.stages[2].systemPrompt).toContain('price-action analyst');
+    expect(snapshot.stages[2].userPrompt).toContain('Validated evidence');
+    expect(JSON.stringify(snapshot)).not.toMatch(/data:image|api.?key|bearer\s|sk-[A-Za-z0-9_-]{8,}/i);
   });
 
   it('starts a fresh three-call sequence when the caller retries explicitly', async () => {

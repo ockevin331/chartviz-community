@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { SemanticDiagnosticCode } from '../semantic-diagnostics';
+import { findSingleTimeframeConflict } from '../source-policy';
 import type { CommunityEvidenceBundle } from './evidence-bundle';
 import {
   parseCommunityReportV3,
@@ -10,8 +11,19 @@ import type { OutputLanguage } from './shared-stage-types';
 
 type Narrative = Readonly<{ text: string; path: Array<string | number> }>;
 
-function semanticError(path: Array<string | number>, code: SemanticDiagnosticCode): never {
-  throw new z.ZodError([{ code: 'custom', path, message: code }]);
+const supportedTechnicalLabels = /^(?:RSI|MACD|VWAP|EMA|SMA|ATR|OBV|OHLC|OTHER)(?:\s*\d+)?$/;
+
+function semanticError(
+  path: Array<string | number>,
+  code: SemanticDiagnosticCode,
+  valuePreview?: string,
+): never {
+  throw new z.ZodError([{
+    code: 'custom',
+    path,
+    message: code,
+    ...(valuePreview === undefined ? {} : { params: { valuePreview } }),
+  }]);
 }
 
 function narratives(value: unknown, path: Array<string | number> = [], result: Narrative[] = []): Narrative[] {
@@ -32,13 +44,13 @@ function narratives(value: unknown, path: Array<string | number> = [], result: N
 function assertLanguage(report: CommunityReportV3, outputLanguage: OutputLanguage): void {
   for (const { text, path } of narratives(report)) {
     if (outputLanguage === 'en' && /\p{Script=Han}/u.test(text)) {
-      semanticError(path, 'output_language_mismatch');
+      semanticError(path, 'output_language_mismatch', text);
     }
     if (outputLanguage === 'zh-CN'
       && /[A-Za-z]{4,}/.test(text)
       && !/\p{Script=Han}/u.test(text)
-      && !/^(?:RSI|MACD|OTHER)$/.test(text)) {
-      semanticError(path, 'output_language_mismatch');
+      && !supportedTechnicalLabels.test(text)) {
+      semanticError(path, 'output_language_mismatch', text);
     }
   }
 }
@@ -53,10 +65,22 @@ export function validateCommunityReportV3Semantics(
   outputLanguage: OutputLanguage,
 ): CommunityReportV3 {
   const reportShape = parseCommunityReportV3Shape(value);
-  const report = parseCommunityReportV3({
+  const anchoredReport = {
     ...reportShape,
     chart: evidence.visualFacts.chart,
-  });
+  };
+  const anchoredNarratives = narratives(anchoredReport);
+  const timeframeConflict = findSingleTimeframeConflict(
+    anchoredNarratives.map(({ text }) => text),
+    anchoredReport.chart.timeframe,
+  );
+  if (timeframeConflict !== null) {
+    const offending = timeframeConflict.index < 0
+      ? { path: ['chart', 'timeframe'] as Array<string | number>, text: timeframeConflict.text }
+      : anchoredNarratives[timeframeConflict.index]!;
+    semanticError(offending.path, 'multiple_timeframes', offending.text);
+  }
+  const report = parseCommunityReportV3(anchoredReport);
   const visibleNarratives = narratives(report);
   const exposedId = visibleNarratives.find(({ text }) => /\b(?:SEG|L|I|S|P)\d{2}\b/.test(text));
   if (exposedId) {

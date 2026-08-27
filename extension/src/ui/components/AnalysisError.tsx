@@ -36,7 +36,7 @@ export function AnalysisError({ language, errorCode = 'unknown', cancelled = fal
           <div><dt>{t.duration}</dt><dd>{diagnostic.durationMs} ms</dd></div>
           <div><dt>{t.issues}</dt><dd>{diagnostic.issues.length}</dd></div>
         </dl>
-        {diagnostic.issues.length > 0 && <ul className="diagnostic-issues">{diagnostic.issues.map((issue, index) => <li key={`${issue.path}:${issue.code}:${index}`}>{issue.path || 'report'} · {issue.code}</li>)}</ul>}
+        {diagnostic.issues.length > 0 && <ul className="diagnostic-issues">{diagnostic.issues.map((issue, index) => <li key={`${issue.path}:${issue.code}:${index}`}>{issue.path || 'report'} · {issue.code}{issue.valuePreview ? ` · “${issue.valuePreview}”` : ''}</li>)}</ul>}
         <button className="secondary" type="button" onClick={() => { void copyText(serialized).then(() => setCopied(true)); }}>{copied ? t.diagnosticsCopied : t.copyDiagnostics}</button>
       </div>}
     </div>}

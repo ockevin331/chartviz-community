@@ -3,6 +3,8 @@ import {
   attachProviderFailureDetail,
   getProviderFailureDetail,
   validationFailureDetail,
+  type AnalysisFailureSnapshot,
+  type AnalysisStageSnapshot,
   type ProviderDiagnosticIssue,
   type ProviderDiagnosticStage,
 } from '../../providers/provider-diagnostics';
@@ -18,6 +20,10 @@ import { buildSignalExtractionPrompt } from './signal-extraction-prompt';
 import type { OutputLanguage, StagePageContext } from './shared-stage-types';
 import { communityVisualFactsJsonSchema, parseCommunityVisualFacts } from './visual-facts';
 import { buildVisualExtractionPrompt } from './visual-extraction-prompt';
+
+type MutableStageSnapshot = {
+  -readonly [Key in keyof AnalysisStageSnapshot]: AnalysisStageSnapshot[Key];
+};
 
 export type AnalysisPipelineProgress =
   | 'preparing'
@@ -50,6 +56,7 @@ function classifiedError(
   transportStage: ProviderDiagnosticStage,
   shapeStage: ProviderDiagnosticStage,
   semanticStage: ProviderDiagnosticStage,
+  snapshot: AnalysisFailureSnapshot,
 ): never {
   if (error instanceof ProviderError && error.code === 'cancelled') throw error;
   if (error instanceof ProviderError) {
@@ -59,12 +66,12 @@ function classifiedError(
       : detail?.stage === 'report_semantics'
         ? semanticStage
         : shapeStage;
-    throw attachProviderFailureDetail(error, { stage, issues: detail?.issues ?? [] });
+    throw attachProviderFailureDetail(error, { stage, issues: detail?.issues ?? [], snapshot });
   }
   const detail = validationFailureDetail(error);
   throw attachProviderFailureDetail(
     new ProviderError('invalid_response', { params: { provider: input.config.provider } }),
-    { stage: detail.stage === 'report_semantics' ? semanticStage : shapeStage, issues: detail.issues },
+    { stage: detail.stage === 'report_semantics' ? semanticStage : shapeStage, issues: detail.issues, snapshot },
   );
 }
 
@@ -72,6 +79,7 @@ function semanticError(
   error: unknown,
   input: ThreeStageAnalysisInput,
   stage: ProviderDiagnosticStage,
+  snapshot: AnalysisFailureSnapshot,
 ): never {
   if (error instanceof ProviderError && error.code === 'cancelled') throw error;
   const detail = validationFailureDetail(error);
@@ -79,15 +87,45 @@ function semanticError(
     error instanceof ProviderError
       ? error
       : new ProviderError('invalid_response', { params: { provider: input.config.provider } }),
-    { stage, issues: detail.issues as readonly ProviderDiagnosticIssue[] },
+    { stage, issues: detail.issues as readonly ProviderDiagnosticIssue[], snapshot },
   );
 }
 
+function stageSnapshot(
+  stage: AnalysisStageSnapshot['stage'],
+  prompt: { version: string; system: string; user: string },
+  schemaName: string,
+  hasImage: boolean,
+): MutableStageSnapshot {
+  return {
+    stage,
+    promptVersion: prompt.version,
+    schemaName,
+    hasImage,
+    systemPrompt: prompt.system,
+    userPrompt: prompt.user,
+  };
+}
+
+function failureSnapshot(
+  input: ThreeStageAnalysisInput,
+  stages: readonly MutableStageSnapshot[],
+): AnalysisFailureSnapshot {
+  return {
+    context: { ...input.context },
+    outputLanguage: input.outputLanguage,
+    stages: stages.map((stage) => ({ ...stage })),
+  };
+}
+
 export async function runThreeStageAnalysis(input: ThreeStageAnalysisInput): Promise<CommunityReportV3> {
+  const stages: MutableStageSnapshot[] = [];
   assertActive(input);
   input.onProgress?.('preparing');
   input.onProgress?.('reading_chart');
   const visualPrompt = buildVisualExtractionPrompt(input.context);
+  const visualStage = stageSnapshot('visual_extraction', visualPrompt, 'community_visual_facts', true);
+  stages.push(visualStage);
   let visualRaw;
   try {
     visualRaw = await input.provider.generateStructured(input.config, {
@@ -100,15 +138,18 @@ export async function runThreeStageAnalysis(input: ThreeStageAnalysisInput): Pro
       signal: input.signal,
     });
   } catch (error) {
-    return classifiedError(error, input, 'visual_extraction_transport', 'visual_extraction_shape', 'visual_extraction_semantics');
+    return classifiedError(error, input, 'visual_extraction_transport', 'visual_extraction_shape', 'visual_extraction_semantics', failureSnapshot(input, stages));
   }
+  visualStage.output = visualRaw;
   let visualFacts;
   try { visualFacts = normalizeCommunityVisualFacts(visualRaw); }
-  catch (error) { return semanticError(error, input, 'visual_extraction_semantics'); }
+  catch (error) { return semanticError(error, input, 'visual_extraction_semantics', failureSnapshot(input, stages)); }
 
   assertActive(input);
   input.onProgress?.('reviewing_clues');
   const signalPrompt = buildSignalExtractionPrompt({ context: input.context, facts: visualFacts });
+  const signalStage = stageSnapshot('signal_extraction', signalPrompt, 'community_signal_facts', true);
+  stages.push(signalStage);
   let signalRaw;
   try {
     signalRaw = await input.provider.generateStructured(input.config, {
@@ -121,11 +162,12 @@ export async function runThreeStageAnalysis(input: ThreeStageAnalysisInput): Pro
       signal: input.signal,
     });
   } catch (error) {
-    return classifiedError(error, input, 'signal_extraction_transport', 'signal_extraction_shape', 'signal_extraction_semantics');
+    return classifiedError(error, input, 'signal_extraction_transport', 'signal_extraction_shape', 'signal_extraction_semantics', failureSnapshot(input, stages));
   }
+  signalStage.output = signalRaw;
   let signalFacts;
   try { signalFacts = normalizeCommunitySignalFacts(signalRaw, visualFacts); }
-  catch (error) { return semanticError(error, input, 'signal_extraction_semantics'); }
+  catch (error) { return semanticError(error, input, 'signal_extraction_semantics', failureSnapshot(input, stages)); }
 
   const evidence = mergeCommunityEvidence(visualFacts, signalFacts);
   assertActive(input);
@@ -133,6 +175,8 @@ export async function runThreeStageAnalysis(input: ThreeStageAnalysisInput): Pro
   const reasoningPrompt = buildEvidenceReasoningPrompt({
     context: input.context, evidence, outputLanguage: input.outputLanguage,
   });
+  const reasoningStage = stageSnapshot('evidence_reasoning', reasoningPrompt, 'community_report_v3', false);
+  stages.push(reasoningStage);
   let reportRaw;
   try {
     reportRaw = await input.provider.generateStructured(input.config, {
@@ -144,12 +188,13 @@ export async function runThreeStageAnalysis(input: ThreeStageAnalysisInput): Pro
       signal: input.signal,
     });
   } catch (error) {
-    return classifiedError(error, input, 'evidence_reasoning_transport', 'report_shape', 'report_semantics');
+    return classifiedError(error, input, 'evidence_reasoning_transport', 'report_shape', 'report_semantics', failureSnapshot(input, stages));
   }
+  reasoningStage.output = reportRaw;
   try {
     const report = validateCommunityReportV3Semantics(reportRaw, evidence, input.outputLanguage);
     input.onProgress?.('preparing_result');
     return report;
   }
-  catch (error) { return semanticError(error, input, 'report_semantics'); }
+  catch (error) { return semanticError(error, input, 'report_semantics', failureSnapshot(input, stages)); }
 }
