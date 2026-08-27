@@ -2,7 +2,7 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CapturedChart } from '../src/capture/active-chart';
+import { ChartAvailabilityError, type CapturedChart } from '../src/capture/active-chart';
 import type { ChartContext } from '../src/domain/chart-context';
 import { ChartCaptureSource } from '../src/ui/components/ChartCaptureSource';
 
@@ -20,7 +20,6 @@ const captured: CapturedChart = {
   context,
   image: { mediaType: 'image/jpeg', dataUrl: 'data:image/jpeg;base64,Y2hhcnQ=', width: 1100, height: 650 },
 };
-
 describe('ChartCaptureSource', () => {
   it('shows waiting state, detected context, and one capture action without upload', async () => {
     const user = userEvent.setup();
@@ -43,15 +42,57 @@ describe('ChartCaptureSource', () => {
     expect(capture).toHaveBeenCalledTimes(1);
   });
 
-  it('shows neutral guidance and supported links without a pointless retry on unsupported URLs', async () => {
-    const inspect = vi.fn().mockRejectedValue(new Error('This page is not a supported chart URL.'));
+  it('guides an unsupported domain to ChartViz and supported chart sites without an upload control', async () => {
+    const inspect = vi.fn().mockRejectedValue(new ChartAvailabilityError(
+      'This site is not supported.',
+      { code: 'unsupported_site', onChartVizSite: false },
+    ));
     render(<ChartCaptureSource language="en" inspect={inspect} capture={async () => captured} onCaptured={() => undefined} />);
 
-    expect(await screen.findByRole('heading', { name: 'This page is not supported' })).toBeTruthy();
-    expect(await screen.findByRole('alert')).not.toHaveProperty('textContent', expect.stringContaining('This page is not a supported chart URL.'));
-    expect(screen.getByRole('link', { name: 'TradingView' })).toHaveProperty('href', expect.stringContaining('tradingview.com/chart'));
+    expect(await screen.findByRole('heading', { name: 'This site is not supported' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Upload a screenshot on ChartViz' })).toHaveProperty(
+      'href',
+      'https://www.chartviz.xyz/',
+    );
+    expect(screen.getByRole('link', { name: 'TradingView' })).toBeTruthy();
+    expect(document.querySelector('input[type="file"]')).toBeNull();
+    expect(screen.queryByRole('button', { name: /upload/i })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Refresh chart detection' })).toBeNull();
     expect(inspect).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows one same-site BTC example for a supported domain with the wrong URL', async () => {
+    const inspect = vi.fn().mockRejectedValue(new ChartAvailabilityError(
+      'This page is not a supported chart URL.',
+      {
+        code: 'unsupported_url',
+        site: 'binance',
+        siteName: 'Binance',
+        exampleUrl: 'https://www.binance.com/en/trade/BTC_USDT?type=spot',
+      },
+    ));
+    render(<ChartCaptureSource language="en" inspect={inspect} capture={async () => captured} onCaptured={() => undefined} />);
+
+    expect(await screen.findByRole('heading', { name: 'This page is not a supported chart page' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Open Binance BTC chart' })).toHaveProperty(
+      'href',
+      'https://www.binance.com/en/trade/BTC_USDT?type=spot',
+    );
+    expect(screen.queryByRole('link', { name: 'TradingView' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Upload a screenshot on ChartViz' })).toBeNull();
+  });
+
+  it('uses same-page upload wording on the ChartViz domain', async () => {
+    const inspect = vi.fn().mockRejectedValue(new ChartAvailabilityError(
+      'This site is not supported.',
+      { code: 'unsupported_site', onChartVizSite: true },
+    ));
+    render(<ChartCaptureSource language="en" inspect={inspect} capture={async () => captured} onCaptured={() => undefined} />);
+
+    expect(await screen.findByRole('link', { name: 'Use the screenshot upload area on this page' })).toHaveProperty(
+      'href',
+      'https://www.chartviz.xyz/',
+    );
   });
 
   it('keeps refresh for a supported chart that is still loading', async () => {

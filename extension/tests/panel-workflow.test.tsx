@@ -3,6 +3,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../entrypoints/panel/App';
+import { ChartAvailabilityError } from '../src/capture/active-chart';
 import type { ChartContext } from '../src/domain/chart-context';
 import { attachProviderFailureDetail } from '../src/providers/provider-diagnostics';
 import { ProviderError } from '../src/providers/provider-errors';
@@ -26,6 +27,26 @@ const provider: StructuredVisionProvider = {
   generateStructured: async () => { throw new Error('The injected pipeline owns this test boundary.'); },
 };
 describe('direct Community panel workflow', () => {
+  it('guides an unsupported site to ChartViz without invoking analysis', async () => {
+    const analyze = vi.fn(async () => communityReport);
+    render(<App dependencies={{
+      loadConfig: async () => ({ provider: 'openrouter', apiKey: 'key', model: 'google/gemini-3.7-flash', customModel: false }),
+      inspect: async () => {
+        throw new ChartAvailabilityError(
+          'This site is not supported.',
+          { code: 'unsupported_site', onChartVizSite: false },
+        );
+      },
+      getProvider: () => provider,
+      runAnalysis: analyze,
+      buildAnnotations: async () => annotatedImages,
+    }} />);
+
+    expect(await screen.findByRole('link', { name: 'Upload a screenshot on ChartViz' })).toBeTruthy();
+    expect(document.querySelector('input[type="file"]')).toBeNull();
+    expect(analyze).not.toHaveBeenCalled();
+  });
+
   it('starts the three-stage pipeline after capture and exposes no internal detail', async () => {
     const user = userEvent.setup();
     const analyze = vi.fn(async () => communityReport);
