@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { SemanticDiagnosticCode } from '../semantic-diagnostics';
+import { patternGeometryPoints } from './pattern-geometry-schema';
 import { parseCommunityVisualFacts, type CommunityVisualFacts } from './visual-facts';
 
 type PriceAnchor = CommunityVisualFacts['priceScaleAnchors'][number];
@@ -57,7 +58,7 @@ export function normalizeCommunityVisualFacts(value: unknown): CommunityVisualFa
     )) === index);
 
   const patterns = parsed.patterns.filter((pattern) => (
-    pattern.points.every((point) => insidePricePanel(point.yRatio, parsed))
+    patternGeometryPoints(pattern.geometry).every((point) => insidePricePanel(point.yRatio, parsed))
   ));
 
   return parseCommunityVisualFacts({ ...parsed, levels, patterns });

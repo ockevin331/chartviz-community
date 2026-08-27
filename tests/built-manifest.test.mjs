@@ -36,7 +36,7 @@ for (const browser of browsers) {
 
     assert.equal(manifest.manifest_version, 3);
     assert.equal(manifest.name, 'ChartViz');
-    assert.deepEqual(manifest.permissions, ['activeTab', 'storage', 'scripting']);
+    assert.deepEqual(manifest.permissions, ['activeTab', 'storage', 'scripting', 'clipboardWrite']);
     assert.deepEqual(manifest.host_permissions, [...providerOrigins, ...chartHosts]);
     assert.equal(manifest.optional_host_permissions, undefined);
     assert.deepEqual(manifest.content_scripts, [{ matches: contentMatches, js: ['content-scripts/content.js'] }]);

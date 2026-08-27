@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
 
-const expectedPermissions = ['activeTab', 'storage', 'scripting'];
+const expectedPermissions = ['activeTab', 'storage', 'scripting', 'clipboardWrite'];
 const expectedProviderOrigins = [
   'https://openrouter.ai/api/*',
   'https://api.openai.com/v1/*',

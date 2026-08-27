@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const verifier = path.join(root, 'scripts', 'verify-package.mjs');
 const outputRoot = path.join(root, 'extension', '.output');
-const expectedPermissions = ['activeTab', 'storage', 'scripting'];
+const expectedPermissions = ['activeTab', 'storage', 'scripting', 'clipboardWrite'];
 const expectedProviderOrigins = [
   'https://openrouter.ai/api/*',
   'https://api.openai.com/v1/*',

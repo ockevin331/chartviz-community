@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { runThreeStageAnalysis } from '../src/analysis/stages/analysis-pipeline';
 import { normalizeCommunitySignalFacts } from '../src/analysis/stages/normalize-signals';
 import { normalizeCommunityVisualFacts } from '../src/analysis/stages/normalize-visual-facts';
-import { getProviderFailureDetail } from '../src/providers/provider-diagnostics';
+import { attachProviderFailureDetail, getProviderFailureDetail } from '../src/providers/provider-diagnostics';
 import { ProviderError } from '../src/providers/provider-errors';
 import type {
   ProviderConfig,
@@ -153,11 +153,69 @@ describe('three-stage analysis pipeline', () => {
     catch (error) { caught = error; }
 
     expect(caught).toMatchObject({ code: 'invalid_response' });
-    expect(getProviderFailureDetail(caught)).toMatchObject({ stage: 'signal_extraction_shape' });
+    expect(getProviderFailureDetail(caught)).toMatchObject({
+      stage: 'signal_extraction_shape',
+      exception: { name: 'ZodError' },
+    });
     expect(provider.calls).toHaveLength(2);
     const serialized = JSON.stringify(getProviderFailureDetail(caught));
     expect(serialized).toContain('Previously validated visual facts');
     expect(serialized).not.toMatch(/data:image|test-key|bearer\s|sk-[A-Za-z0-9_-]{8,}/i);
+  });
+
+  it('preserves the provider parser stage and raw output instead of flattening it to report_shape', async () => {
+    const rawOutput = 'not valid JSON from the model';
+    const parseFailure = attachProviderFailureDetail(
+      new ProviderError('invalid_response', { params: { provider: 'openrouter' } }),
+      {
+        stage: 'json_parse',
+        issues: [{ path: 'provider.response.output_text', code: 'invalid_json' }],
+        providerOutput: rawOutput,
+      } as any,
+    );
+    const provider = new FixtureProvider([validVisualFacts, validSignalFacts, parseFailure]);
+    let caught: unknown;
+
+    try { await runThreeStageAnalysis(input(provider)); }
+    catch (error) { caught = error; }
+
+    const detail = getProviderFailureDetail(caught);
+    expect(detail?.stage).toBe('json_parse');
+    expect(detail?.issues).toEqual([{
+      path: 'provider.response.output_text', code: 'invalid_json',
+    }]);
+    expect(detail?.snapshot?.stages[2]?.output).toBe(rawOutput);
+  });
+
+  it('classifies an HTTP 500 as transport evidence instead of an empty report_shape failure', async () => {
+    const upstreamFailure = new ProviderError('invalid_response', {
+      params: { provider: 'openrouter' },
+      httpStatus: 500,
+    });
+    const provider = new FixtureProvider([validVisualFacts, validSignalFacts, upstreamFailure]);
+    let caught: unknown;
+
+    try { await runThreeStageAnalysis(input(provider)); }
+    catch (error) { caught = error; }
+
+    expect(getProviderFailureDetail(caught)).toMatchObject({
+      stage: 'evidence_reasoning_transport',
+      issues: [{ path: 'provider.http.status', code: 'http_500' }],
+    });
+  });
+
+  it('does not invent a report shape failure when the provider omitted parser detail', async () => {
+    const upstreamFailure = new ProviderError('invalid_response', { params: { provider: 'openrouter' } });
+    const provider = new FixtureProvider([validVisualFacts, validSignalFacts, upstreamFailure]);
+    let caught: unknown;
+
+    try { await runThreeStageAnalysis(input(provider)); }
+    catch (error) { caught = error; }
+
+    expect(getProviderFailureDetail(caught)).toMatchObject({
+      stage: 'response_envelope',
+      issues: [{ path: 'provider.response', code: 'missing_failure_detail' }],
+    });
   });
 
   it('classifies deterministic anchor validation as visual semantics without another model call', async () => {
@@ -203,6 +261,17 @@ describe('three-stage analysis pipeline', () => {
     expect(report.tradeSignals[0]?.signalType).toBe('突破后回踩');
   });
 
+  it('accepts a standard technical acronym as a Chinese trade-plan target', async () => {
+    const report = chineseReport();
+    report.tradePlan.short.targets = ['VWAP'];
+    const provider = new FixtureProvider([validVisualFacts, validSignalFacts, report]);
+
+    const result = await runThreeStageAnalysis({ ...input(provider), outputLanguage: 'zh-CN' });
+
+    expect(result.tradePlan.short.targets).toEqual(['VWAP']);
+    expect(provider.calls).toHaveLength(3);
+  });
+
   it('rejects a final report in the wrong language without a repair request', async () => {
     const provider = new FixtureProvider([validVisualFacts, validSignalFacts, validReportV3]);
     let caught: unknown;
@@ -212,7 +281,31 @@ describe('three-stage analysis pipeline', () => {
 
     expect(getProviderFailureDetail(caught)).toMatchObject({
       stage: 'report_semantics',
-      issues: [{ path: 'conclusion.summary', code: 'output_language_mismatch' }],
+      issues: [{
+        path: 'conclusion.summary',
+        code: 'output_language_mismatch',
+        valuePreview: 'Price is rotating between visible support and resistance.',
+      }],
+    });
+    expect(provider.calls).toHaveLength(3);
+  });
+
+  it('includes a safe preview when a Chinese trade-plan target is an English phrase', async () => {
+    const report = chineseReport();
+    report.tradePlan.short.targets = ['previous low'];
+    const provider = new FixtureProvider([validVisualFacts, validSignalFacts, report]);
+    let caught: unknown;
+
+    try { await runThreeStageAnalysis({ ...input(provider), outputLanguage: 'zh-CN' }); }
+    catch (error) { caught = error; }
+
+    expect(getProviderFailureDetail(caught)).toMatchObject({
+      stage: 'report_semantics',
+      issues: [{
+        path: 'tradePlan.short.targets.0',
+        code: 'output_language_mismatch',
+        valuePreview: 'previous low',
+      }],
     });
     expect(provider.calls).toHaveLength(3);
   });

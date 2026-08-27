@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import { assertScreenshotOnlyText, assertSingleTimeframe } from '../source-policy';
+import { patternGeometrySchema } from './pattern-geometry-schema';
 
 const text = z.string().trim().min(1);
 const ratio = z.number().min(0).max(1);
-const point = z.object({ xRatio: ratio, yRatio: ratio }).strict();
 
 const scenario = z.object({
   condition: text,
@@ -78,7 +78,7 @@ const reportV3Shape = z.object({
     confirmation: text,
     invalidation: text,
     confidence: ratio,
-    points: z.array(point).min(2).max(8),
+    geometry: patternGeometrySchema,
   }).strict()).max(3),
   riskNotice: text,
 }).strict();

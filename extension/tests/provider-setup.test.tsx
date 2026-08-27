@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProviderSetup } from '../src/ui/components/ProviderSetup';
@@ -9,6 +9,17 @@ import type { ProviderConfig } from '../src/providers/provider-types';
 afterEach(cleanup);
 
 describe('ProviderSetup', () => {
+  it('presents key and screenshot handling as a prominent non-interactive privacy notice', () => {
+    render(<ProviderSetup language="en" saveConfig={async () => undefined} testConnection={async () => undefined} onConfigured={() => undefined} />);
+
+    const notice = screen.getByRole('note', { name: 'Privacy & data' });
+    expect(within(notice).getByText(/key stays in extension session storage/i)).toBeTruthy();
+    expect(within(notice).getByText(/screenshots go directly to the selected service/i)).toBeTruthy();
+    expect(notice.querySelector('svg[aria-hidden="true"]')).toBeTruthy();
+    expect(within(notice).queryByRole('checkbox')).toBeNull();
+    expect(within(notice).queryByRole('button')).toBeNull();
+  });
+
   it('explains the three-request analysis boundary, defaults to the recommended OpenRouter model, and never exposes Provider', async () => {
     const user = userEvent.setup();
     const saveConfig = vi.fn(async () => undefined);

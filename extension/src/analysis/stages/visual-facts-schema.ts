@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { assertScreenshotOnlyText, assertSingleTimeframe } from '../source-policy';
+import { patternGeometrySchema, patternPointSchema } from './pattern-geometry-schema';
 
 const text = z.string().trim().min(1);
 const ratio = z.number().min(0).max(1);
-const point = z.object({ xRatio: ratio, yRatio: ratio }).strict();
+const point = patternPointSchema;
 
 const visualFactsShape = z.object({
   schemaVersion: z.literal('community-visual-1.0'),
@@ -54,7 +55,7 @@ const visualFactsShape = z.object({
     confirmation: text,
     invalidation: text,
     confidence: ratio,
-    points: z.array(point).min(2).max(8),
+    geometry: patternGeometrySchema,
   }).strict()).max(3),
   segments: z.array(z.object({
     id: z.string().regex(/^SEG\d{2}$/),

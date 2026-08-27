@@ -12,7 +12,7 @@ describe('extension manifest', () => {
     const manifest = createManifest();
 
     expect(manifest.name).toBe('ChartViz');
-    expect(manifest.permissions).toEqual(['activeTab', 'storage', 'scripting']);
+    expect(manifest.permissions).toEqual(['activeTab', 'storage', 'scripting', 'clipboardWrite']);
     expect(manifest.host_permissions).toEqual(approvedHostPermissions);
     expect('content_scripts' in manifest).toBe(false);
     expect(manifest.action.default_popup).toBeUndefined();
@@ -40,11 +40,11 @@ describe('extension manifest', () => {
     expect(isSupportedChartHost('not a URL')).toBe(false);
   });
 
-  it('exposes only the floating panel as a dynamic HTTP(S) web resource', () => {
+  it('exposes the floating panel and its generated dependencies as dynamic HTTP(S) web resources', () => {
     const manifest = createManifest();
 
     expect(manifest.web_accessible_resources).toEqual([{
-      resources: ['panel.html'],
+      resources: ['panel.html', 'chunks/*', 'assets/*'],
       matches: ['http://*/*', 'https://*/*'],
       use_dynamic_url: true,
     }]);

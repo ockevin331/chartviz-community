@@ -61,7 +61,7 @@ The original screenshot and generated annotation images can be zoomed and downlo
 
 In Direct mode, the screenshot is sent to the selected provider in the first two requests. The third request contains normalized chart evidence, requested output language, and the final reasoning prompt. The provider's retention, billing, and privacy terms apply. Avoid charts containing account details, personal data, or private indicators.
 
-Manifest permissions are limited to `activeTab`, `storage`, and `scripting`; supported chart hosts; and the three fixed Direct provider origins. There is no `<all_urls>`, optional host access, remote executable code, or custom API origin. See [SECURITY.md](SECURITY.md) for the exact boundary and [docs/manual-smoke-test.md](docs/manual-smoke-test.md) for the release checklist.
+Manifest permissions are limited to `activeTab`, `storage`, `scripting`, and `clipboardWrite`; supported chart hosts; and the three fixed Direct provider origins. Clipboard access is used only when the user explicitly copies diagnostic information. There is no `<all_urls>`, optional host access, remote executable code, or custom API origin. See [SECURITY.md](SECURITY.md) for the exact boundary and [docs/manual-smoke-test.md](docs/manual-smoke-test.md) for the release checklist.
 
 ## Troubleshooting
 

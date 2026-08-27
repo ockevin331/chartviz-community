@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { communityReportV3JsonSchema, parseCommunityReportV3, type CommunityReportV3 } from '../src/analysis/stages/community-report-v3';
 import { ProviderError, type AnalysisErrorCode } from '../src/providers/provider-errors';
+import { getProviderFailureDetail } from '../src/providers/provider-diagnostics';
 import { OpenRouterProvider } from '../src/providers/openrouter-provider';
 import type { ProviderConfig, StructuredGenerationRequest } from '../src/providers/provider-types';
 import { communityReport } from './community-ui-fixtures';
@@ -226,6 +227,21 @@ describe('OpenRouter analyze', () => {
 
     await expect(provider.generateStructured(config, request())).rejects.toMatchObject({ code: 'invalid_response' });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves a non-JSON HTTP response body as a local failure snapshot', async () => {
+    const fetchImpl = vi.fn(async () => new Response('{', { status: 200 }));
+    const provider = providerWithFetch(fetchImpl);
+    let caught: unknown;
+
+    try { await provider.generateStructured(config, request()); }
+    catch (error) { caught = error; }
+
+    expect(getProviderFailureDetail(caught)).toEqual({
+      stage: 'json_parse',
+      issues: [{ path: 'provider.http.body', code: 'invalid_json' }],
+      providerOutput: '{',
+    });
   });
 
   it('redacts provider body, headers, upstream errors, and keys from the exposed error', async () => {

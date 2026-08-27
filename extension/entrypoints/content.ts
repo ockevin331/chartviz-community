@@ -77,16 +77,25 @@ export function createContentMessageHandler(dependencies: ContentHandlerDependen
 }
 
 export function createContentPanel(panelUrl: string): ContentPanel {
+  let ownedPanel: HTMLElement | null = null;
+
   function element(): HTMLElement | null {
-    return document.getElementById(PANEL_ID);
+    if (ownedPanel?.isConnected) return ownedPanel;
+    ownedPanel = null;
+    return null;
   }
   function ensure(): HTMLElement {
     const existing = element();
     if (existing) return existing;
+    const stale = document.getElementById(PANEL_ID) as (HTMLElement & { __chartvizCleanup?: () => void }) | null;
+    stale?.__chartvizCleanup?.();
+    stale?.remove();
     mountFloatingPanel(panelUrl);
     const mounted = element();
-    if (!mounted) throw new Error('Unable to mount the ChartViz panel.');
-    return mounted;
+    if (mounted) return mounted;
+    ownedPanel = document.getElementById(PANEL_ID);
+    if (!ownedPanel) throw new Error('Unable to mount the ChartViz panel.');
+    return ownedPanel;
   }
   return {
     isVisible() {

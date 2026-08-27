@@ -28,6 +28,9 @@ describe('three-stage prompt boundaries', () => {
     expect(text).toContain('traded volume');
     expect(text).toContain('RSI and MACD');
     expect(text).toContain('support and resistance');
+    expect(text).toContain('two independent, roughly parallel channel boundaries');
+    expect(text).toContain('horizontal resistance and support boundaries');
+    expect(text).toContain('Do not force a channel');
   });
 
   it('requires complete point-in-time signal sets without hindsight', () => {
@@ -53,6 +56,9 @@ describe('three-stage prompt boundaries', () => {
     expect(text).toContain('traded volume or one independent readable indicator');
     expect(text).toContain('individual candle or named chart pattern');
     expect(text).toContain('Output language: Simplified Chinese.');
+    expect(text).toContain('every tradePlan.long.targets and tradePlan.short.targets item');
+    expect(text).toContain('Technical abbreviations may remain unchanged');
+    expect(text).toContain('Copy validated pattern geometry exactly');
     expect(combined(en)).toContain('Output language: English.');
     expect(combined(buildVisualExtractionPrompt(context))).not.toContain('Output language:');
     expect(combined(buildSignalExtractionPrompt({ context, facts }))).not.toContain('Output language:');

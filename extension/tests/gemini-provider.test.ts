@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { communityReportV3JsonSchema, parseCommunityReportV3, type CommunityReportV3 } from '../src/analysis/stages/community-report-v3';
 import { ProviderError, type AnalysisErrorCode } from '../src/providers/provider-errors';
+import { getProviderFailureDetail } from '../src/providers/provider-diagnostics';
 import { GeminiProvider } from '../src/providers/gemini-provider';
 import type { ProviderConfig, ProviderImage, StructuredGenerationRequest } from '../src/providers/provider-types';
 import { communityReport } from './community-ui-fixtures';
@@ -418,6 +419,21 @@ describe('Gemini generateContent analyze', () => {
 
     await expect(provider.generateStructured(config, request())).rejects.toMatchObject({ code: 'invalid_response' });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves a non-JSON HTTP response body for diagnostics', async () => {
+    const fetchImpl = vi.fn(async () => new Response('{', { status: 200 }));
+    const provider = providerWithFetch(fetchImpl);
+    let caught: unknown;
+
+    try { await provider.generateStructured(config, request()); }
+    catch (error) { caught = error; }
+
+    expect(getProviderFailureDetail(caught)).toEqual({
+      stage: 'json_parse',
+      issues: [{ path: 'provider.http.body', code: 'invalid_json' }],
+      providerOutput: '{',
+    });
   });
 
   it('redacts API keys, upstream errors, headers, and response content', async () => {

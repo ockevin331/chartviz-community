@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import {
   findModelChoiceForConfig,
   getDefaultModelChoice,
@@ -19,6 +19,7 @@ type Props = {
   language: Language;
   onConfigured(config: ProviderConfig): void;
   initialConfig?: ProviderConfig | null;
+  mode?: 'setup' | 'settings';
   saveConfig?: (config: ProviderConfig) => Promise<void>;
   testConnection(config: ProviderConfig, signal: AbortSignal): Promise<void>;
 };
@@ -38,7 +39,12 @@ function EyeOffIcon() {
   return <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m3 3 18 18" /><path d="M10.6 6.1A10.7 10.7 0 0 1 12 6c6 0 9.5 6 9.5 6a16 16 0 0 1-2.2 2.8M6.6 6.6C4 8.2 2.5 12 2.5 12s3.5 6 9.5 6a9.7 9.7 0 0 0 3.1-.5" /><path d="M10.2 10.2a2.5 2.5 0 0 0 3.6 3.6" /></svg>;
 }
 
-export function ProviderSetup({ language, onConfigured, initialConfig = null, saveConfig = saveProviderConfig, testConnection }: Props) {
+function LockIcon() {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /><path d="M12 14v2" /></svg>;
+}
+
+export function ProviderSetup({ language, onConfigured, initialConfig = null, mode = 'setup', saveConfig = saveProviderConfig, testConnection }: Props) {
+  const privacyTitleId = useId();
   const initialChoice = findModelChoiceForConfig(initialConfig);
   const [selectedModelKey, setSelectedModelKey] = useState(initialConfig?.customModel
     ? CUSTOM_MODEL_KEY
@@ -112,13 +118,13 @@ export function ProviderSetup({ language, onConfigured, initialConfig = null, sa
 
   return <section className="provider-setup-card">
     <div className="setup-intro">
-      <h2>{t.providerSetup}</h2>
-      <p>{t.providerSetupHelp}</p>
-      <ol className="setup-steps">
+      <h2>{mode === 'settings' ? t.analysisSettings : t.providerSetup}</h2>
+      <p>{mode === 'settings' ? t.analysisSettingsHelp : t.providerSetupHelp}</p>
+      {mode === 'setup' && <ol className="setup-steps">
         <li>{t.setupChooseModel}</li>
         <li>{t.setupEnterKey}</li>
         <li>{t.setupDirectSend}</li>
-      </ol>
+      </ol>}
     </div>
     <form className="provider-form" onSubmit={(event) => { event.preventDefault(); void save(); }}>
       <label><span>{t.model}</span><SelectMenu ariaLabel={t.model} value={selectedModelKey} options={modelOptions} onChange={changeModel} /></label>
@@ -136,11 +142,17 @@ export function ProviderSetup({ language, onConfigured, initialConfig = null, sa
       </div>
       {customModel && <div className="custom-model-fields"><label>{t.customModelId}<input aria-label={t.customModelId} value={customModelId} onChange={(event) => { setCustomModelId(event.target.value); setMessage(null); }} /></label><p className="capture-warning" role="status">⚠ {t.multimodalWarning}</p></div>}
       <label>{t.apiKey}<span className="password-field"><input aria-label={t.apiKey} type={showKey ? 'text' : 'password'} autoComplete="off" value={apiKey} onChange={(event) => setApiKey(event.target.value)} /><button type="button" aria-label={showKey ? t.hideApiKey : t.showApiKey} onClick={() => setShowKey((value) => !value)}>{showKey ? <EyeOffIcon /> : <EyeIcon />}</button></span></label>
-      <p className="privacy-notice">{t.sessionKeyPrivacy}</p>
+      <aside className="privacy-notice" role="note" aria-labelledby={privacyTitleId}>
+        <span className="privacy-notice-icon"><LockIcon /></span>
+        <span className="privacy-notice-copy">
+          <strong id={privacyTitleId}>{t.privacyTitle}</strong>
+          <span>{t.sessionKeyPrivacy}</span>
+        </span>
+      </aside>
       <p className="cost-notice">{t.analysisRequestNotice}</p>
       <p className="cost-notice">{t.connectionCost}</p>
       {message && <p className={message.kind === 'error' ? 'setup-error' : 'setup-success'} role={message.kind === 'error' ? 'alert' : 'status'}>{message.text}</p>}
-      <div className="provider-actions"><button className="secondary" type="button" disabled={!valid || testing} onClick={() => void connect()}>{testing ? t.testingConnection : t.testConnection}</button><button className="primary" type="submit" disabled={!valid}>{t.saveContinue}</button></div>
+      <div className="provider-actions"><button className="secondary" type="button" disabled={!valid || testing} onClick={() => void connect()}>{testing ? t.testingConnection : t.testConnection}</button><button className="primary" type="submit" disabled={!valid}>{mode === 'settings' ? t.saveSettings : t.saveContinue}</button></div>
     </form>
   </section>;
 }

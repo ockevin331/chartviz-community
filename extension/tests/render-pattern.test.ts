@@ -46,7 +46,7 @@ const image: ProcessedImage = {
   height: 600,
 };
 
-function pattern(points: Pattern['points']): Pattern {
+function pattern(points: Pattern['geometry']['points']): Pattern {
   return {
     id: 'P01',
     name: 'Visible triangle',
@@ -57,11 +57,85 @@ function pattern(points: Pattern['points']): Pattern {
     confirmation: 'Visible close above the pattern.',
     invalidation: 'Visible close below the pattern.',
     confidence: 0.7,
-    points,
+    geometry: { geometryKind: 'polyline', points, upperBoundary: null, lowerBoundary: null },
   };
 }
 
 describe('renderPattern', () => {
+  it('draws a price channel as two independent boundaries without a diagonal connector', async () => {
+    // Breaks on: treating a channel as one continuous polyline, which adds a false
+    // diagonal between its upper and lower boundaries.
+    const input = {
+      ...pattern([
+        { xRatio: 0.2, yRatio: 0.4 },
+        { xRatio: 0.8, yRatio: 0.2 },
+      ]),
+      geometry: {
+        geometryKind: 'channel',
+        points: [],
+        upperBoundary: {
+          start: { xRatio: 0.2, yRatio: 0.4 },
+          end: { xRatio: 0.8, yRatio: 0.2 },
+        },
+        lowerBoundary: {
+          start: { xRatio: 0.2, yRatio: 0.7 },
+          end: { xRatio: 0.8, yRatio: 0.5 },
+        },
+      },
+    } as unknown as Pattern;
+    const { dependencies, operations } = recordingCanvas();
+
+    await renderPattern(image, input, dependencies);
+
+    expect(operations.filter(([name]) => name === 'beginPath')).toHaveLength(2);
+    expect(operations.filter(([name]) => name === 'stroke')).toHaveLength(2);
+    expect(operations.filter(([name]) => name === 'moveTo' || name === 'lineTo')).toEqual([
+      ['moveTo', 160, 240],
+      ['lineTo', 640, 120],
+      ['moveTo', 160, 420],
+      ['lineTo', 640, 300],
+    ]);
+  });
+
+  it('draws a sideways range as horizontal resistance and support boundaries', async () => {
+    // Breaks on: sloping or joining the range boundaries instead of presenting the
+    // two horizontal decision areas a reader needs.
+    const input = {
+      ...pattern([
+        { xRatio: 0.15, yRatio: 0.35 },
+        { xRatio: 0.85, yRatio: 0.35 },
+      ]),
+      name: 'Sideways range',
+      geometry: {
+        geometryKind: 'range',
+        points: [],
+        upperBoundary: {
+          start: { xRatio: 0.15, yRatio: 0.35 },
+          end: { xRatio: 0.85, yRatio: 0.35 },
+        },
+        lowerBoundary: {
+          start: { xRatio: 0.15, yRatio: 0.68 },
+          end: { xRatio: 0.85, yRatio: 0.68 },
+        },
+      },
+    } as unknown as Pattern;
+    const { dependencies, operations } = recordingCanvas();
+
+    await renderPattern(image, input, dependencies);
+
+    expect(operations.filter(([name]) => name === 'moveTo' || name === 'lineTo')).toEqual([
+      ['moveTo', 120, 210],
+      ['lineTo', 680, 210],
+      ['moveTo', 120, 408.00000000000006],
+      ['lineTo', 680, 408.00000000000006],
+    ]);
+    expect(operations.filter(([name]) => name === 'fillText').map(([, text]) => text)).toEqual([
+      'Resistance zone',
+      'Support zone',
+      'Sideways range',
+    ]);
+  });
+
   it('draws only the clamped numbered polyline and name for the requested pattern', async () => {
     // Breaks on: out-of-bounds mapping, missing/reordered point numbers, closing the
     // polyline, or mixing any signal/level/other-pattern overlay into this image.

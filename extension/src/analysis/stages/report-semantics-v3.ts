@@ -32,6 +32,7 @@ function narratives(value: unknown, path: Array<string | number> = [], result: N
     if (![
       'schemaVersion', 'id', 'instrument', 'timeframe', 'priceLabel', 'riskReward',
       'direction', 'trend', 'structure', 'strength', 'type', 'tier', 'status', 'bias',
+      'geometryKind',
     ].includes(String(key))) result.push({ text: value, path });
   } else if (Array.isArray(value)) {
     value.forEach((entry, index) => narratives(entry, [...path, index], result));
@@ -137,7 +138,7 @@ export function validateCommunityReportV3Semantics(
       status: fact.status,
       bias: fact.bias,
       confidence: fact.confidence,
-      points: fact.points,
+      geometry: fact.geometry,
     };
   });
   return parseCommunityReportV3({

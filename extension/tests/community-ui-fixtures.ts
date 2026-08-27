@@ -37,7 +37,11 @@ export const communityReport: CommunityReportV3 = {
   patterns: [{
     id: 'P01', name: 'Rising channel', status: 'forming', bias: 'bullish', timeRange: 'Left to right', evidence: 'Alternating pivots stay inside rising boundaries.',
     confirmation: 'Close above the upper boundary.', invalidation: 'Close below the lower boundary.', confidence: 0.74,
-    points: [{ xRatio: 0.2, yRatio: 0.7 }, { xRatio: 0.8, yRatio: 0.3 }],
+    geometry: {
+      geometryKind: 'channel', points: [],
+      upperBoundary: { start: { xRatio: 0.2, yRatio: 0.5 }, end: { xRatio: 0.8, yRatio: 0.2 } },
+      lowerBoundary: { start: { xRatio: 0.2, yRatio: 0.7 }, end: { xRatio: 0.8, yRatio: 0.4 } },
+    },
   }],
   tradeSignals: [{
     id: 'S01', direction: 'long', signalType: 'Breakout and retest', signalTime: 'Rightmost candle',

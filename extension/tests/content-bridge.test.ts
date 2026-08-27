@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
-import { createContentMessageHandler, type ContentPanel } from '../entrypoints/content';
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createContentMessageHandler, createContentPanel, type ContentPanel } from '../entrypoints/content';
 import type { ChartContext } from '../src/domain/chart-context';
 
 const context: ChartContext = {
@@ -13,6 +14,12 @@ const context: ChartContext = {
   viewport: { width: 1200, height: 800, devicePixelRatio: 2 },
 };
 
+afterEach(() => {
+  const panel = document.getElementById('chartviz-community-panel') as (HTMLElement & { __chartvizCleanup?: () => void }) | null;
+  panel?.__chartvizCleanup?.();
+  panel?.remove();
+});
+
 function panelFixture(initial = false): ContentPanel & { visible: boolean } {
   return {
     visible: initial,
@@ -23,6 +30,48 @@ function panelFixture(initial = false): ContentPanel & { visible: boolean } {
 }
 
 describe('content-script chart bridge', () => {
+  it('replaces a stale panel left behind by an earlier extension runtime', () => {
+    const stale = document.createElement('div');
+    stale.id = 'chartviz-community-panel';
+    const staleFrame = document.createElement('iframe');
+    staleFrame.src = 'chrome-extension://old-runtime/panel.html';
+    stale.append(staleFrame);
+    document.documentElement.append(stale);
+
+    const panel = createContentPanel('chrome-extension://current-runtime/panel.html');
+    expect(panel.setVisible(true)).toEqual({ ok: true, visible: true });
+
+    const mounted = document.getElementById('chartviz-community-panel');
+    expect(mounted).not.toBe(stale);
+    expect(mounted?.querySelector('iframe')?.getAttribute('src')).toBe('chrome-extension://current-runtime/panel.html');
+  });
+
+  it('accepts lightbox messages from the installed extension origin when the frame uses a dynamic resource URL', () => {
+    const panel = createContentPanel('chrome-extension://dynamic-resource-id/panel.html');
+    panel.setVisible(true);
+    const host = document.getElementById('chartviz-community-panel') as HTMLElement;
+    const frame = host.querySelector('iframe') as HTMLIFrameElement;
+    const origin = 'chrome-extension://installed-extension-id';
+
+    window.dispatchEvent(new MessageEvent('message', {
+      source: frame.contentWindow,
+      origin,
+      data: { source: 'chartviz', type: 'image-lightbox-open' },
+    }));
+    expect(host.style.inset).toBe('0px');
+    expect(host.style.width).toBe('100vw');
+    expect(host.style.maxWidth).toBe('none');
+
+    window.dispatchEvent(new MessageEvent('message', {
+      source: frame.contentWindow,
+      origin,
+      data: { source: 'chartviz', type: 'image-lightbox-close' },
+    }));
+    expect(host.style.inset).toBe('');
+    expect(host.style.right).toBe('12px');
+    expect(host.style.width).toBe('400px');
+  });
+
   it('returns collected and stable context for the two read messages', async () => {
     const panel = panelFixture();
     const collectContext = vi.fn(async () => context);

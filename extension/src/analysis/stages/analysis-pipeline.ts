@@ -61,17 +61,42 @@ function classifiedError(
   if (error instanceof ProviderError && error.code === 'cancelled') throw error;
   if (error instanceof ProviderError) {
     const detail = getProviderFailureDetail(error);
-    const stage = error.code !== 'invalid_response'
+    const fallbackIssues: readonly ProviderDiagnosticIssue[] = error.httpStatus === undefined
+      ? [{ path: 'provider.response', code: 'missing_failure_detail' }]
+      : [{ path: 'provider.http.status', code: `http_${error.httpStatus}` }];
+    const snapshotWithProviderOutput = detail?.providerOutput === undefined
+      ? snapshot
+      : {
+        ...snapshot,
+        stages: snapshot.stages.map((stage, index) => index === snapshot.stages.length - 1
+          ? { ...stage, output: detail.providerOutput }
+          : stage),
+      };
+    const stage = error.code !== 'invalid_response' || (detail === null && error.httpStatus !== undefined)
       ? transportStage
+      : detail === null
+        ? 'response_envelope'
       : detail?.stage === 'report_semantics'
         ? semanticStage
-        : shapeStage;
-    throw attachProviderFailureDetail(error, { stage, issues: detail?.issues ?? [], snapshot });
+        : detail?.stage === 'response_envelope' || detail?.stage === 'json_parse'
+          ? detail.stage
+          : shapeStage;
+    throw attachProviderFailureDetail(error, {
+      stage,
+      issues: detail?.issues ?? fallbackIssues,
+      ...(detail?.exception === undefined ? {} : { exception: detail.exception }),
+      snapshot: snapshotWithProviderOutput,
+    });
   }
   const detail = validationFailureDetail(error);
   throw attachProviderFailureDetail(
     new ProviderError('invalid_response', { params: { provider: input.config.provider } }),
-    { stage: detail.stage === 'report_semantics' ? semanticStage : shapeStage, issues: detail.issues, snapshot },
+    {
+      stage: detail.stage === 'report_semantics' ? semanticStage : shapeStage,
+      issues: detail.issues,
+      ...(detail.exception === undefined ? {} : { exception: detail.exception }),
+      snapshot,
+    },
   );
 }
 
@@ -87,7 +112,12 @@ function semanticError(
     error instanceof ProviderError
       ? error
       : new ProviderError('invalid_response', { params: { provider: input.config.provider } }),
-    { stage, issues: detail.issues as readonly ProviderDiagnosticIssue[], snapshot },
+    {
+      stage,
+      issues: detail.issues as readonly ProviderDiagnosticIssue[],
+      ...(detail.exception === undefined ? {} : { exception: detail.exception }),
+      snapshot,
+    },
   );
 }
 

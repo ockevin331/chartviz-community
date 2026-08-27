@@ -11,6 +11,9 @@ export function buildVisualExtractionPrompt(context: StagePageContext): StagePro
     user: [
       'Inspect exactly one supplied candlestick-chart screenshot and extract visible evidence only.',
       'Describe market structure, swing behavior, trend strength, traded volume, readable RSI and MACD, other clearly named indicators, support and resistance, and credible chart patterns.',
+      'For a valid rising or falling price channel, return two independent, roughly parallel channel boundaries anchored to visible swing reactions.',
+      'For a sideways range, return horizontal resistance and support boundaries spanning the visibly respected range.',
+      'Do not force a channel when repeated swing contacts and roughly parallel boundaries are not visible; use a polyline only for other credible pattern geometry.',
       'Use the full submitted image for every normalized coordinate, where the top-left is (0,0) and the bottom-right is (1,1).',
       'Record readable price-axis anchors and the candle-plot bounds. Prefer a zone over false precision when a level is visibly broad.',
       'Use an exact visible time when readable; otherwise use a conservative relative candle or chart-region anchor.',

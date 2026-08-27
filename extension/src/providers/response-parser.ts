@@ -1,26 +1,48 @@
-import { attachProviderFailureDetail, type ProviderDiagnosticStage, type ProviderDiagnosticIssue } from './provider-diagnostics';
+import {
+  attachProviderFailureDetail,
+  getProviderFailureDetail,
+  type ProviderDiagnosticStage,
+  type ProviderDiagnosticIssue,
+} from './provider-diagnostics';
 import { ProviderError } from './provider-errors';
 import type { ProviderKind } from './provider-types';
 
-function invalidResponse(provider: ProviderKind, stage: ProviderDiagnosticStage, issues: readonly ProviderDiagnosticIssue[] = []): never {
+function invalidResponse(
+  provider: ProviderKind,
+  stage: ProviderDiagnosticStage,
+  issues: readonly ProviderDiagnosticIssue[] = [],
+  providerOutput?: unknown,
+): never {
+  const effectiveIssues = issues.length > 0 ? issues : [{
+    path: 'provider.response',
+    code: stage === 'json_parse' ? 'invalid_json' : 'invalid_envelope',
+  }];
   throw attachProviderFailureDetail(
     new ProviderError('invalid_response', { params: { provider } }),
-    { stage, issues },
+    {
+      stage,
+      issues: effectiveIssues,
+      ...(providerOutput === undefined ? {} : { providerOutput }),
+    },
   );
 }
 
 function structuredAssistantContent(payload: unknown): string {
-  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return invalidResponse('openrouter', 'response_envelope');
+  const fail = (path: string, code: string): never => invalidResponse(
+    'openrouter', 'response_envelope', [{ path, code }], payload,
+  );
+  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return fail('provider.response', 'invalid_type');
   const choices = (payload as Record<string, unknown>).choices;
-  if (!Array.isArray(choices) || choices.length !== 1) return invalidResponse('openrouter', 'response_envelope');
+  if (!Array.isArray(choices)) return fail('provider.response.choices', 'invalid_type');
+  if (choices.length !== 1) return fail('provider.response.choices', 'invalid_length');
   const choice = choices[0];
-  if (choice === null || typeof choice !== 'object' || Array.isArray(choice)) return invalidResponse('openrouter', 'response_envelope');
+  if (choice === null || typeof choice !== 'object' || Array.isArray(choice)) return fail('provider.response.choices.0', 'invalid_type');
   const message = (choice as Record<string, unknown>).message;
-  if (message === null || typeof message !== 'object' || Array.isArray(message)) return invalidResponse('openrouter', 'response_envelope');
+  if (message === null || typeof message !== 'object' || Array.isArray(message)) return fail('provider.response.choices.0.message', 'invalid_type');
   const messageRecord = message as Record<string, unknown>;
-  if (messageRecord.role !== 'assistant') return invalidResponse('openrouter', 'response_envelope');
+  if (messageRecord.role !== 'assistant') return fail('provider.response.choices.0.message.role', 'invalid_value');
   const content = messageRecord.content;
-  if (typeof content !== 'string') return invalidResponse('openrouter', 'response_envelope');
+  if (typeof content !== 'string') return fail('provider.response.choices.0.message.content', 'invalid_type');
   return content;
 }
 
@@ -28,7 +50,26 @@ function parseJsonText(content: string, provider: ProviderKind): unknown {
   try {
     return JSON.parse(content);
   } catch {
-    return invalidResponse(provider, 'json_parse');
+    return invalidResponse(
+      provider,
+      'json_parse',
+      [{ path: 'provider.response.output_text', code: 'invalid_json' }],
+      content,
+    );
+  }
+}
+
+function preserveRejectedEnvelope<T>(payload: unknown, extract: () => T): T {
+  try {
+    return extract();
+  } catch (error) {
+    if (error instanceof ProviderError) {
+      const detail = getProviderFailureDetail(error);
+      if (detail && detail.providerOutput === undefined) {
+        throw attachProviderFailureDetail(error, { ...detail, providerOutput: payload });
+      }
+    }
+    throw error;
   }
 }
 
@@ -102,7 +143,7 @@ function openAiOutputText(payload: unknown): string {
 }
 
 export function extractOpenAiStructuredValue(payload: unknown): unknown {
-  return parseJsonText(openAiOutputText(payload), 'openai');
+  return preserveRejectedEnvelope(payload, () => parseJsonText(openAiOutputText(payload), 'openai'));
 }
 
 const maxThoughtSignatureLength = 16_384;
@@ -231,7 +272,7 @@ function geminiOutputText(payload: unknown): string {
 }
 
 export function extractGeminiStructuredValue(payload: unknown): unknown {
-  return parseJsonText(geminiOutputText(payload), 'gemini');
+  return preserveRejectedEnvelope(payload, () => parseJsonText(geminiOutputText(payload), 'gemini'));
 }
 
 function assertConnectionValue(parsed: unknown, provider: ProviderKind): void {

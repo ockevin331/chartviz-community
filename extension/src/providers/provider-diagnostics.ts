@@ -26,6 +26,11 @@ export type ProviderDiagnosticIssue = Readonly<{
   valuePreview?: string;
 }>;
 
+export type ProviderDiagnosticException = Readonly<{
+  name: string;
+  message: string;
+}>;
+
 export type AnalysisStageSnapshot = Readonly<{
   stage: 'visual_extraction' | 'signal_extraction' | 'evidence_reasoning';
   promptVersion: string;
@@ -50,6 +55,8 @@ export type AnalysisFailureSnapshot = Readonly<{
 export type ProviderFailureDetail = Readonly<{
   stage: ProviderDiagnosticStage;
   issues: readonly ProviderDiagnosticIssue[];
+  exception?: ProviderDiagnosticException;
+  providerOutput?: unknown;
   snapshot?: AnalysisFailureSnapshot;
 }>;
 
@@ -64,6 +71,7 @@ export type AnalysisDiagnostic = Readonly<{
   durationMs: number;
   httpStatus?: number;
   issues: readonly ProviderDiagnosticIssue[];
+  exception?: ProviderDiagnosticException;
   snapshot?: AnalysisFailureSnapshot;
 }>;
 
@@ -100,6 +108,14 @@ function sanitizeSnapshotValue(value: unknown, depth = 0): unknown {
   return value;
 }
 
+function sanitizeException(error: Error): ProviderDiagnosticException {
+  const message = sanitizeSnapshotValue(error.message);
+  return Object.freeze({
+    name: error.name.slice(0, 80),
+    message: typeof message === 'string' ? message.slice(0, 4_000) : 'Unknown error',
+  });
+}
+
 function freezeSnapshot(snapshot: AnalysisFailureSnapshot): AnalysisFailureSnapshot {
   return sanitizeSnapshotValue(snapshot) as AnalysisFailureSnapshot;
 }
@@ -115,6 +131,15 @@ function freezeDetail(detail: ProviderFailureDetail): ProviderFailureDetail {
         ...(valuePreview === undefined ? {} : { valuePreview }),
       });
     })),
+    ...(detail.exception === undefined ? {} : {
+      exception: Object.freeze({
+        name: detail.exception.name.slice(0, 80),
+        message: String(sanitizeSnapshotValue(detail.exception.message)).slice(0, 4_000),
+      }),
+    }),
+    ...(detail.providerOutput === undefined ? {} : {
+      providerOutput: sanitizeSnapshotValue(detail.providerOutput),
+    }),
     ...(detail.snapshot === undefined ? {} : { snapshot: freezeSnapshot(detail.snapshot) }),
   });
 }
@@ -153,11 +178,15 @@ export function validationFailureDetail(error: unknown): ProviderFailureDetail {
     const valuePreview = safeValuePreview(params?.valuePreview);
     return [{ path, code, ...(valuePreview === undefined ? {} : { valuePreview }) }];
   });
+  const effectiveIssues = issues.length > 0
+    ? issues
+    : [{ path: 'report', code: 'validator_exception' }];
   return freezeDetail({
     stage: issues.length > 0 && issues.every(({ code }) => isSemanticDiagnosticCode(code))
       ? 'report_semantics'
       : 'report_shape',
-    issues,
+    issues: effectiveIssues,
+    ...(error instanceof Error ? { exception: sanitizeException(error) } : {}),
   });
 }
 
@@ -183,6 +212,7 @@ export function createAnalysisDiagnostic(input: {
     durationMs: Math.max(0, Math.round(input.finishedAt - input.startedAt)),
     ...(input.error.httpStatus === undefined ? {} : { httpStatus: input.error.httpStatus }),
     issues: detail?.issues ?? [],
+    ...(detail?.exception === undefined ? {} : { exception: detail.exception }),
     ...(detail?.snapshot === undefined ? {} : { snapshot: detail.snapshot }),
   };
   return Object.freeze({ ...diagnostic, issues: Object.freeze([...diagnostic.issues]) });

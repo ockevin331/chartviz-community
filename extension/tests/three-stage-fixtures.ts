@@ -31,7 +31,12 @@ export const validVisualFacts = {
     id: 'P01', name: 'Rising channel', status: 'forming', bias: 'bullish',
     timeRange: 'Left side to right edge', evidence: 'Swing highs and lows rise inside parallel boundaries.',
     confirmation: 'A close above the upper boundary.', invalidation: 'A close below the lower boundary.',
-    confidence: 0.74, points: [{ xRatio: 0.2, yRatio: 0.65 }, { xRatio: 0.82, yRatio: 0.3 }],
+    confidence: 0.74,
+    geometry: {
+      geometryKind: 'channel', points: [],
+      upperBoundary: { start: { xRatio: 0.2, yRatio: 0.45 }, end: { xRatio: 0.82, yRatio: 0.2 } },
+      lowerBoundary: { start: { xRatio: 0.2, yRatio: 0.65 }, end: { xRatio: 0.82, yRatio: 0.4 } },
+    },
   }],
   segments: [{
     id: 'SEG01', type: 'impulse_up', startAnchor: 'Middle of chart', endAnchor: 'Right side',
@@ -115,7 +120,12 @@ export const validReportV3 = {
     id: 'P01', name: 'Rising channel', status: 'forming', bias: 'bullish',
     timeRange: 'Left side to right edge', evidence: 'Swing highs and lows rise inside parallel boundaries.',
     confirmation: 'A close above the upper boundary.', invalidation: 'A close below the lower boundary.',
-    confidence: 0.74, points: [{ xRatio: 0.2, yRatio: 0.65 }, { xRatio: 0.82, yRatio: 0.3 }],
+    confidence: 0.74,
+    geometry: {
+      geometryKind: 'channel', points: [],
+      upperBoundary: { start: { xRatio: 0.2, yRatio: 0.45 }, end: { xRatio: 0.82, yRatio: 0.2 } },
+      lowerBoundary: { start: { xRatio: 0.2, yRatio: 0.65 }, end: { xRatio: 0.82, yRatio: 0.4 } },
+    },
   }],
   riskNotice: 'Educational screenshot analysis only.',
 } as const;

@@ -1,6 +1,7 @@
 import testCardDataUrl from '../../assets/provider-test-card.png?inline';
 import { getModelsForProvider } from './model-catalog';
 import { ProviderError, type AnalysisErrorCode } from './provider-errors';
+import { attachProviderFailureDetail } from './provider-diagnostics';
 import { normalizeProviderConfig, type ProviderConfig, type StructuredGenerationRequest, type StructuredVisionProvider, type ValidationResult } from './provider-types';
 import { assertOpenRouterConnectionResponse, extractOpenRouterStructuredValue } from './response-parser';
 import { parseStructuredResponse } from './structured-response';
@@ -159,6 +160,9 @@ export class OpenRouterProvider implements StructuredVisionProvider {
         });
       }
 
+      const rawBody = typeof response.clone === 'function'
+        ? response.clone().text().catch(() => undefined)
+        : Promise.resolve(undefined);
       try {
         return await response.json();
       } catch {
@@ -168,7 +172,15 @@ export class OpenRouterProvider implements StructuredVisionProvider {
         if (controller.signal.aborted) {
           throw new ProviderError('network_timeout', { params: { provider: this.kind } });
         }
-        throw new ProviderError('invalid_response', { params: { provider: this.kind } });
+        const providerOutput = await rawBody;
+        throw attachProviderFailureDetail(
+          new ProviderError('invalid_response', { params: { provider: this.kind } }),
+          {
+            stage: 'json_parse',
+            issues: [{ path: 'provider.http.body', code: 'invalid_json' }],
+            ...(providerOutput === undefined ? {} : { providerOutput }),
+          },
+        );
       }
     } finally {
       clearTimeout(timer);

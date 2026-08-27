@@ -1,7 +1,7 @@
 import { defineConfig } from 'wxt';
 import { supportedChartHosts } from './src/sites/supported-sites';
 
-const approvedPermissions = ['activeTab', 'storage', 'scripting'];
+const approvedPermissions = ['activeTab', 'storage', 'scripting', 'clipboardWrite'];
 export const approvedProviderOrigins = [
   'https://openrouter.ai/api/*',
   'https://api.openai.com/v1/*',
@@ -52,7 +52,7 @@ export function createManifest(): ExtensionManifest {
       extension_pages: "script-src 'self'; object-src 'self';",
     },
     web_accessible_resources: [{
-      resources: ['panel.html'],
+      resources: ['panel.html', 'chunks/*', 'assets/*'],
       matches: ['http://*/*', 'https://*/*'],
       use_dynamic_url: true,
     }],

@@ -44,7 +44,11 @@ function reportWithMultipleFindings(): CommunityReportV3 {
   });
   report.patterns.push({
     ...structuredClone(report.patterns[0]!), id: 'P02', name: 'Range compression', bias: 'neutral',
-    points: [{ xRatio: 0.55, yRatio: 0.42 }, { xRatio: 0.9, yRatio: 0.48 }],
+    geometry: {
+      geometryKind: 'range', points: [],
+      upperBoundary: { start: { xRatio: 0.55, yRatio: 0.42 }, end: { xRatio: 0.9, yRatio: 0.42 } },
+      lowerBoundary: { start: { xRatio: 0.55, yRatio: 0.58 }, end: { xRatio: 0.9, yRatio: 0.58 } },
+    },
   });
   return report;
 }

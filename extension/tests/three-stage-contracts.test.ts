@@ -22,8 +22,19 @@ describe('three-stage analysis contracts', () => {
     expect(() => parseCommunityVisualFacts(extra)).toThrow();
 
     const invalid = clone(validVisualFacts) as any;
-    invalid.patterns[0].points[0].xRatio = 1.1;
+    invalid.patterns[0].geometry.upperBoundary.start.xRatio = 1.1;
     expect(() => parseCommunityVisualFacts(invalid)).toThrow();
+  });
+
+  it('requires two independent boundaries for channels and ranges', () => {
+    const missingBoundary = clone(validVisualFacts) as any;
+    missingBoundary.patterns[0].geometry.lowerBoundary = null;
+    expect(() => parseCommunityVisualFacts(missingBoundary)).toThrow();
+
+    const connectedRange = clone(validReportV3) as any;
+    connectedRange.patterns[0].geometry.geometryKind = 'range';
+    connectedRange.patterns[0].geometry.points = [{ xRatio: 0.2, yRatio: 0.4 }];
+    expect(() => parseCommunityReportV3(connectedRange)).toThrow();
   });
 
   it('rejects duplicate stage ids and incomplete signal sets', () => {

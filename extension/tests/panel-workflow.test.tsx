@@ -174,6 +174,29 @@ describe('direct Community panel workflow', () => {
     expect(runtime.analyze).not.toHaveBeenCalled();
   });
 
+  it('hides the image download action while the scanning animation is active', async () => {
+    const user = userEvent.setup();
+    let resolveAnalysis!: (value: AnalysisRuntimeOutcome) => void;
+    const pending = new Promise<AnalysisRuntimeOutcome>((resolve) => { resolveAnalysis = resolve; });
+    const runtime = fakeRuntime(() => pending);
+    render(<App dependencies={{
+      loadConfig: async () => ({ provider: 'openrouter', apiKey: 'key', model: 'google/gemini-3.7-flash', customModel: false }),
+      ...directModeDependencies,
+      inspect,
+      capture,
+      createDirectRuntime: () => runtime,
+    }} />);
+
+    await screen.findByRole('heading', { name: 'Detected chart' });
+    await screen.findByText('BTCUSD');
+    await user.click(await screen.findByRole('button', { name: 'Capture and analyze' }));
+    await screen.findByText('Preparing the analysis…');
+
+    expect(screen.queryByRole('button', { name: /Download image/ })).toBeNull();
+    resolveAnalysis(outcome);
+    await screen.findByText('Higher lows remain visible.');
+  });
+
   it('starts the active runtime after capture and exposes no internal detail', async () => {
     const user = userEvent.setup();
     const runtime = fakeRuntime();
@@ -285,6 +308,11 @@ describe('direct Community panel workflow', () => {
 
     await user.click(screen.getByRole('button', { name: 'Settings' }));
     expect(screen.getByRole('dialog', { name: 'Analysis settings' })).toBeTruthy();
+    expect(screen.getByRole('img', { name: 'ChartViz logo' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Language' })).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Close' })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Back to chart' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Detected chart' })).toBeNull();
     expect(screen.getByLabelText('API key')).toHaveProperty('value', 'existing-key');
     expect(screen.getByRole('combobox', { name: 'Model' })).toHaveProperty('textContent', expect.stringContaining('openai/gpt-5.6-terra'));
 
@@ -326,7 +354,7 @@ describe('direct Community panel workflow', () => {
     expect(saveMode).not.toHaveBeenCalled();
 
     const dialog = screen.getByRole('dialog', { name: 'Analysis settings' });
-    await user.click(within(dialog).getByRole('button', { name: 'Close' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Back to chart' }));
     await user.click(screen.getByRole('button', { name: 'Settings' }));
     expect(screen.getByRole('tab', { name: 'Direct model' })).toHaveProperty('ariaSelected', 'true');
     expect(screen.getByLabelText('API key')).toHaveProperty('value', 'existing-key');

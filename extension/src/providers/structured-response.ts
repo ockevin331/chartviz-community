@@ -14,7 +14,7 @@ export function parseStructuredResponse<T>(
     const detail = validationFailureDetail(error);
     throw attachProviderFailureDetail(
       new ProviderError('invalid_response', { params: { provider } }),
-      detail,
+      { ...detail, providerOutput: extractedValue },
     );
   }
 }
