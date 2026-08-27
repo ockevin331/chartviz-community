@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { approvedHostPermissions, createManifest } from '../wxt.config';
-import { isSupportedChartHost, supportedContentMatches } from '../src/sites/supported-sites';
+import {
+  isSupportedChartHost,
+  supportedChartHosts,
+  supportedContentMatches,
+  supportedSites,
+} from '../src/sites/supported-sites';
 
 describe('extension manifest', () => {
   it('uses only the approved temporary-tab permissions and exact provider origins', () => {
@@ -16,6 +21,10 @@ describe('extension manifest', () => {
   });
 
   it('limits the static content bridge to the supported chart URL patterns', () => {
+    expect(supportedContentMatches).toEqual(supportedSites.flatMap((site) => site.contentMatches));
+    expect(supportedChartHosts).toEqual(supportedSites.flatMap((site) => site.hostPermissions));
+    expect(new Set(supportedContentMatches).size).toBe(supportedContentMatches.length);
+    expect(new Set(supportedChartHosts).size).toBe(supportedChartHosts.length);
     expect(supportedContentMatches).toContain('https://*.tradingview.com/chart/*');
     expect(supportedContentMatches).toContain('https://*.binance.com/*/trade/*');
     expect(supportedContentMatches).toContain('https://vergex.trade/chart*');

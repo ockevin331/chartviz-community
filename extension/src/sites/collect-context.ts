@@ -7,14 +7,10 @@ import { collectTradingViewContextWithRetry } from './tradingview/collect-contex
 import { collect10jqkaContextWithRetry, parse10jqkaStockUrl } from './10jqka/collect-context';
 import { collectVergexContextWithRetry, parseVergexChartUrl } from './vergex/collect-context';
 import { collectUpbitContextWithRetry, parseUpbitExchangeUrl } from './upbit/collect-context';
-import { UNSUPPORTED_CHART_URL_ERROR } from './supported-sites';
+import { findSupportedSiteByChartUrl, UNSUPPORTED_CHART_URL_ERROR } from './supported-sites';
 
 export function isSupportedChartUrl(value: string): boolean {
-  try {
-    return /^https:\/\/([^.]+\.)*tradingview\.com\/chart\//i.test(value) || Boolean(parseBinanceSpotUrl(value) || parseBinanceFuturesUrl(value) || parseBinanceStockUrl(value) || parseBinanceWeb3TokenUrl(value) || parseOkxTradeUrl(value) || parseBybitTradeUrl(value) || parseAdditionalExchangeUrl(value) || parseUpbitExchangeUrl(value) || parse10jqkaStockUrl(value) || parseVergexChartUrl(value));
-  } catch {
-    return false;
-  }
+  return findSupportedSiteByChartUrl(value) !== null;
 }
 
 export function collectActiveChartContext(): Promise<ChartContext> {
