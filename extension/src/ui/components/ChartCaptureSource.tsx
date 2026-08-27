@@ -1,20 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { AnalysisCapabilities } from '../../analysis/runtime/analysis-runtime';
 import {
   isChartAvailabilityError,
   type CapturedChart,
 } from '../../capture/active-chart';
 import type { ChartContext } from '../../domain/chart-context';
 import {
+  findSupportedSiteByChartUrl,
   supportedSiteLinks,
   type ChartAvailabilityFailure,
 } from '../../sites/supported-sites';
 import { translations, type Language } from './LanguageMenu';
+import { CaptureModeSelector, type CaptureMode } from './CaptureModeSelector';
 
 type ChartCaptureSourceProps = {
   language: Language;
+  capabilities?: AnalysisCapabilities;
   inspect(): Promise<ChartContext>;
   capture(signal: AbortSignal): Promise<CapturedChart>;
   onCaptured(captured: CapturedChart): void;
+  onOpenCloudSettings?(): void;
 };
 
 function publicMessage(error: unknown, fallback: string): string {
@@ -23,14 +28,17 @@ function publicMessage(error: unknown, fallback: string): string {
 
 export function ChartCaptureSource({
   language,
+  capabilities = { multiTimeframe: false, maxTimeframes: 1 },
   inspect,
   capture,
   onCaptured,
+  onOpenCloudSettings = () => undefined,
 }: ChartCaptureSourceProps) {
   const t = translations[language];
   const [context, setContext] = useState<ChartContext | null>(null);
   const [loading, setLoading] = useState(true);
   const [capturing, setCapturing] = useState(false);
+  const [captureMode, setCaptureMode] = useState<CaptureMode>('single');
   const [error, setError] = useState<string | null>(null);
   const [availability, setAvailability] = useState<ChartAvailabilityFailure | null>(null);
   const captureController = useRef<AbortController | null>(null);
@@ -38,6 +46,7 @@ export function ChartCaptureSource({
   const refresh = useCallback(async () => {
     setLoading(true);
     setContext(null);
+    setCaptureMode('single');
     setError(null);
     setAvailability(null);
     try {
@@ -59,7 +68,7 @@ export function ChartCaptureSource({
   }, [refresh]);
 
   async function startCapture() {
-    if (!context || capturing) return;
+    if (!context || capturing || captureMode !== 'single') return;
     const controller = new AbortController();
     captureController.current = controller;
     setCapturing(true);
@@ -76,6 +85,9 @@ export function ChartCaptureSource({
 
   const unsupportedSite = availability?.code === 'unsupported_site';
   const unsupportedUrl = availability?.code === 'unsupported_url';
+  const siteSupportsMultiTimeframe = context
+    ? findSupportedSiteByChartUrl(context.url)?.multiTimeframe === true
+    : false;
   const heading = unsupportedSite
     ? t.unsupportedSiteTitle
     : unsupportedUrl ? t.unsupportedUrlTitle : t.detectedChart;
@@ -92,7 +104,16 @@ export function ChartCaptureSource({
         <div><dt>{t.exchange}</dt><dd>{context.exchange || context.site}</dd></div>
         <div><dt>{t.timeframe}</dt><dd>{context.timeframe || t.notDetected}</dd></div>
       </dl>
-      <button className="primary" type="button" disabled={capturing} onClick={() => void startCapture()}>{capturing ? t.capturingChart : t.captureAnalyze}</button>
+      <CaptureModeSelector
+        key={context.url}
+        language={language}
+        mode={captureMode}
+        capabilities={capabilities}
+        siteSupportsMultiTimeframe={siteSupportsMultiTimeframe}
+        onModeChange={setCaptureMode}
+        onOpenCloudSettings={onOpenCloudSettings}
+      />
+      <button className="primary" type="button" disabled={capturing || captureMode === 'multi'} onClick={() => void startCapture()}>{capturing ? t.capturingChart : t.captureAnalyze}</button>
     </>}
     {!loading && error && <div className="chart-guidance" role="alert">
       <strong>{t.chartUnavailable}</strong><p>{error}</p>
