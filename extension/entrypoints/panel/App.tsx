@@ -1,15 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { AnalysisMode } from '../../src/analysis/analysis-mode';
-import { runThreeStageAnalysis, type ThreeStageAnalysisInput } from '../../src/analysis/stages/analysis-pipeline';
-import type { CommunityReportV3 } from '../../src/analysis/stages/community-report-v3';
-import { buildAnnotations } from '../../src/annotations/build-annotations';
-import type { AnnotatedReportImages } from '../../src/annotations/annotation-types';
+import { DirectAnalysisRuntime } from '../../src/analysis/runtime/direct-analysis-runtime';
+import type { AnalysisRuntime } from '../../src/analysis/runtime/analysis-runtime';
 import { activeChartClient, type CapturedChart } from '../../src/capture/active-chart';
-import type { ProcessedImage } from '../../src/capture/image-types';
 import { unavailableCloudGateway, type CloudAnalysisGateway } from '../../src/cloud/cloud-gateway';
 import type { ChartContext } from '../../src/domain/chart-context';
 import { providerRegistry } from '../../src/providers/provider-registry';
-import type { ProviderConfig, ProviderKind, StructuredVisionProvider } from '../../src/providers/provider-types';
+import type { ProviderConfig } from '../../src/providers/provider-types';
 import { loadAnalysisMode, saveAnalysisMode } from '../../src/storage/analysis-mode-storage';
 import { loadProviderConfig, saveProviderConfig } from '../../src/storage/provider-session';
 import { AnalysisError } from '../../src/ui/components/AnalysisError';
@@ -20,7 +17,7 @@ import { ImageLightbox, type LightboxImage } from '../../src/ui/components/Image
 import { ImagePreview } from '../../src/ui/components/ImagePreview';
 import { LanguageMenu, translations, type Language } from '../../src/ui/components/LanguageMenu';
 import { ReportView } from '../../src/ui/components/ReportView';
-import { useAnalysisController, type AnalysisControllerDependencies } from '../../src/ui/state/use-analysis-controller';
+import { useAnalysisController } from '../../src/ui/state/use-analysis-controller';
 
 export type AppDependencies = {
   loadConfig(): Promise<ProviderConfig | null>;
@@ -30,9 +27,8 @@ export type AppDependencies = {
   cloudGateway: CloudAnalysisGateway;
   inspect(): Promise<ChartContext>;
   capture(signal: AbortSignal): Promise<CapturedChart>;
-  getProvider(kind: ProviderKind): StructuredVisionProvider;
-  runAnalysis(input: ThreeStageAnalysisInput): Promise<CommunityReportV3>;
-  buildAnnotations(image: ProcessedImage, report: CommunityReportV3): Promise<AnnotatedReportImages>;
+  createDirectRuntime(config: ProviderConfig): AnalysisRuntime;
+  testDirectConnection(config: ProviderConfig, signal: AbortSignal): Promise<void>;
 };
 
 const defaultDependencies: AppDependencies = {
@@ -43,19 +39,14 @@ const defaultDependencies: AppDependencies = {
   cloudGateway: unavailableCloudGateway,
   inspect: () => activeChartClient.inspect(),
   capture: (signal) => activeChartClient.capture(signal),
-  getProvider: (kind) => providerRegistry.get(kind),
-  runAnalysis: runThreeStageAnalysis,
-  buildAnnotations,
+  createDirectRuntime: (config) => new DirectAnalysisRuntime(config),
+  testDirectConnection: (config, signal) =>
+    providerRegistry.get(config.provider).testConnection(config, signal),
 };
 
 export function App({ dependencies: overrides }: { dependencies?: Partial<AppDependencies> } = {}) {
   const dependencies = useMemo(() => ({ ...defaultDependencies, ...(overrides ?? {}) }), [overrides]);
-  const controllerDependencies = useMemo<AnalysisControllerDependencies>(() => ({
-    getProvider: dependencies.getProvider,
-    runAnalysis: dependencies.runAnalysis,
-    buildAnnotations: dependencies.buildAnnotations,
-  }), [dependencies]);
-  const controller = useAnalysisController(controllerDependencies);
+  const controller = useAnalysisController();
   const [language, setLanguage] = useState<Language>('en');
   const [loading, setLoading] = useState(true);
   const [providerConfig, setProviderConfig] = useState<ProviderConfig | null>(null);
@@ -79,10 +70,12 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
       setActiveMode(mode);
       setSetupMode(mode);
       setSettingsMode(mode);
-      if (mode === 'direct' && config) controller.configure(config);
+      if (mode === 'direct' && config) {
+        controller.configure(dependencies.createDirectRuntime(config));
+      }
     })().finally(() => { if (current) setLoading(false); });
     return () => { current = false; };
-  }, [dependencies.loadConfig, dependencies.loadMode, controller.configure]);
+  }, [dependencies.loadConfig, dependencies.loadMode, dependencies.createDirectRuntime, controller.configure]);
 
   const refreshAll = useCallback(() => {
     lastContext.current = null;
@@ -120,7 +113,7 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     setProviderConfig(config);
     setActiveMode('direct');
     setSetupMode('direct');
-    controller.configure(config);
+    controller.configure(dependencies.createDirectRuntime(config));
   }
 
   function finishSettings(config: ProviderConfig) {
@@ -128,8 +121,9 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     setProviderConfig(config);
     setActiveMode('direct');
     setSettingsMode('direct');
-    if (wasDirect) controller.updateConfig(config);
-    else controller.configure(config);
+    const runtime = dependencies.createDirectRuntime(config);
+    if (wasDirect) controller.updateRuntime(runtime);
+    else controller.configure(runtime);
     setSettingsOpen(false);
   }
 
@@ -158,7 +152,7 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
       <div className="header-actions" onPointerDown={(event) => event.stopPropagation()}><LanguageMenu language={language} onChange={setLanguage} />{providerConfig && <button className="toolbar-button settings-button" type="button" aria-label={t.settings} onClick={openSettings}><SettingsIcon /></button>}<button className="toolbar-button refresh-button" type="button" aria-label={t.refresh} onClick={refreshAll}><RefreshIcon /></button><button className="toolbar-button close-button" type="button" aria-label={t.close} onClick={() => window.parent.postMessage({ source: 'chartviz', type: 'panel-close' }, '*')}><CloseIcon /></button></div>
     </header>
     {loading && <section className="backend-loading" role="status">…</section>}
-    {!loading && state.status === 'setup' && <AnalysisModeSettings language={language} variant="setup" activeMode={activeMode} selectedMode={setupMode} onSelectedModeChange={setSetupMode} initialDirectConfig={providerConfig} saveDirectConfig={dependencies.saveConfig} saveMode={dependencies.saveMode} onDirectActivated={finishInitialSetup} testConnection={(config, signal) => dependencies.getProvider(config.provider).testConnection(config, signal)} cloudGateway={dependencies.cloudGateway} />}
+    {!loading && state.status === 'setup' && <AnalysisModeSettings language={language} variant="setup" activeMode={activeMode} selectedMode={setupMode} onSelectedModeChange={setSetupMode} initialDirectConfig={providerConfig} saveDirectConfig={dependencies.saveConfig} saveMode={dependencies.saveMode} onDirectActivated={finishInitialSetup} testConnection={dependencies.testDirectConnection} cloudGateway={dependencies.cloudGateway} />}
     {!loading && state.status === 'source' && <ChartCaptureSource key={contextRevision} language={language} inspect={dependencies.inspect} capture={dependencies.capture} onCaptured={analyzeCaptured} />}
     {state.status === 'preview' && state.image && <ImagePreview language={language} image={state.image} onZoom={setLightbox} onChange={captureAgain} onAnalyze={retryAnalysis} />}
     {state.status === 'analyzing' && state.image && <><ImagePreview language={language} image={state.image} analyzing onZoom={setLightbox} onChange={captureAgain} onAnalyze={() => undefined} /><AnalysisProgress language={language} progress={state.progress} onCancel={controller.cancel} /></>}
@@ -168,7 +162,7 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     {settingsOpen && providerConfig && <div className="settings-modal" role="dialog" aria-modal="true" aria-label={t.analysisSettings}>
       <div className="settings-panel">
         <button className="toolbar-button settings-close" type="button" aria-label={t.close} onClick={() => setSettingsOpen(false)}><CloseIcon /></button>
-        <AnalysisModeSettings language={language} variant="settings" activeMode={activeMode} selectedMode={settingsMode} onSelectedModeChange={setSettingsMode} initialDirectConfig={providerConfig} saveDirectConfig={dependencies.saveConfig} saveMode={dependencies.saveMode} onDirectActivated={finishSettings} testConnection={(config, signal) => dependencies.getProvider(config.provider).testConnection(config, signal)} cloudGateway={dependencies.cloudGateway} />
+        <AnalysisModeSettings language={language} variant="settings" activeMode={activeMode} selectedMode={settingsMode} onSelectedModeChange={setSettingsMode} initialDirectConfig={providerConfig} saveDirectConfig={dependencies.saveConfig} saveMode={dependencies.saveMode} onDirectActivated={finishSettings} testConnection={dependencies.testDirectConnection} cloudGateway={dependencies.cloudGateway} />
       </div>
     </div>}
     {lightbox && <ImageLightbox language={language} image={lightbox} onClose={() => setLightbox(null)} />}

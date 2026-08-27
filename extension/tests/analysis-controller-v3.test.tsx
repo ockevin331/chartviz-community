@@ -1,75 +1,80 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  AnalysisRuntimeFailure,
+  type AnalysisRuntime,
+  type AnalysisRuntimeInput,
+} from '../src/analysis/runtime/analysis-runtime';
 import { parseCommunityReportV3 } from '../src/analysis/stages/community-report-v3';
-import { attachProviderFailureDetail } from '../src/providers/provider-diagnostics';
-import { ProviderError } from '../src/providers/provider-errors';
+import type { AnalysisDiagnostic } from '../src/providers/provider-diagnostics';
 import { useAnalysisController } from '../src/ui/state/use-analysis-controller';
 import { validReportV3 } from './three-stage-fixtures';
 
 afterEach(cleanup);
 
-const config = {
-  provider: 'openrouter' as const,
-  apiKey: 'controller-secret',
-  model: 'openai/gpt-5.6-terra',
-  customModel: false,
-};
 const image = {
   mediaType: 'image/png' as const,
   dataUrl: 'data:image/png;base64,AAAA',
   width: 640,
   height: 360,
 };
-const provider = {
-  kind: 'openrouter' as const,
-  validateConfig: () => ({ ok: true as const }),
-  testConnection: async () => undefined,
-  generateStructured: async () => { throw new Error('The injected pipeline owns this test boundary.'); },
-};
-const annotations = { levels: null, signals: {}, patterns: {} } as any;
+const annotations = { levels: null, signals: {}, patterns: {} };
+
+function runtimeWith(analyze: AnalysisRuntime['analyze']): AnalysisRuntime {
+  return {
+    mode: 'direct',
+    capabilities: () => ({ multiTimeframe: false, maxTimeframes: 1 }),
+    analyze,
+    cancel: vi.fn(),
+  };
+}
 
 describe('V3 analysis controller integration', () => {
-  it('passes the selected language and one signal through the staged pipeline while exposing public progress only', async () => {
-    const runAnalysis = vi.fn(async (input: any) => {
-      input.onProgress('reading_chart');
-      input.onProgress('organizing_evidence');
-      input.onProgress('preparing_result');
-      return parseCommunityReportV3(structuredClone(validReportV3));
+  it('passes the selected language and one capture through the runtime while exposing public progress only', async () => {
+    const analyze = vi.fn(async (input: AnalysisRuntimeInput) => {
+      input.onProgress?.('reading_chart');
+      input.onProgress?.('organizing_evidence');
+      input.onProgress?.('preparing_result');
+      return {
+        report: parseCommunityReportV3(structuredClone(validReportV3)),
+        annotations,
+      };
     });
-    const { result } = renderHook(() => useAnalysisController({
-      getProvider: () => provider,
-      runAnalysis,
-      buildAnnotations: async () => annotations,
-    }));
-    act(() => { result.current.configure(config); result.current.selectImage(image); });
+    const runtime = runtimeWith(analyze);
+    const { result } = renderHook(() => useAnalysisController());
+    act(() => { result.current.configure(runtime); result.current.selectImage(image); });
 
     await act(async () => result.current.analyze({ instrument: 'BTC/USDT', timeframe: '15m' }, 'zh-CN'));
 
-    expect(runAnalysis).toHaveBeenCalledTimes(1);
-    expect(runAnalysis.mock.calls[0]?.[0]).toMatchObject({
-      provider,
+    expect(analyze).toHaveBeenCalledTimes(1);
+    expect(analyze.mock.calls[0]?.[0]).toMatchObject({
+      captures: [{ image, context: { instrument: 'BTC/USDT', timeframe: '15m' } }],
       outputLanguage: 'zh-CN',
-      context: { instrument: 'BTC/USDT', timeframe: '15m', site: null, exchange: null },
     });
-    expect(runAnalysis.mock.calls[0]?.[0].signal).toBeInstanceOf(AbortSignal);
     expect(result.current.state.status).toBe('completed');
     expect(result.current.state.report?.schemaVersion).toBe('community-3.0');
     expect(result.current.state.report?.conclusion.direction).toBe('sideways');
     expect(result.current.state.progress).toEqual(['reading_chart', 'organizing_evidence', 'preparing_result']);
   });
 
-  it('retains an exact safe pipeline stage without retaining the image or API key', async () => {
-    const error = attachProviderFailureDetail(
-      new ProviderError('invalid_response', { params: { provider: 'openrouter' } }),
-      { stage: 'signal_extraction_semantics', issues: [{ path: 'signals.0.stopLoss', code: 'custom' }] },
-    );
-    const { result } = renderHook(() => useAnalysisController({
-      getProvider: () => provider,
-      runAnalysis: async () => { throw error; },
-      buildAnnotations: async () => annotations,
-    }));
-    act(() => { result.current.configure(config); result.current.selectImage(image); });
+  it('retains an exact safe runtime stage without adding secrets to the diagnostic', async () => {
+    const diagnostic: AnalysisDiagnostic = {
+      source: 'extension_local',
+      pipelineVersion: 'community-3.0',
+      requestId: 'safe-runtime-id',
+      provider: 'openrouter',
+      model: 'openai/gpt-5.6-terra',
+      stage: 'signal_extraction_semantics',
+      occurredAt: '2026-08-27T00:00:00.000Z',
+      durationMs: 40,
+      issues: [{ path: 'signals.0.stopLoss', code: 'custom' }],
+    };
+    const runtime = runtimeWith(async () => {
+      throw new AnalysisRuntimeFailure('invalid_response', diagnostic);
+    });
+    const { result } = renderHook(() => useAnalysisController());
+    act(() => { result.current.configure(runtime); result.current.selectImage(image); });
 
     await act(async () => result.current.analyze({ instrument: null, timeframe: null }, 'en'));
 
@@ -77,6 +82,6 @@ describe('V3 analysis controller integration', () => {
       stage: 'signal_extraction_semantics',
       issues: [{ path: 'signals.0.stopLoss', code: 'custom' }],
     });
-    expect(JSON.stringify(result.current.state.diagnostic)).not.toMatch(/controller-secret|data:image/);
+    expect(JSON.stringify(result.current.state.diagnostic)).not.toMatch(/api.?key|data:image|systemPrompt|rawOutput/i);
   });
 });

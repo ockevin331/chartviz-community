@@ -1,185 +1,226 @@
 import { useCallback, useRef, useState } from 'react';
-import { runThreeStageAnalysis, type AnalysisPipelineProgress, type ThreeStageAnalysisInput } from '../../analysis/stages/analysis-pipeline';
+import {
+  AnalysisRuntimeFailure,
+  type AnalysisCapture,
+  type AnalysisRuntime,
+  type AnalysisRuntimeErrorCode,
+  type ProgressMessage,
+} from '../../analysis/runtime/analysis-runtime';
 import type { CommunityReportV3 } from '../../analysis/stages/community-report-v3';
-import type { OutputLanguage, StagePageContext } from '../../analysis/stages/shared-stage-types';
-import { buildAnnotations as buildReportAnnotations } from '../../annotations/build-annotations';
+import type { OutputLanguage } from '../../analysis/stages/shared-stage-types';
 import type { AnnotatedReportImages } from '../../annotations/annotation-types';
 import type { ProcessedImage } from '../../capture/image-types';
-import { providerRegistry } from '../../providers/provider-registry';
-import { attachProviderFailureDetail, createAnalysisDiagnostic, type AnalysisDiagnostic } from '../../providers/provider-diagnostics';
-import { ProviderError, type AnalysisErrorCode } from '../../providers/provider-errors';
-import type { ProviderConfig, ProviderKind, StructuredVisionProvider } from '../../providers/provider-types';
+import type { AnalysisDiagnostic } from '../../providers/provider-diagnostics';
 
-export type ProgressMessage = 'reading_chart' | 'organizing_evidence' | 'preparing_result';
-export type AnalysisStatus = 'setup' | 'source' | 'preview' | 'analyzing' | 'completed' | 'failed' | 'cancelled';
+export type { ProgressMessage } from '../../analysis/runtime/analysis-runtime';
 
 export type AnalysisState = {
-  status: AnalysisStatus;
+  status: 'setup' | 'source' | 'preview' | 'analyzing' | 'completed' | 'failed' | 'cancelled';
   image: ProcessedImage | null;
   report: CommunityReportV3 | null;
   annotations: AnnotatedReportImages | null;
-  progress: ProgressMessage[];
-  errorCode: AnalysisErrorCode | 'unknown' | null;
+  errorCode: AnalysisRuntimeErrorCode | 'unknown' | null;
   diagnostic: AnalysisDiagnostic | null;
+  progress: ProgressMessage[];
 };
 
-export type AnalysisControllerDependencies = {
-  getProvider(kind: ProviderKind): StructuredVisionProvider;
-  runAnalysis(input: ThreeStageAnalysisInput): Promise<CommunityReportV3>;
-  buildAnnotations(image: ProcessedImage, report: CommunityReportV3): Promise<AnnotatedReportImages>;
+const INITIAL_STATE: AnalysisState = {
+  status: 'setup',
+  image: null,
+  report: null,
+  annotations: null,
+  errorCode: null,
+  diagnostic: null,
+  progress: [],
 };
 
-const defaultDependencies: AnalysisControllerDependencies = {
-  getProvider: (kind) => providerRegistry.get(kind),
-  runAnalysis: runThreeStageAnalysis,
-  buildAnnotations: (image, report) => buildReportAnnotations(image, report),
-};
+const REQUIRED_COMPLETION_PROGRESS: ProgressMessage[] = [
+  'organizing_evidence',
+  'preparing_result',
+];
 
-const initialState: AnalysisState = { status: 'setup', image: null, report: null, annotations: null, progress: [], errorCode: null, diagnostic: null };
-
-function publicErrorCode(error: unknown): AnalysisErrorCode | 'unknown' {
-  return error instanceof ProviderError ? error.code : 'unknown';
-}
-
-function createRequestId(): string {
-  const randomUuid = globalThis.crypto?.randomUUID;
-  return typeof randomUuid === 'function'
-    ? randomUuid.call(globalThis.crypto)
-    : `cv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
-}
-
-export function useAnalysisController(dependencies: Partial<AnalysisControllerDependencies> = {}) {
-  const dependenciesRef = useRef<AnalysisControllerDependencies>({ ...defaultDependencies, ...dependencies });
-  dependenciesRef.current = { ...defaultDependencies, ...dependencies };
-  const configRef = useRef<ProviderConfig | null>(null);
+export function useAnalysisController() {
+  const [state, setState] = useState<AnalysisState>(INITIAL_STATE);
+  const runtimeRef = useRef<AnalysisRuntime | null>(null);
+  const activeRuntimeRef = useRef<AnalysisRuntime | null>(null);
   const imageRef = useRef<ProcessedImage | null>(null);
-  const requestRef = useRef<AbortController | null>(null);
   const generationRef = useRef(0);
-  const [state, setState] = useState<AnalysisState>(initialState);
 
   const invalidateOperation = useCallback(() => {
     generationRef.current += 1;
-    const request = requestRef.current;
-    requestRef.current = null;
-    request?.abort(new DOMException('Cancelled', 'AbortError'));
+    const activeRuntime = activeRuntimeRef.current;
+    activeRuntimeRef.current = null;
+    activeRuntime?.cancel();
+    return activeRuntime;
   }, []);
 
-  const configure = useCallback((config: ProviderConfig) => {
-    invalidateOperation();
-    configRef.current = config;
+  const configure = useCallback((runtime: AnalysisRuntime) => {
+    const previousRuntime = runtimeRef.current;
+    const activeRuntime = invalidateOperation();
+    if (previousRuntime && previousRuntime !== activeRuntime) {
+      previousRuntime.cancel();
+    }
+    runtimeRef.current = runtime;
     imageRef.current = null;
-    setState({ ...initialState, status: 'source' });
+    setState({ ...INITIAL_STATE, status: 'source' });
   }, [invalidateOperation]);
 
-  const updateConfig = useCallback((config: ProviderConfig) => {
-    configRef.current = config;
+  const updateRuntime = useCallback((runtime: AnalysisRuntime) => {
+    runtimeRef.current = runtime;
   }, []);
 
   const selectImage = useCallback((image: ProcessedImage) => {
     invalidateOperation();
     imageRef.current = image;
-    setState({ ...initialState, status: 'preview', image });
+    setState({
+      ...INITIAL_STATE,
+      status: 'preview',
+      image,
+    });
   }, [invalidateOperation]);
 
   const chooseAnotherImage = useCallback(() => {
     invalidateOperation();
     imageRef.current = null;
-    setState({ ...initialState, status: 'source' });
+    setState({
+      ...INITIAL_STATE,
+      status: runtimeRef.current ? 'source' : 'setup',
+    });
   }, [invalidateOperation]);
 
   const refresh = useCallback(() => {
     invalidateOperation();
     imageRef.current = null;
-    setState({ ...initialState, status: configRef.current ? 'source' : 'setup' });
+    setState({
+      ...INITIAL_STATE,
+      status: runtimeRef.current ? 'source' : 'setup',
+    });
   }, [invalidateOperation]);
 
-  const analyze = useCallback(async (pageContext: Pick<StagePageContext, 'instrument' | 'timeframe'>, language: OutputLanguage) => {
-    const config = configRef.current;
+  const analyze = useCallback(async (
+    pageContext: AnalysisCapture['context'],
+    outputLanguage: OutputLanguage,
+  ) => {
+    const runtime = runtimeRef.current;
     const image = imageRef.current;
-    if (!config || !image || requestRef.current) return;
-    const generation = generationRef.current + 1;
-    generationRef.current = generation;
-    const controller = new AbortController();
-    const startedAt = Date.now();
-    const requestId = createRequestId();
+    if (!runtime || !image || activeRuntimeRef.current) return;
+
+    const operationGeneration = generationRef.current + 1;
+    generationRef.current = operationGeneration;
+    activeRuntimeRef.current = runtime;
     let currentProgress: ProgressMessage[] = ['reading_chart'];
-    requestRef.current = controller;
-    const isCurrent = () => generationRef.current === generation;
-    setState({ status: 'analyzing', image, report: null, annotations: null, progress: ['reading_chart'], errorCode: null, diagnostic: null });
+
+    setState((current) => ({
+      ...current,
+      status: 'analyzing',
+      report: null,
+      annotations: null,
+      errorCode: null,
+      diagnostic: null,
+      progress: currentProgress,
+    }));
+
     try {
-      const deps = dependenciesRef.current;
-      const provider = deps.getProvider(config.provider);
-      const report = await deps.runAnalysis({
-        config,
-        provider,
-        image: { mediaType: image.mediaType, dataUrl: image.dataUrl },
-        context: { ...pageContext, site: null, exchange: null },
-        outputLanguage: language,
-        signal: controller.signal,
-        onProgress: (message: AnalysisPipelineProgress) => {
-          if (!isCurrent() || currentProgress.includes(message)) return;
+      const outcome = await runtime.analyze({
+        captures: [{ image, context: pageContext }],
+        outputLanguage,
+        onProgress(message) {
+          if (generationRef.current !== operationGeneration) return;
+          if (currentProgress.includes(message)) return;
           currentProgress = [...currentProgress, message];
           setState((current) => ({ ...current, progress: currentProgress }));
         },
       });
-      if (!isCurrent()) return;
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-      if (!isCurrent()) return;
-      if (!currentProgress.includes('organizing_evidence')) {
-        currentProgress = [...currentProgress, 'organizing_evidence'];
-        setState((current) => ({ ...current, progress: currentProgress }));
+
+      if (generationRef.current !== operationGeneration) return;
+      for (const message of REQUIRED_COMPLETION_PROGRESS) {
+        if (!currentProgress.includes(message)) currentProgress.push(message);
       }
-      let annotations: AnnotatedReportImages;
-      try {
-        annotations = await deps.buildAnnotations(image, report);
-      } catch {
-        const annotationError = attachProviderFailureDetail(
-          new ProviderError('invalid_image', { params: { provider: config.provider } }),
-          { stage: 'annotation_rendering', issues: [] },
-        );
-        if (isCurrent()) setState({
-          status: 'failed', image, report: null, annotations: null, progress: currentProgress, errorCode: 'invalid_image',
-          diagnostic: createAnalysisDiagnostic({ error: annotationError, provider: config.provider, model: config.model, requestId, startedAt, finishedAt: Date.now() }),
-        });
+      setState({
+        status: 'completed',
+        image,
+        report: outcome.report,
+        annotations: outcome.annotations,
+        errorCode: null,
+        diagnostic: null,
+        progress: [...currentProgress],
+      });
+    } catch (error) {
+      if (generationRef.current !== operationGeneration) return;
+      if (error instanceof AnalysisRuntimeFailure) {
+        if (error.code === 'cancelled') {
+          setState((current) => ({
+            ...current,
+            status: 'cancelled',
+            report: null,
+            annotations: null,
+            errorCode: null,
+            diagnostic: null,
+          }));
+          return;
+        }
+        setState((current) => ({
+          ...current,
+          status: 'failed',
+          report: null,
+          annotations: null,
+          errorCode: error.code,
+          diagnostic: error.diagnostic,
+        }));
         return;
       }
-      if (!isCurrent()) return;
-      if (!currentProgress.includes('preparing_result')) {
-        currentProgress = [...currentProgress, 'preparing_result'];
-        setState((current) => ({ ...current, progress: currentProgress }));
-      }
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-      if (!isCurrent()) return;
-      setState({ status: 'completed', image, report, annotations, progress: currentProgress, errorCode: null, diagnostic: null });
-    } catch (error) {
-      if (!isCurrent()) return;
-      const errorCode = publicErrorCode(error);
-      if (errorCode === 'cancelled') setState({ status: 'cancelled', image, report: null, annotations: null, progress: currentProgress, errorCode: null, diagnostic: null });
-      else setState({
-        status: 'failed', image, report: null, annotations: null, progress: currentProgress, errorCode,
-        diagnostic: error instanceof ProviderError
-          ? createAnalysisDiagnostic({ error, provider: config.provider, model: config.model, requestId, startedAt, finishedAt: Date.now() })
-          : null,
-      });
+      setState((current) => ({
+        ...current,
+        status: 'failed',
+        report: null,
+        annotations: null,
+        errorCode: 'unknown',
+        diagnostic: null,
+      }));
     } finally {
-      if (requestRef.current === controller) requestRef.current = null;
+      if (activeRuntimeRef.current === runtime) {
+        activeRuntimeRef.current = null;
+      }
     }
   }, []);
 
   const cancel = useCallback(() => {
-    const controller = requestRef.current;
-    if (!controller) return;
     generationRef.current += 1;
-    requestRef.current = null;
-    controller.abort(new DOMException('Cancelled', 'AbortError'));
-    setState((current) => ({ ...current, status: 'cancelled', errorCode: null }));
+    const activeRuntime = activeRuntimeRef.current;
+    activeRuntimeRef.current = null;
+    activeRuntime?.cancel();
+    setState((current) => ({
+      ...current,
+      status: 'cancelled',
+      report: null,
+      annotations: null,
+      errorCode: null,
+      diagnostic: null,
+    }));
   }, []);
 
   const returnToPreview = useCallback(() => {
-    const image = imageRef.current;
     invalidateOperation();
-    if (image) setState({ ...initialState, status: 'preview', image });
+    setState((current) => ({
+      ...current,
+      status: current.image ? 'preview' : runtimeRef.current ? 'source' : 'setup',
+      report: null,
+      annotations: null,
+      errorCode: null,
+      diagnostic: null,
+      progress: [],
+    }));
   }, [invalidateOperation]);
 
-  return { state, configure, updateConfig, selectImage, chooseAnotherImage, refresh, analyze, cancel, returnToPreview };
+  return {
+    state,
+    configure,
+    updateRuntime,
+    selectImage,
+    chooseAnotherImage,
+    refresh,
+    analyze,
+    cancel,
+    returnToPreview,
+  };
 }

@@ -3,12 +3,16 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../entrypoints/panel/App';
+import {
+  AnalysisRuntimeFailure,
+  type AnalysisRuntime,
+  type AnalysisRuntimeInput,
+  type AnalysisRuntimeOutcome,
+} from '../src/analysis/runtime/analysis-runtime';
 import { ChartAvailabilityError } from '../src/capture/active-chart';
 import { unavailableCloudGateway } from '../src/cloud/cloud-gateway';
 import type { ChartContext } from '../src/domain/chart-context';
-import { attachProviderFailureDetail } from '../src/providers/provider-diagnostics';
-import { ProviderError } from '../src/providers/provider-errors';
-import type { StructuredVisionProvider } from '../src/providers/provider-types';
+import type { AnalysisDiagnostic } from '../src/providers/provider-diagnostics';
 import { annotatedImages, communityReport, processedImage } from './community-ui-fixtures';
 
 afterEach(cleanup);
@@ -23,14 +27,28 @@ const chartContext: ChartContext = {
 
 const inspect = async () => chartContext;
 const capture = async () => ({ image: processedImage, context: chartContext });
-const provider: StructuredVisionProvider = {
-  kind: 'openrouter', validateConfig: () => ({ ok: true }), testConnection: async () => undefined,
-  generateStructured: async () => { throw new Error('The injected pipeline owns this test boundary.'); },
-};
+const outcome: AnalysisRuntimeOutcome = { report: communityReport, annotations: annotatedImages };
+
+function fakeRuntime(
+  analyzeImplementation: (input: AnalysisRuntimeInput) => Promise<AnalysisRuntimeOutcome>
+    = async () => outcome,
+): AnalysisRuntime & {
+  analyze: ReturnType<typeof vi.fn<(input: AnalysisRuntimeInput) => Promise<AnalysisRuntimeOutcome>>>;
+  cancel: ReturnType<typeof vi.fn<() => void>>;
+} {
+  return {
+    mode: 'direct',
+    capabilities: () => ({ multiTimeframe: false, maxTimeframes: 1 }),
+    analyze: vi.fn(analyzeImplementation),
+    cancel: vi.fn(),
+  };
+}
+
 const directModeDependencies = {
   loadMode: async () => 'direct' as const,
   saveMode: async () => undefined,
   cloudGateway: unavailableCloudGateway,
+  testDirectConnection: async () => undefined,
 };
 describe('direct Community panel workflow', () => {
   it('defaults a new installation to the unavailable Cloud tab without inspecting the page', async () => {
@@ -60,7 +78,7 @@ describe('direct Community panel workflow', () => {
   });
 
   it('guides an unsupported site to ChartViz without invoking analysis', async () => {
-    const analyze = vi.fn(async () => communityReport);
+    const runtime = fakeRuntime();
     render(<App dependencies={{
       loadConfig: async () => ({ provider: 'openrouter', apiKey: 'key', model: 'google/gemini-3.7-flash', customModel: false }),
       ...directModeDependencies,
@@ -70,68 +88,61 @@ describe('direct Community panel workflow', () => {
           { code: 'unsupported_site', onChartVizSite: false },
         );
       },
-      getProvider: () => provider,
-      runAnalysis: analyze,
-      buildAnnotations: async () => annotatedImages,
+      createDirectRuntime: () => runtime,
     }} />);
 
     expect(await screen.findByRole('link', { name: 'Upload a screenshot on ChartViz' })).toBeTruthy();
     expect(document.querySelector('input[type="file"]')).toBeNull();
-    expect(analyze).not.toHaveBeenCalled();
+    expect(runtime.analyze).not.toHaveBeenCalled();
   });
 
-  it('starts the three-stage pipeline after capture and exposes no internal detail', async () => {
+  it('starts the active runtime after capture and exposes no internal detail', async () => {
     const user = userEvent.setup();
-    const analyze = vi.fn(async () => communityReport);
+    const runtime = fakeRuntime();
     render(<App dependencies={{
       loadConfig: async () => ({ provider: 'openrouter', apiKey: 'key', model: 'google/gemini-3.7-flash', customModel: false }),
       ...directModeDependencies,
       inspect,
       capture,
-      getProvider: () => provider,
-      runAnalysis: analyze,
-      buildAnnotations: async () => annotatedImages,
+      createDirectRuntime: () => runtime,
     }} />);
     await screen.findByRole('heading', { name: 'Detected chart' });
     expect(await screen.findByText('BTCUSD')).toBeTruthy();
     expect(document.querySelector('input[type="file"]')).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Capture and analyze' }));
-    await screen.findByText('Reading chart');
     await screen.findByText('Higher lows remain visible.');
-    expect(analyze).toHaveBeenCalledTimes(1);
-    expect(analyze).toHaveBeenCalledWith(expect.objectContaining({
-      provider,
-      context: expect.objectContaining({ instrument: 'BTCUSD', timeframe: '15m' }),
+    expect(runtime.analyze).toHaveBeenCalledTimes(1);
+    expect(runtime.analyze).toHaveBeenCalledWith(expect.objectContaining({
+      captures: [expect.objectContaining({
+        context: { instrument: 'BTCUSD', timeframe: '15m' },
+      })],
       outputLanguage: 'en',
     }));
     expect(document.body.textContent).not.toMatch(/system prompt|payload|json schema|chain-of-thought/i);
   });
 
-
-  it('restarts the three-stage pipeline only when the user explicitly retries a failure', async () => {
+  it('restarts the active runtime only when the user explicitly retries a failure', async () => {
     const user = userEvent.setup();
-    const analyze = vi.fn()
-      .mockRejectedValueOnce(new ProviderError('network_timeout', { params: { provider: 'openrouter' } }))
-      .mockResolvedValueOnce(communityReport);
+    const runtime = fakeRuntime(vi.fn()
+      .mockRejectedValueOnce(new AnalysisRuntimeFailure('network_timeout'))
+      .mockResolvedValueOnce(outcome));
     render(<App dependencies={{
       loadConfig: async () => ({ provider: 'openrouter', apiKey: 'key', model: 'google/gemini-3.7-flash', customModel: false }),
       ...directModeDependencies,
       inspect,
       capture,
-      getProvider: () => provider,
-      runAnalysis: analyze,
-      buildAnnotations: async () => annotatedImages,
+      createDirectRuntime: () => runtime,
     }} />);
 
     await screen.findByRole('heading', { name: 'Detected chart' });
     await screen.findByText('BTCUSD');
     await user.click(screen.getByRole('button', { name: 'Capture and analyze' }));
     await screen.findByRole('alert');
-    expect(analyze).toHaveBeenCalledTimes(1);
+    expect(runtime.analyze).toHaveBeenCalledTimes(1);
 
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     await screen.findByText('Higher lows remain visible.');
-    expect(analyze).toHaveBeenCalledTimes(2);
+    expect(runtime.analyze).toHaveBeenCalledTimes(2);
   });
 
   it('keeps the v1 close and drag interactions on the floating panel header', async () => {
@@ -158,14 +169,13 @@ describe('direct Community panel workflow', () => {
 
   it('refreshes the panel workflow without reloading the page or calling the provider', async () => {
     const user = userEvent.setup();
-    const analyze = vi.fn(async () => communityReport);
+    const runtime = fakeRuntime();
     render(<App dependencies={{
       loadConfig: async () => ({ provider: 'openrouter', apiKey: 'key', model: 'openai/gpt-5.6-terra', customModel: false }),
       ...directModeDependencies,
       inspect: vi.fn(inspect),
       capture,
-      getProvider: () => provider,
-      runAnalysis: analyze,
+      createDirectRuntime: () => runtime,
     }} />);
     await screen.findByRole('heading', { name: 'Detected chart' });
     await screen.findByText('BTCUSD');
@@ -174,20 +184,24 @@ describe('direct Community panel workflow', () => {
 
     expect(await screen.findByRole('heading', { name: 'Detected chart' })).toBeTruthy();
     await screen.findByText('BTCUSD');
-    expect(analyze).not.toHaveBeenCalled();
+    expect(runtime.analyze).not.toHaveBeenCalled();
   });
 
   it('opens the current model settings, saves changes, and returns to the chart', async () => {
     const user = userEvent.setup();
     const saveConfig = vi.fn(async () => undefined);
+    const firstRuntime = fakeRuntime();
+    const updatedRuntime = fakeRuntime();
+    const createDirectRuntime = vi.fn()
+      .mockReturnValueOnce(firstRuntime)
+      .mockReturnValueOnce(updatedRuntime);
     render(<App dependencies={{
       loadConfig: async () => ({ provider: 'openrouter', apiKey: 'existing-key', model: 'openai/gpt-5.6-terra', customModel: false }),
       ...directModeDependencies,
       saveConfig,
       inspect,
       capture,
-      getProvider: () => provider,
-      runAnalysis: async () => communityReport,
+      createDirectRuntime,
     }} />);
     await screen.findByRole('heading', { name: 'Detected chart' });
 
@@ -205,6 +219,9 @@ describe('direct Community panel workflow', () => {
     }));
     expect(screen.queryByRole('dialog', { name: 'Analysis settings' })).toBeNull();
     expect(screen.getByRole('heading', { name: 'Detected chart' })).toBeTruthy();
+    expect(createDirectRuntime).toHaveBeenNthCalledWith(1, expect.objectContaining({ model: 'openai/gpt-5.6-terra' }));
+    expect(createDirectRuntime).toHaveBeenNthCalledWith(2, expect.objectContaining({ model: 'qwen/qwen3.7-plus' }));
+    expect(firstRuntime.cancel).not.toHaveBeenCalled();
   });
 
   it('lets a Direct user inspect Cloud settings without activating or clearing Direct', async () => {
@@ -219,7 +236,7 @@ describe('direct Community panel workflow', () => {
       saveConfig,
       inspect,
       capture,
-      getProvider: () => provider,
+      createDirectRuntime: () => fakeRuntime(),
     }} />);
     await screen.findByRole('heading', { name: 'Detected chart' });
 
@@ -248,7 +265,11 @@ describe('direct Community panel workflow', () => {
       saveConfig: async () => { events.push('config'); },
       inspect,
       capture,
-      getProvider: () => provider,
+      createDirectRuntime: () => {
+        events.push('runtime');
+        return fakeRuntime();
+      },
+      testDirectConnection: async () => undefined,
     }} />);
     await screen.findByRole('tab', { name: 'ChartViz Cloud' });
 
@@ -257,22 +278,31 @@ describe('direct Community panel workflow', () => {
     await user.click(screen.getByRole('button', { name: 'Save and continue' }));
 
     await screen.findByRole('heading', { name: 'Detected chart' });
-    expect(events).toEqual(['config', 'mode']);
+    expect(events).toEqual(['config', 'mode', 'runtime']);
   });
 
-  it('localizes a malformed provider report without exposing validation or schema details', async () => {
+  it('localizes a malformed runtime report without exposing validation or schema details', async () => {
     const user = userEvent.setup();
-    const invalidReport = attachProviderFailureDetail(
-      new ProviderError('invalid_response', { params: { provider: 'openrouter' } }),
-      { stage: 'report_shape', issues: [{ path: 'chart.timeframe', code: 'invalid_type' }] },
-    );
+    const diagnostic: AnalysisDiagnostic = {
+      source: 'extension_local',
+      pipelineVersion: 'community-3.0',
+      requestId: 'safe-runtime-id',
+      provider: 'openrouter',
+      model: 'google/gemini-3.7-flash',
+      stage: 'report_shape',
+      occurredAt: '2026-08-27T00:00:00.000Z',
+      durationMs: 25,
+      issues: [{ path: 'chart.timeframe', code: 'invalid_type' }],
+    };
+    const runtime = fakeRuntime(async () => {
+      throw new AnalysisRuntimeFailure('invalid_response', diagnostic);
+    });
     render(<App dependencies={{
       loadConfig: async () => ({ provider: 'openrouter', apiKey: 'key', model: 'google/gemini-3.7-flash', customModel: false }),
       ...directModeDependencies,
       inspect,
       capture,
-      getProvider: () => provider,
-      runAnalysis: async () => { throw invalidReport; },
+      createDirectRuntime: () => runtime,
     }} />);
     await screen.findByRole('heading', { name: 'Detected chart' });
     await user.click(await screen.findByRole('button', { name: 'Capture and analyze' }));
