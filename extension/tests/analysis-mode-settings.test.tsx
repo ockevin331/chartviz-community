@@ -93,6 +93,8 @@ describe('AnalysisModeSettings', () => {
       available: false,
       code: 'cloud_not_available',
     });
-    expect(Object.keys(unavailableCloudGateway)).toEqual(['availability']);
+    expect(Object.keys(unavailableCloudGateway)).toEqual(['availability', 'runtime']);
+    expect(unavailableCloudGateway.runtime()).toBeNull();
+    expect(unavailableCloudGateway.runtime.length).toBe(0);
   });
 });
