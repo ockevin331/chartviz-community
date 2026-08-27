@@ -54,6 +54,8 @@ describe('V3 analysis controller integration', () => {
     });
     expect(runAnalysis.mock.calls[0]?.[0].signal).toBeInstanceOf(AbortSignal);
     expect(result.current.state.status).toBe('completed');
+    expect(result.current.state.report?.schemaVersion).toBe('community-3.0');
+    expect(result.current.state.report?.conclusion.direction).toBe('sideways');
     expect(result.current.state.progress).toEqual(['reading_chart', 'organizing_evidence', 'preparing_result']);
   });
 

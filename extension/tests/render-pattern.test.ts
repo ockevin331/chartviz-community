@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Pattern } from '../src/analysis/community-report';
+import type { CommunityReportV3 } from '../src/analysis/stages/community-report-v3-schema';
 import type { ProcessedImage } from '../src/capture/image-types';
 import {
   type AnnotationCanvasDependencies,
@@ -8,6 +8,7 @@ import {
 import { renderPattern } from '../src/annotations/render-pattern';
 
 type Operation = readonly [name: string, ...values: unknown[]];
+type Pattern = CommunityReportV3['patterns'][number];
 
 function recordingCanvas() {
   const operations: Operation[] = [];
@@ -47,15 +48,16 @@ const image: ProcessedImage = {
 
 function pattern(points: Pattern['points']): Pattern {
   return {
-    id: 'pattern-one',
+    id: 'P01',
     name: 'Visible triangle',
     status: 'forming',
     bias: 'neutral',
     timeRange: 'Visible chart range.',
-    explanation: 'Price is narrowing between visible swings.',
+    evidence: 'Price is narrowing between visible swings.',
+    confirmation: 'Visible close above the pattern.',
+    invalidation: 'Visible close below the pattern.',
     confidence: 0.7,
     points,
-    evidenceIds: [],
   };
 }
 
@@ -74,7 +76,7 @@ describe('renderPattern', () => {
     const result = await renderPattern(image, input, dependencies);
 
     expect(result).toEqual({
-      id: 'pattern-one',
+      id: 'P01',
       kind: 'pattern',
       title: 'Visible triangle',
       dataUrl: 'data:image/png;base64,cGF0dGVybg==',

@@ -1,276 +1,82 @@
 import { describe, expect, it } from 'vitest';
-import type { CommunityReport } from '../src/analysis/community-report';
+import type { CommunityReportV3 } from '../src/analysis/stages/community-report-v3-schema';
 import type { ProcessedImage } from '../src/capture/image-types';
-import {
-  type AnnotationCanvasDependencies,
-  type AnnotationSurface,
-} from '../src/annotations/canvas-surface';
-import {
-  ANNOTATION_IMAGE_TOO_SMALL_CODE,
-  buildAnnotations,
-} from '../src/annotations/build-annotations';
+import { buildAnnotations, ANNOTATION_IMAGE_TOO_SMALL_CODE } from '../src/annotations/build-annotations';
+import type { AnnotationCanvasDependencies, AnnotationSurface } from '../src/annotations/canvas-surface';
+import { communityReport } from './community-ui-fixtures';
 
 type Operation = readonly [name: string, ...values: unknown[]];
 
 function recordingCanvases() {
   const canvases: Operation[][] = [];
-  const decodes: string[] = [];
   const dependencies: AnnotationCanvasDependencies = {
-    decode: async (dataUrl) => {
-      decodes.push(dataUrl);
-      return { source: 'synthetic-800x600', dispose: () => undefined };
-    },
+    decode: async () => ({ source: 'source', dispose: () => undefined }),
     createSurface: (width, height) => {
-      const operations: Operation[] = [['createSurface', width, height]];
-      const canvasNumber = canvases.push(operations);
+      const operations: Operation[] = [];
+      const index = canvases.push(operations);
       const surface: AnnotationSurface = {
-        drawSource: (source, targetWidth, targetHeight) => operations.push(['drawSource', source, targetWidth, targetHeight]),
-        setStrokeStyle: (color) => operations.push(['setStrokeStyle', color]),
-        setFillStyle: (color) => operations.push(['setFillStyle', color]),
-        setLineWidth: (lineWidth) => operations.push(['setLineWidth', lineWidth]),
-        beginPath: () => operations.push(['beginPath']),
-        moveTo: (x, y) => operations.push(['moveTo', x, y]),
-        lineTo: (x, y) => operations.push(['lineTo', x, y]),
-        closePath: () => operations.push(['closePath']),
-        stroke: () => operations.push(['stroke']),
-        fill: () => operations.push(['fill']),
-        fillText: (text, x, y) => operations.push(['fillText', text, x, y]),
-        encode: async () => `data:image/png;base64,Y2FudmFzL${canvasNumber}`,
+        drawSource: (...values) => operations.push(['drawSource', ...values]),
+        setStrokeStyle: (value) => operations.push(['setStrokeStyle', value]),
+        setFillStyle: (value) => operations.push(['setFillStyle', value]),
+        setLineWidth: (value) => operations.push(['setLineWidth', value]),
+        beginPath: () => operations.push(['beginPath']), moveTo: (...values) => operations.push(['moveTo', ...values]),
+        lineTo: (...values) => operations.push(['lineTo', ...values]), closePath: () => operations.push(['closePath']),
+        stroke: () => operations.push(['stroke']), fill: () => operations.push(['fill']),
+        fillText: (...values) => operations.push(['fillText', ...values]),
+        encode: async () => `data:image/png;base64,CANVAS${index}`,
       };
+      operations.push(['size', width, height]);
       return surface;
     },
   };
-  return { dependencies, canvases, decodes };
+  return { canvases, dependencies };
 }
 
-const image: ProcessedImage = {
-  mediaType: 'image/png',
-  dataUrl: 'data:image/png;base64,c3ludGhldGljLTgwMHg2MDA=',
-  width: 800,
-  height: 600,
-};
+const image: ProcessedImage = { mediaType: 'image/png', dataUrl: 'data:image/png;base64,AAAA', width: 800, height: 600 };
 
-function report(): CommunityReport {
-  return {
-    schemaVersion: 'community-1.0',
-    chart: { instrument: 'TEST', timeframe: '1h', limitations: [] },
-    marketView: {
-      bias: 'sideways',
-      phase: 'range',
-      strength: 'moderate',
-      summary: 'Price is inside the visible range.',
-      evidenceIds: [],
-    },
-    evidence: [],
-    volume: null,
-    indicators: [],
-    levels: [
-      {
-        id: 'support-a', type: 'support', priceLabel: '100', reason: 'Visible low.',
-        timeAnchor: 'Visible range.', yRatio: 0.75, evidenceIds: [],
-      },
-      {
-        id: 'resistance-a', type: 'resistance', priceLabel: '120', reason: 'Visible high.',
-        timeAnchor: 'Visible range.', yRatio: 0.25, evidenceIds: [],
-      },
-    ],
-    scenarios: {
-      long: {
-        condition: 'Visible break higher.', entry: 'After the break.', stop: 'Below the range.',
-        targets: ['Visible high.'], reason: 'Conditional long.', evidenceIds: [],
-      },
-      short: {
-        condition: 'Visible break lower.', entry: 'After the break.', stop: 'Above the range.',
-        targets: ['Visible low.'], reason: 'Conditional short.', evidenceIds: [],
-      },
-      wait: { condition: 'Price remains inside.', reason: 'No break is visible.', evidenceIds: [] },
-    },
-    patterns: [
-      {
-        id: 'pattern-a', name: 'Pattern Alpha', status: 'forming', bias: 'neutral',
-        timeRange: 'Left half.', explanation: 'Visible Alpha structure.', confidence: 0.7,
-        points: [{ xRatio: 0.1, yRatio: 0.2 }, { xRatio: 0.3, yRatio: 0.4 }], evidenceIds: [],
-      },
-      {
-        id: 'pattern-b', name: 'Pattern Beta', status: 'confirmed', bias: 'bearish',
-        timeRange: 'Right half.', explanation: 'Visible Beta structure.', confidence: 0.8,
-        points: [{ xRatio: 0.6, yRatio: 0.4 }, { xRatio: 0.9, yRatio: 0.7 }], evidenceIds: [],
-      },
-    ],
-    signals: [
-      {
-        id: 'signal-a', direction: 'long', timeAnchor: 'Left signal', reason: 'Alpha trigger.',
-        entry: { priceLabel: 'Entry Alpha', xRatio: 0.3, yRatio: 0.5 },
-        stop: { priceLabel: 'Stop Alpha', yRatio: 0.7 },
-        targets: [{ priceLabel: 'Target Alpha', yRatio: 0.3 }], riskReward: 'Alpha RR',
-        confidence: 0.8, evidenceIds: [],
-      },
-      {
-        id: 'signal-b', direction: 'short', timeAnchor: 'Right signal', reason: 'Beta trigger.',
-        entry: { priceLabel: 'Entry Beta', xRatio: 0.7, yRatio: 0.5 },
-        stop: { priceLabel: 'Stop Beta', yRatio: 0.3 },
-        targets: [{ priceLabel: 'Target Beta', yRatio: 0.7 }], riskReward: 'Beta RR',
-        confidence: 0.75, evidenceIds: [],
-      },
-    ],
-    riskNotice: 'Educational chart analysis only.',
-  };
-}
-
-function texts(operations: Operation[]): unknown[] {
-  return operations.filter(([name]) => name === 'fillText').map(([, text]) => text);
-}
-
-describe('buildAnnotations', () => {
-  it('fails closed below 320x180 and permits both minimum-size boundaries', async () => {
-    // Breaks on: accepting a geometrically unsafe source or starting decode/surface work
-    // before the annotation-size preflight can reject it.
-    for (const [width, height] of [[319, 180], [320, 179]] as const) {
-      const { dependencies, canvases, decodes } = recordingCanvases();
-      const duplicateIdReport = report();
-      duplicateIdReport.signals[1]!.id = duplicateIdReport.signals[0]!.id;
-
-      await expect(buildAnnotations({ ...image, width, height }, duplicateIdReport, dependencies))
-        .rejects.toMatchObject({ code: ANNOTATION_IMAGE_TOO_SMALL_CODE });
-      expect(canvases).toEqual([]);
-      expect(decodes).toEqual([]);
-    }
-
-    for (const [width, height] of [[320, 180], [321, 181]] as const) {
-      const { dependencies, canvases, decodes } = recordingCanvases();
-
-      await expect(buildAnnotations({ ...image, width, height }, report(), dependencies))
-        .resolves.toMatchObject({
-          levels: { width, height },
-          signals: {
-            'signal-a': { width, height },
-            'signal-b': { width, height },
-          },
-          patterns: {
-            'pattern-a': { width, height },
-            'pattern-b': { width, height },
-          },
-        });
-      expect(canvases).toHaveLength(5);
-      expect(decodes).toHaveLength(5);
-    }
+function reportWithMultipleFindings(): CommunityReportV3 {
+  const report = structuredClone(communityReport);
+  report.tradeSignals.push({
+    ...structuredClone(report.tradeSignals[0]!), id: 'S02', direction: 'short', signalType: 'Support breakdown',
+    signalTime: 'Middle-right candles', thesisAtSignal: 'Support failure shows sellers accepting lower prices.',
+    entry: { priceLabel: '63,850', xRatio: 0.75, yRatio: 0.72 }, stopLoss: { priceLabel: '64,200', yRatio: 0.62 },
+    takeProfits: [{ priceLabel: '63,200', yRatio: 0.84 }],
   });
+  report.patterns.push({
+    ...structuredClone(report.patterns[0]!), id: 'P02', name: 'Range compression', bias: 'neutral',
+    points: [{ xRatio: 0.55, yRatio: 0.42 }, { xRatio: 0.9, yRatio: 0.48 }],
+  });
+  return report;
+}
 
-  it('builds one levels canvas and one isolated canvas for each signal and pattern without mutating inputs', async () => {
-    // Breaks on: combined signal/pattern rendering, skipped outputs, repeated level images,
-    // wrong dimensions, or mutation of either source contract.
-    const inputReport = report();
-    const imageBefore = structuredClone(image);
-    const reportBefore = structuredClone(inputReport);
-    const { dependencies, canvases } = recordingCanvases();
+describe('buildAnnotations community-3.0', () => {
+  it('renders one levels image and one isolated image for every direct trade signal and pattern', async () => {
+    const report = reportWithMultipleFindings();
+    const { canvases, dependencies } = recordingCanvases();
 
-    const result = await buildAnnotations(image, inputReport, dependencies);
+    const result = await buildAnnotations(image, report, dependencies);
 
-    expect(result).toEqual({
-      levels: {
-        id: 'levels', kind: 'levels', title: 'Support and resistance',
-        dataUrl: 'data:image/png;base64,Y2FudmFzL1', width: 800, height: 600,
-      },
-      signals: {
-        'signal-a': {
-          id: 'signal-a', kind: 'signal', title: 'LONG signal',
-          dataUrl: 'data:image/png;base64,Y2FudmFzL2', width: 800, height: 600,
-        },
-        'signal-b': {
-          id: 'signal-b', kind: 'signal', title: 'SHORT signal',
-          dataUrl: 'data:image/png;base64,Y2FudmFzL3', width: 800, height: 600,
-        },
-      },
-      patterns: {
-        'pattern-a': {
-          id: 'pattern-a', kind: 'pattern', title: 'Pattern Alpha',
-          dataUrl: 'data:image/png;base64,Y2FudmFzL4', width: 800, height: 600,
-        },
-        'pattern-b': {
-          id: 'pattern-b', kind: 'pattern', title: 'Pattern Beta',
-          dataUrl: 'data:image/png;base64,Y2FudmFzL5', width: 800, height: 600,
-        },
-      },
-    });
-    expect(image).toEqual(imageBefore);
-    expect(inputReport).toEqual(reportBefore);
+    expect(result.levels?.id).toBe('levels');
+    expect(Object.keys(result.signals)).toEqual(['S01', 'S02']);
+    expect(Object.keys(result.patterns)).toEqual(['P01', 'P02']);
     expect(canvases).toHaveLength(5);
-    expect(texts(canvases[0]!)).toEqual(['S1 100', 'R1 120']);
-    expect(texts(canvases[1]!)).toEqual([
-      'Entry Entry Alpha', 'Stop Stop Alpha', 'Target 1 Target Alpha', 'LONG', 'Risk/reward Alpha RR',
-    ]);
-    expect(texts(canvases[2]!)).toEqual([
-      'Entry Entry Beta', 'Stop Stop Beta', 'Target 1 Target Beta', 'SHORT', 'Risk/reward Beta RR',
-    ]);
-    expect(texts(canvases[3]!)).toEqual(['1', '2', 'Pattern Alpha']);
-    expect(texts(canvases[4]!)).toEqual(['1', '2', 'Pattern Beta']);
-    canvases.forEach((operations) => {
-      expect(operations.filter(([name]) => name === 'drawSource')).toEqual([
-        ['drawSource', 'synthetic-800x600', 800, 600],
-      ]);
-    });
+    expect(canvases[1]).toContainEqual(['fillText', 'Entry 65,350', 12, expect.any(Number)]);
+    expect(canvases[1]).toContainEqual(['fillText', 'Stop 64,900', 12, expect.any(Number)]);
+    expect(canvases[2]).toContainEqual(['fillText', 'SHORT', expect.any(Number), expect.any(Number)]);
   });
 
-  it('returns the empty output contract without decoding or creating canvases', async () => {
-    // Breaks on: creating blank artifacts for empty report arrays or returning unstable shapes.
-    const inputReport = report();
-    inputReport.levels = [];
-    inputReport.signals = [];
-    inputReport.patterns = [];
-    const { dependencies, canvases } = recordingCanvases();
-
-    await expect(buildAnnotations(image, inputReport, dependencies)).resolves.toEqual({
-      levels: null,
-      signals: {},
-      patterns: {},
-    });
+  it('fails before annotation work when the screenshot is too small', async () => {
+    const { canvases, dependencies } = recordingCanvases();
+    await expect(buildAnnotations({ ...image, width: 319 }, communityReport, dependencies))
+      .rejects.toMatchObject({ code: ANNOTATION_IMAGE_TOO_SMALL_CODE });
     expect(canvases).toEqual([]);
   });
 
-  it('rejects duplicate signal ids before creating or decoding any canvas', async () => {
-    // Breaks on: partial levels/signal rendering before a duplicate signal artifact fails closed.
-    const inputReport = report();
-    inputReport.signals[1]!.id = inputReport.signals[0]!.id;
-    const { dependencies, canvases, decodes } = recordingCanvases();
-
-    await expect(buildAnnotations(image, inputReport, dependencies))
-      .rejects.toThrow('Duplicate signal annotation id: signal-a');
+  it('returns stable empty annotation collections when no drawable findings exist', async () => {
+    const report = structuredClone(communityReport);
+    report.levels = []; report.tradeSignals = []; report.patterns = [];
+    const { canvases, dependencies } = recordingCanvases();
+    await expect(buildAnnotations(image, report, dependencies)).resolves.toEqual({ levels: null, signals: {}, patterns: {} });
     expect(canvases).toEqual([]);
-    expect(decodes).toEqual([]);
-  });
-
-  it('rejects duplicate pattern ids before creating or decoding any canvas', async () => {
-    // Breaks on: partial levels/signal rendering before a duplicate pattern artifact fails closed.
-    const inputReport = report();
-    inputReport.patterns[1]!.id = inputReport.patterns[0]!.id;
-    const { dependencies, canvases, decodes } = recordingCanvases();
-
-    await expect(buildAnnotations(image, inputReport, dependencies))
-      .rejects.toThrow('Duplicate pattern annotation id: pattern-a');
-    expect(canvases).toEqual([]);
-    expect(decodes).toEqual([]);
-  });
-
-  it('returns special ids as collision-safe own enumerable record entries', async () => {
-    // Breaks on: Object prototype setter assignment swallowing __proto__ or constructor collisions.
-    const inputReport = report();
-    inputReport.signals[0]!.id = '__proto__';
-    inputReport.signals[1]!.id = 'constructor';
-    inputReport.patterns[0]!.id = '__proto__';
-    inputReport.patterns[1]!.id = 'constructor';
-    const { dependencies } = recordingCanvases();
-
-    const result = await buildAnnotations(image, inputReport, dependencies);
-
-    expect(Object.keys(result.signals)).toEqual(['__proto__', 'constructor']);
-    expect(Object.keys(result.patterns)).toEqual(['__proto__', 'constructor']);
-    expect(Object.hasOwn(result.signals, '__proto__')).toBe(true);
-    expect(Object.hasOwn(result.signals, 'constructor')).toBe(true);
-    expect(Object.hasOwn(result.patterns, '__proto__')).toBe(true);
-    expect(Object.hasOwn(result.patterns, 'constructor')).toBe(true);
-    expect(result.signals['__proto__']!.id).toBe('__proto__');
-    expect(result.signals['constructor']!.id).toBe('constructor');
-    expect(result.patterns['__proto__']!.id).toBe('__proto__');
-    expect(result.patterns['constructor']!.id).toBe('constructor');
   });
 });

@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { VisionProvider } from '../src/providers/provider-types';
+import type { StructuredVisionProvider } from '../src/providers/provider-types';
+import { ProviderError } from '../src/providers/provider-errors';
+import { attachProviderFailureDetail } from '../src/providers/provider-diagnostics';
 import { useAnalysisController, type AnalysisControllerDependencies } from '../src/ui/state/use-analysis-controller';
 import { annotatedImages, communityReport, processedImage } from './community-ui-fixtures';
+import { validReportV3 } from './three-stage-fixtures';
 
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
@@ -15,28 +18,58 @@ function deferred<T>() {
 }
 
 const config = { provider: 'openrouter', apiKey: 'key', model: 'google/gemini-3.7-flash', customModel: false } as const;
-
 function setup(
-  analyze: VisionProvider['analyze'],
-  overrides: Partial<Pick<AnalysisControllerDependencies, 'validateReport' | 'buildAnnotations'>> = {},
+  runAnalysis: AnalysisControllerDependencies['runAnalysis'],
+  overrides: Partial<Pick<AnalysisControllerDependencies, 'buildAnnotations'>> = {},
 ) {
-  const provider: VisionProvider = { kind: 'openrouter', validateConfig: () => ({ ok: true }), testConnection: async () => undefined, analyze };
-  const buildPrompt = vi.fn(() => ({ system: 'system', user: 'user' }));
+  const provider: StructuredVisionProvider = {
+    kind: 'openrouter', validateConfig: () => ({ ok: true }), testConnection: async () => undefined,
+    generateStructured: async () => { throw new Error('The injected pipeline owns this test boundary.'); },
+  };
   const buildAnnotations = vi.fn(async () => annotatedImages);
   const hook = renderHook(() => useAnalysisController({
     getProvider: () => provider,
-    buildPrompt,
-    validateReport: overrides.validateReport ?? ((value) => value as typeof communityReport),
+    runAnalysis,
     buildAnnotations: overrides.buildAnnotations ?? buildAnnotations,
   }));
-  return { ...hook, buildAnnotations, buildPrompt };
+  return { ...hook, buildAnnotations, runAnalysis };
 }
 
 describe('useAnalysisController', () => {
+  it('delegates one analysis to the three-stage pipeline and exposes only concise public progress', async () => {
+    const runAnalysis = vi.fn(async (input: any) => {
+      input.onProgress('reading_chart');
+      input.onProgress('organizing_evidence');
+      input.onProgress('preparing_result');
+      return structuredClone(validReportV3);
+    });
+    const provider = {
+      kind: 'openrouter', validateConfig: () => ({ ok: true }), testConnection: async () => undefined,
+      generateStructured: async () => { throw new Error('Pipeline transport is injected in this controller test.'); },
+    } as any;
+    const result = renderHook(() => useAnalysisController({
+      getProvider: () => provider,
+      runAnalysis,
+      buildAnnotations: async () => annotatedImages,
+    } as any)).result;
+
+    act(() => { result.current.configure(config); result.current.selectImage(processedImage); });
+    await act(async () => result.current.analyze({ instrument: 'BTC/USDT', timeframe: '15m' }, 'en'));
+
+    expect(runAnalysis).toHaveBeenCalledTimes(1);
+    expect(runAnalysis.mock.calls[0]?.[0]).toMatchObject({
+      config, provider, outputLanguage: 'en',
+      context: { instrument: 'BTC/USDT', timeframe: '15m', site: null, exchange: null },
+    });
+    expect(result.current.state.progress).toEqual(['reading_chart', 'organizing_evidence', 'preparing_result']);
+    expect(result.current.state.status).toBe('completed');
+    expect(result.current.state.report?.conclusion.direction).toBe('sideways');
+  });
+
   it('moves setup → source → preview → analyzing → completed with one provider call and three public progress categories', async () => {
     const pending = deferred<typeof communityReport>();
-    const analyze = vi.fn(() => pending.promise);
-    const { result, buildAnnotations, buildPrompt } = setup(analyze);
+    const analyze = vi.fn((_input: Parameters<AnalysisControllerDependencies['runAnalysis']>[0]) => pending.promise);
+    const { result, buildAnnotations } = setup(analyze);
     act(() => result.current.configure(config));
     expect(result.current.state.status).toBe('source');
     act(() => result.current.selectImage(processedImage));
@@ -51,7 +84,10 @@ describe('useAnalysisController', () => {
 
     expect(result.current.state.status).toBe('completed');
     expect(result.current.state.progress).toEqual(['reading_chart', 'organizing_evidence', 'preparing_result']);
-    expect(buildPrompt).toHaveBeenCalledWith({ language: 'zh-CN', pageContext: { instrument: 'BTC/USDT', timeframe: '15m' } });
+    expect(analyze.mock.calls[0]?.[0]).toMatchObject({
+      outputLanguage: 'zh-CN',
+      context: { instrument: 'BTC/USDT', timeframe: '15m', site: null, exchange: null },
+    });
     expect(buildAnnotations).toHaveBeenCalledWith(processedImage, communityReport);
     expect(analyze).toHaveBeenCalledTimes(1);
   });
@@ -85,7 +121,7 @@ describe('useAnalysisController', () => {
   });
 
   it('moves analyzing → cancelled → preview and aborts the one active call', async () => {
-    const analyze = vi.fn((_config, request) => new Promise<typeof communityReport>((_resolve, reject) => {
+    const analyze = vi.fn((request: Parameters<AnalysisControllerDependencies['runAnalysis']>[0]) => new Promise<typeof communityReport>((_resolve, reject) => {
       request.signal.addEventListener('abort', () => reject(request.signal.reason), { once: true });
     }));
     const { result } = setup(analyze);
@@ -108,7 +144,7 @@ describe('useAnalysisController', () => {
     act(() => { result.current.cancel(); result.current.returnToPreview(); });
     expect(result.current.state.status).toBe('preview');
 
-    if (settlement === 'resolve') pending.resolve({ ...communityReport, marketView: { ...communityReport.marketView, summary: 'Stale report.' } });
+    if (settlement === 'resolve') pending.resolve({ ...communityReport, conclusion: { ...communityReport.conclusion, summary: 'Stale report.' } });
     else pending.reject(new Error('stale provider rejection'));
     await act(async () => analysis);
 
@@ -140,7 +176,7 @@ describe('useAnalysisController', () => {
 
   it('starts a new analysis immediately after cancel and late old completion cannot overwrite it', async () => {
     const stale = deferred<typeof communityReport>();
-    const freshReport = { ...communityReport, marketView: { ...communityReport.marketView, summary: 'Fresh report.' } };
+    const freshReport = { ...communityReport, conclusion: { ...communityReport.conclusion, summary: 'Fresh report.' } };
     const analyze = vi.fn()
       .mockImplementationOnce(() => stale.promise)
       .mockResolvedValueOnce(freshReport);
@@ -152,23 +188,75 @@ describe('useAnalysisController', () => {
 
     await act(async () => result.current.analyze({ instrument: null, timeframe: null }, 'en'));
     expect(analyze).toHaveBeenCalledTimes(2);
-    expect(result.current.state.report?.marketView.summary).toBe('Fresh report.');
+    expect(result.current.state.report?.conclusion.summary).toBe('Fresh report.');
 
-    stale.resolve({ ...communityReport, marketView: { ...communityReport.marketView, summary: 'Stale report.' } });
+    stale.resolve({ ...communityReport, conclusion: { ...communityReport.conclusion, summary: 'Stale report.' } });
     await act(async () => staleAnalysis);
     expect(result.current.state.status).toBe('completed');
-    expect(result.current.state.report?.marketView.summary).toBe('Fresh report.');
+    expect(result.current.state.report?.conclusion.summary).toBe('Fresh report.');
   });
 
   it('maps report validation details to the stable invalid_response code', async () => {
-    const { result } = setup(vi.fn(async () => communityReport), {
-      validateReport: () => { throw new Error('schemaVersion at chart.timeframe failed private schema path'); },
-    });
+    const invalidReport = attachProviderFailureDetail(
+      new ProviderError('invalid_response', { params: { provider: 'openrouter' } }),
+      { stage: 'report_shape', issues: [{ path: 'chart.timeframe', code: 'invalid_type' }] },
+    );
+    const { result } = setup(vi.fn(async () => { throw invalidReport; }));
     act(() => { result.current.configure(config); result.current.selectImage(processedImage); });
     await act(async () => result.current.analyze({ instrument: null, timeframe: null }, 'en'));
 
     expect(result.current.state.status).toBe('failed');
     expect(result.current.state.errorCode).toBe('invalid_response');
     expect(JSON.stringify(result.current.state)).not.toContain('schemaVersion');
+  });
+
+  it('records safe stage diagnostics for an intermittent malformed provider response', async () => {
+    const providerError = attachProviderFailureDetail(
+      new ProviderError('invalid_response', { params: { provider: 'openrouter' } }),
+      { stage: 'json_parse', issues: [] },
+    );
+    const { result } = setup(vi.fn(async () => { throw providerError; }));
+    act(() => { result.current.configure(config); result.current.selectImage(processedImage); });
+
+    await act(async () => result.current.analyze({ instrument: null, timeframe: null }, 'en'));
+
+    expect(result.current.state.diagnostic).toMatchObject({
+      provider: 'openrouter',
+      model: 'google/gemini-3.7-flash',
+      stage: 'json_parse',
+      issues: [],
+    });
+    const serialized = JSON.stringify(result.current.state.diagnostic);
+    expect(serialized).not.toContain('key');
+    expect(serialized).not.toContain(processedImage.dataUrl);
+  });
+
+  it('preserves the exact pipeline failure stage without storing prompts, images, or model output', async () => {
+    const pipelineError = attachProviderFailureDetail(
+      new ProviderError('invalid_response', { params: { provider: 'openrouter' } }),
+      { stage: 'visual_extraction_semantics', issues: [{ path: 'priceScaleAnchors.2', code: 'custom' }] },
+    );
+    const runAnalysis = vi.fn(async () => { throw pipelineError; });
+    const provider = {
+      kind: 'openrouter', validateConfig: () => ({ ok: true }), testConnection: async () => undefined,
+      generateStructured: async () => { throw new Error('unused'); },
+    } as any;
+    const { result } = renderHook(() => useAnalysisController({
+      getProvider: () => provider,
+      runAnalysis,
+      buildAnnotations: async () => annotatedImages,
+    } as any));
+    act(() => { result.current.configure(config); result.current.selectImage(processedImage); });
+
+    await act(async () => result.current.analyze({ instrument: 'BTC/USDT', timeframe: '15m' }, 'en'));
+
+    expect(result.current.state.diagnostic).toMatchObject({
+      stage: 'visual_extraction_semantics',
+      issues: [{ path: 'priceScaleAnchors.2', code: 'custom' }],
+    });
+    const serialized = JSON.stringify(result.current.state.diagnostic);
+    expect(serialized).not.toContain(processedImage.dataUrl);
+    expect(serialized).not.toContain('test-key');
+    expect(serialized).not.toContain('Previously validated visual facts');
   });
 });

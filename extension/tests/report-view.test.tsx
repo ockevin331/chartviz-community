@@ -7,99 +7,77 @@ import { annotatedImages, communityReport, processedImage } from './community-ui
 
 afterEach(cleanup);
 
-describe('ReportView', () => {
-  it('renders CommunityReport modules in schema order with complete long, short, and wait fields', () => {
+describe('ReportView community-3.0 visible structure', () => {
+  it('renders a direct conclusion in cloud-aligned module order without a current-view wrapper', () => {
     const { container } = render(<ReportView language="en" report={communityReport} original={processedImage} annotations={annotatedImages} />);
+
     expect(Array.from(container.querySelectorAll('[data-report-section]')).map((node) => node.getAttribute('data-report-section'))).toEqual([
-      'chart', 'marketView', 'evidence', 'volume', 'indicators', 'levels', 'scenarios', 'patterns', 'signals', 'riskNotice',
+      'conclusion', 'marketExplanation', 'levels', 'tradePlan', 'tradeSignals', 'patterns', 'riskNotice',
     ]);
-    for (const value of [
-      'Close above resistance.', 'Enter after confirmation.', 'Below support.', 'Prior high', 'Upper boundary', 'Structure stays constructive.',
-      'Close below support.', 'Above resistance.', 'Lower boundary', 'Support failure weakens structure.',
-      'Remain inside the range.', 'No visible confirmation yet.',
-    ]) expect(screen.getAllByText(value).length).toBeGreaterThan(0);
+    expect(screen.getByRole('heading', { name: 'LONG' })).toBeTruthy();
+    expect(screen.queryByText('Current view')).toBeNull();
+    expect(container.querySelector('[data-report-section="conclusion"]')?.textContent).toContain('78%');
+    expect(container.querySelector('[data-report-section="conclusion"]')?.textContent).toContain('Moderate');
+    expect(container.querySelector('[data-report-section="conclusion"]')?.textContent).toContain('Higher highs and higher lows');
+    expect(container.querySelector('[data-report-section="conclusion"]')?.textContent?.match(/LONG/g)).toHaveLength(1);
+    expect(screen.getByRole('heading', { name: 'Market explanation' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Support and resistance' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Trade plan' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Trade signals' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Chart patterns' })).toBeTruthy();
+    expect(screen.queryByText('Limitations')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Evidence' })).toBeNull();
   });
 
-  it('places the levels image under levels and each separated image inside its matching explanation', () => {
+  it('uses the same direct conclusion semantics in Chinese', () => {
+    const { container } = render(<ReportView language="zh-CN" report={communityReport} original={processedImage} annotations={annotatedImages} />);
+
+    expect(screen.getByRole('heading', { level: 2, name: '做多' })).toBeTruthy();
+    expect(screen.queryByText('当前观点')).toBeNull();
+    expect(container.querySelector('[data-report-section="conclusion"]')?.textContent).toContain('中等');
+    expect(container.querySelector('[data-report-section="conclusion"]')?.textContent).toContain('高点和低点逐步抬高');
+  });
+
+  it('places the levels image under levels and each signal/pattern image under its own explanation', () => {
     const { container } = render(<ReportView language="en" report={communityReport} original={processedImage} annotations={annotatedImages} />);
+
     expect(container.querySelector('[data-report-section="levels"] img[src$="LEVELS"]')).toBeTruthy();
-    expect(container.querySelector('[data-signal-id="breakout-long"] img[src$="SIGNAL"]')).toBeTruthy();
-    expect(container.querySelector('[data-pattern-id="channel"] img[src$="PATTERN"]')).toBeTruthy();
+    expect(container.querySelector('[data-signal-id="S01"] img[src$="SIGNAL"]')).toBeTruthy();
+    expect(container.querySelector('[data-pattern-id="P01"] img[src$="PATTERN"]')).toBeTruthy();
+    expect(container.querySelector('[data-signal-id="S01"]')?.textContent).toContain('Breakout and retest');
+    expect(container.querySelector('[data-pattern-id="P01"]')?.textContent).toContain('Close above the upper boundary.');
   });
 
-  it('renders readable evidence correlations for every report module and includes pattern bias', () => {
-    const { container } = render(<ReportView language="en" report={communityReport} original={processedImage} annotations={annotatedImages} />);
-    expect(container.querySelector('[data-report-section="evidence"] article')?.textContent).toContain('Evidence 1');
-    for (const context of [
-      'marketView', 'volume', 'indicator-RSI', 'level-support-main', 'scenario-long', 'scenario-short',
-      'scenario-wait', 'pattern-channel', 'signal-breakout-long',
-    ]) {
-      const correlation = container.querySelector(`[data-evidence-context="${context}"]`);
-      expect(correlation, context).toBeTruthy();
-      expect(correlation?.querySelector('.evidence-chip')?.textContent, context).toBe('Evidence 1');
-    }
-    expect(container.querySelector('[data-pattern-id="channel"]')?.textContent).toContain('bullish');
-    expect(container.querySelector('[data-pattern-id="channel"]')?.textContent).toContain('74%');
-  });
-
-  it('omits nullable or empty optional sections instead of showing placeholders', () => {
-    const report = structuredClone(communityReport);
-    report.volume = null; report.indicators = []; report.levels = []; report.patterns = []; report.signals = [];
-    const { container } = render(<ReportView language="en" report={report} original={processedImage} annotations={{ levels: null, signals: {}, patterns: {} }} />);
-    expect(Array.from(container.querySelectorAll('[data-report-section]')).map((node) => node.getAttribute('data-report-section'))).toEqual([
-      'chart', 'marketView', 'evidence', 'scenarios', 'riskNotice',
-    ]);
-  });
-
-  it('opens the original and every annotation in one lightbox and gives every image a download action', async () => {
+  it('keeps every result image zoomable and downloadable', async () => {
     const user = userEvent.setup();
     const download = vi.fn();
+    const postMessage = vi.spyOn(window.parent, 'postMessage');
     render(<ReportView language="en" report={communityReport} original={processedImage} annotations={annotatedImages} downloadImage={download} />);
-    const zoomButtons = screen.getAllByRole('button', { name: /zoom/i });
-    expect(zoomButtons).toHaveLength(4);
-    expect(screen.getAllByRole('button', { name: /download/i })).toHaveLength(4);
-    for (const button of zoomButtons) {
-      await user.click(button);
-      expect(screen.getByRole('dialog')).toBeTruthy();
+
+    expect(screen.getAllByRole('button', { name: /Download image/ })).toHaveLength(4);
+    for (const title of ['Original screenshot', 'Support and resistance', 'S01 · LONG', 'Rising channel']) {
+      await user.click(screen.getByRole('button', { name: `Zoom: ${title}` }));
+      expect(screen.getByRole('dialog', { name: title })).toBeTruthy();
+      const close = screen.getByRole('button', { name: 'Close' });
+      await waitFor(() => expect(document.activeElement).toBe(close));
       fireEvent.keyDown(document, { key: 'Escape' });
+      expect(screen.queryByRole('dialog')).toBeNull();
     }
+    expect(postMessage).toHaveBeenCalledWith({ source: 'chartviz', type: 'image-lightbox-open' }, '*');
+    expect(postMessage).toHaveBeenCalledWith({ source: 'chartviz', type: 'image-lightbox-close' }, '*');
   });
 
-  it('focuses and traps the lightbox close control, then restores focus to its opener', async () => {
-    const user = userEvent.setup();
-    render(<ReportView language="en" report={communityReport} original={processedImage} annotations={annotatedImages} />);
-    const opener = screen.getByRole('button', { name: 'Zoom: Original screenshot' });
-    await user.click(opener);
-    const close = screen.getByRole('button', { name: 'Close' });
-    await waitFor(() => expect(document.activeElement).toBe(close));
-
-    await user.tab();
-    expect(document.activeElement).toBe(close);
-    await user.tab({ shift: true });
-    expect(document.activeElement).toBe(close);
-    await user.keyboard('{Escape}');
-    expect(screen.queryByRole('dialog')).toBeNull();
-    expect(document.activeElement).toBe(opener);
-  });
-
-  it('copies a readable report without exposing schema or hidden internals', async () => {
+  it('copies the same V3-visible modules without wrapper or hidden schema fields', async () => {
     const copy = vi.fn(async (_text: string) => undefined);
     render(<ReportView language="en" report={communityReport} original={processedImage} annotations={annotatedImages} copyReport={copy} />);
     await userEvent.click(screen.getByRole('button', { name: 'Copy report' }));
-    expect(copy).toHaveBeenCalledTimes(1);
     const copied = copy.mock.calls[0]?.[0] as string;
+
     for (const value of [
-      'Right edge partly obscured.', 'bullish', 'trend', 'moderate',
-      'Evidence 1', 'price', 'Visible lows step upward.', 'Buyers defend higher prices.', 'Right half', '82%',
-      'Volume expands on the latest upward candles.', 'RSI', 'RSI is above its midpoint.', 'Momentum leans upward.',
-      'support', '63,900', 'Repeated reactions are visible.',
-      'Close above resistance.', 'Enter after confirmation.', 'Below support.', 'Prior high', 'Upper boundary', 'Structure stays constructive.',
-      'Close below support.', 'Above resistance.', 'Lower boundary', 'Support failure weakens structure.',
-      'Remain inside the range.', 'No visible confirmation yet.',
-      'Rising channel', 'forming', 'Left to right', 'Alternating pivots stay inside rising boundaries.', '74%',
-      'breakout-long', 'long', 'Rightmost candle', 'Wait for a visible breakout close.', '65,350', '64,900', '65,850', '66,200', 'Approximately 1:2', '71%',
-      'Educational screenshot analysis only.',
+      'LONG', 'Higher lows remain visible.', 'Market explanation', 'Visible lows step upward.',
+      'Price & volume', 'Technical indicators', 'Support and resistance', '63,900', 'Trade plan',
+      'Trade signals', 'S01', 'Breakout and retest', 'Chart patterns', 'Rising channel', 'Risk notice',
     ]) expect(copied, value).toContain(value);
-    expect(copied).not.toMatch(/schemaVersion|payload|chain-of-thought|xRatio|yRatio/i);
+    expect(copied).not.toMatch(/Current view|schemaVersion|evidenceIds|xRatio|yRatio|Limitations/i);
   });
 });

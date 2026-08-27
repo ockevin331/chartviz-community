@@ -1,4 +1,4 @@
-import type { Pattern } from '../analysis/community-report';
+import type { CommunityReportV3 } from '../analysis/stages/community-report-v3-schema';
 import type { ProcessedImage } from '../capture/image-types';
 import type { AnnotatedImage } from './annotation-types';
 import {
@@ -11,6 +11,7 @@ import {
 
 const PATTERN_COLOR = '#7c3aed';
 const POLYLINE_MARGIN = 1.5;
+type Pattern = CommunityReportV3['patterns'][number];
 
 export async function renderPattern(
   image: ProcessedImage,

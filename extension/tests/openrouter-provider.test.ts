@@ -2,8 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { communityJsonSchema } from '../src/analysis/community-json-schema';
-import { parseCommunityReport, type CommunityReport } from '../src/analysis/community-report';
+import { communityReportV3JsonSchema, parseCommunityReportV3, type CommunityReportV3 } from '../src/analysis/stages/community-report-v3';
 import { ProviderError, type AnalysisErrorCode } from '../src/providers/provider-errors';
 import { OpenRouterProvider } from '../src/providers/openrouter-provider';
 import type { ProviderConfig, StructuredGenerationRequest } from '../src/providers/provider-types';
@@ -18,14 +17,14 @@ const config: ProviderConfig = {
   customModel: true,
 };
 
-function request(signal = new AbortController().signal): StructuredGenerationRequest<CommunityReport> {
+function request(signal = new AbortController().signal): StructuredGenerationRequest<CommunityReportV3> {
   return {
     image: { mediaType: 'image/png', dataUrl: 'data:image/png;base64,AAAA' },
     systemPrompt: 'Screenshot-only system prompt.',
     userPrompt: 'Analyze this screenshot.',
     schemaName: 'community_report',
-    jsonSchema: communityJsonSchema,
-    parse: parseCommunityReport,
+    jsonSchema: communityReportV3JsonSchema,
+    parse: parseCommunityReportV3,
     signal,
   };
 }
@@ -91,7 +90,7 @@ describe('OpenRouter analyze', () => {
     ]);
     expect(body.response_format).toEqual({
       type: 'json_schema',
-      json_schema: { name: 'community_report', strict: true, schema: communityJsonSchema },
+      json_schema: { name: 'community_report', strict: true, schema: communityReportV3JsonSchema },
     });
     expect(body.provider).toEqual({ require_parameters: true });
     expect(JSON.stringify(body)).not.toContain(config.apiKey);

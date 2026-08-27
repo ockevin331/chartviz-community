@@ -121,10 +121,21 @@ button, input { font: inherit; }
 .grid article { padding: 11px; border-radius: 9px; background: #1d2028; }
 .grid span { display: block; margin-bottom: 4px; color: #8f96a3; font-size: 10px; text-transform: uppercase; }
 .grid strong { font-size: 12px; text-transform: capitalize; }
+.conclusion-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .decision { overflow: hidden; border-color: #3a4050; background: linear-gradient(135deg, #202638, #181b21); }
 .decision-bullish { border-color: #28784e; background: linear-gradient(135deg, #173629, #181b21); }
 .decision-bearish { border-color: #8a3d48; background: linear-gradient(135deg, #3b2026, #181b21); }
 .decision-summary { margin: 14px 0 0; font-size: 14px; }
+.decision-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.decision-heading span { color: #aeb5c2; font-size: 10px; text-transform: uppercase; }
+.decision-heading h2 { margin: 3px 0 0; font-size: 24px; }
+.decision-heading > strong { font-size: 16px; }
+.market-explanation > p, .market-explanation li { color: #adb5c1; font-size: 11px; line-height: 1.6; }
+.market-explanation small, .indicator-explanation small { color: #858e9d; font-size: 9px; }
+.market-explanation .volume-explanation, .market-explanation .indicator-explanation { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgb(255 255 255 / 8%); }
+.market-explanation .volume-explanation h3, .market-explanation .indicator-explanation h3 { margin: 0 0 7px; color: #eef1f6; font-size: 12px; }
+.indicator-explanation article + article { margin-top: 10px; }
+.trade-plan-summary { color: #c5cbd5; }
 .analysis-list { display: grid; gap: 8px; }
 .analysis-list article { padding: 11px; border-radius: 9px; background: #1d2028; }
 .analysis-list header, .analysis-list footer { display: flex; justify-content: space-between; gap: 8px; }

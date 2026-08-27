@@ -1,4 +1,4 @@
-import type { TradeSignal } from '../analysis/community-report';
+import type { CommunityReportV3 } from '../analysis/stages/community-report-v3-schema';
 import type { ProcessedImage } from '../capture/image-types';
 import type { AnnotatedImage } from './annotation-types';
 import {
@@ -22,6 +22,7 @@ const ARROW_STROKE_MARGIN = 1.5;
 const LABEL_MIN_Y = 16;
 const LABEL_BOTTOM_PADDING = 8;
 const LABEL_SPACING = 18;
+type TradeSignal = CommunityReportV3['tradeSignals'][number];
 
 type SignalLabel = {
   key: string;
@@ -123,10 +124,10 @@ export async function renderSignal(
         text: `Entry ${signal.entry.priceLabel}`,
       },
       {
-        key: 'stop', yRatio: signal.stop.yRatio, color: STOP_COLOR,
-        text: `Stop ${signal.stop.priceLabel}`,
+        key: 'stop', yRatio: signal.stopLoss.yRatio, color: STOP_COLOR,
+        text: `Stop ${signal.stopLoss.priceLabel}`,
       },
-      ...signal.targets.slice(0, 3).map((target, index) => ({
+      ...signal.takeProfits.slice(0, 3).map((target, index) => ({
         key: `target-${index}`, yRatio: target.yRatio, color: TARGET_COLOR,
         text: `Target ${index + 1} ${target.priceLabel}`,
       })),

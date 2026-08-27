@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Level } from '../src/analysis/community-report';
+import type { CommunityReportV3 } from '../src/analysis/stages/community-report-v3-schema';
 import type { ProcessedImage } from '../src/capture/image-types';
 import {
   type AnnotationCanvasDependencies,
@@ -8,6 +8,7 @@ import {
 import { renderLevels } from '../src/annotations/render-levels';
 
 type Operation = readonly [name: string, ...values: unknown[]];
+type Level = CommunityReportV3['levels'][number];
 
 function recordingCanvas() {
   const operations: Operation[] = [];
@@ -49,11 +50,13 @@ function level(id: string, type: Level['type'], priceLabel: string, yRatio: numb
   return {
     id,
     type,
+    tier: 'nearest',
+    status: 'holding',
     priceLabel,
     reason: 'Visible chart level.',
     timeAnchor: 'Current visible chart.',
     yRatio,
-    evidenceIds: [],
+    confidence: 0.8,
   };
 }
 

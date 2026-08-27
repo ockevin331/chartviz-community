@@ -2,8 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { communityJsonSchema } from '../src/analysis/community-json-schema';
-import { parseCommunityReport, type CommunityReport } from '../src/analysis/community-report';
+import { communityReportV3JsonSchema, parseCommunityReportV3, type CommunityReportV3 } from '../src/analysis/stages/community-report-v3';
 import { ProviderError, type AnalysisErrorCode } from '../src/providers/provider-errors';
 import { OpenAiProvider } from '../src/providers/openai-provider';
 import type { ProviderConfig, StructuredGenerationRequest, VisionRequest } from '../src/providers/provider-types';
@@ -18,14 +17,14 @@ const config: ProviderConfig = {
   customModel: true,
 };
 
-function request(signal = new AbortController().signal): StructuredGenerationRequest<CommunityReport> {
+function request(signal = new AbortController().signal): StructuredGenerationRequest<CommunityReportV3> {
   return {
     image: { mediaType: 'image/png', dataUrl: 'data:image/png;base64,AAAA' },
     systemPrompt: 'Screenshot-only system prompt.',
     userPrompt: 'Analyze this screenshot.',
     schemaName: 'community_report',
-    jsonSchema: communityJsonSchema,
-    parse: parseCommunityReport,
+    jsonSchema: communityReportV3JsonSchema,
+    parse: parseCommunityReportV3,
     signal,
   };
 }
@@ -100,7 +99,7 @@ describe('OpenAI Responses analyze', () => {
         ],
       }],
       text: {
-        format: { type: 'json_schema', name: 'community_report', schema: communityJsonSchema, strict: true },
+        format: { type: 'json_schema', name: 'community_report', schema: communityReportV3JsonSchema, strict: true },
       },
       store: false,
     });

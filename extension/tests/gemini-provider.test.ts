@@ -2,8 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { communityJsonSchema } from '../src/analysis/community-json-schema';
-import { parseCommunityReport, type CommunityReport } from '../src/analysis/community-report';
+import { communityReportV3JsonSchema, parseCommunityReportV3, type CommunityReportV3 } from '../src/analysis/stages/community-report-v3';
 import { ProviderError, type AnalysisErrorCode } from '../src/providers/provider-errors';
 import { GeminiProvider } from '../src/providers/gemini-provider';
 import type { ProviderConfig, StructuredGenerationRequest, VisionRequest } from '../src/providers/provider-types';
@@ -29,14 +28,14 @@ const validThoughtSignature = 'AQIDBA==';
 function request(
   signal = new AbortController().signal,
   image: VisionRequest['image'] = { mediaType: 'image/png', dataUrl: 'data:image/png;base64,AAAA' },
-): StructuredGenerationRequest<CommunityReport> {
+): StructuredGenerationRequest<CommunityReportV3> {
   return {
     image,
     systemPrompt: 'Screenshot-only system prompt.',
     userPrompt: 'Analyze this screenshot.',
     schemaName: 'community_report',
-    jsonSchema: communityJsonSchema,
-    parse: parseCommunityReport,
+    jsonSchema: communityReportV3JsonSchema,
+    parse: parseCommunityReportV3,
     signal,
   };
 }
@@ -101,7 +100,7 @@ describe('Gemini generateContent analyze', () => {
       }],
       generationConfig: {
         responseMimeType: 'application/json',
-        responseSchema: communityJsonSchema,
+        responseSchema: communityReportV3JsonSchema,
         candidateCount: 1,
       },
     });

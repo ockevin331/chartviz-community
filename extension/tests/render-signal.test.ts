@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { TradeSignal } from '../src/analysis/community-report';
+import type { CommunityReportV3 } from '../src/analysis/stages/community-report-v3-schema';
 import type { ProcessedImage } from '../src/capture/image-types';
 import {
   type AnnotationCanvasDependencies,
@@ -45,21 +45,24 @@ const image: ProcessedImage = {
   height: 600,
 };
 
+type TradeSignal = CommunityReportV3['tradeSignals'][number];
+
 function signal(overrides: Partial<TradeSignal> = {}): TradeSignal {
   return {
-    id: 'signal-long',
+    id: 'S01',
     direction: 'long',
-    timeAnchor: 'Latest visible candle.',
-    reason: 'Visible breakout setup.',
+    signalType: 'Visible breakout',
+    signalTime: 'Latest visible candle.',
+    thesisAtSignal: 'Visible breakout setup.',
+    evidenceAtSignal: ['Price tests the visible boundary.'],
     entry: { priceLabel: '105', xRatio: 0.5, yRatio: 0.4 },
-    stop: { priceLabel: '99', yRatio: 0.65 },
-    targets: [
+    stopLoss: { priceLabel: '99', yRatio: 0.65 },
+    takeProfits: [
       { priceLabel: '110', yRatio: 0.2 },
       { priceLabel: '115', yRatio: 1.25 },
     ],
     riskReward: '2:1',
     confidence: 0.8,
-    evidenceIds: [],
     ...overrides,
   };
 }
@@ -107,7 +110,7 @@ describe('renderSignal', () => {
     const result = await renderSignal(image, input, dependencies);
 
     expect(result).toEqual({
-      id: 'signal-long',
+      id: 'S01',
       kind: 'signal',
       title: 'LONG signal',
       dataUrl: 'data:image/png;base64,bG9uZw==',
@@ -177,8 +180,8 @@ describe('renderSignal', () => {
       id: 'signal-short',
       direction: 'short',
       entry: { priceLabel: '95', xRatio: 0.75, yRatio: 0.75 },
-      stop: { priceLabel: '101', yRatio: 0.6 },
-      targets: [{ priceLabel: '90', yRatio: 1 }],
+      stopLoss: { priceLabel: '101', yRatio: 0.6 },
+      takeProfits: [{ priceLabel: '90', yRatio: 1 }],
       riskReward: null,
     });
     const { dependencies, operations } = recordingCanvas('data:image/png;base64,c2hvcnQ=');
@@ -203,8 +206,8 @@ describe('renderSignal', () => {
     // Breaks on: a bottom-edge long arrow collapsing to zero length or clipping its left arrowhead.
     const input = signal({
       entry: { priceLabel: 'BOTTOM', xRatio: 0, yRatio: 1 },
-      stop: { priceLabel: 'STOP', yRatio: 0 },
-      targets: [{ priceLabel: 'TARGET', yRatio: 1 }],
+      stopLoss: { priceLabel: 'STOP', yRatio: 0 },
+      takeProfits: [{ priceLabel: 'TARGET', yRatio: 1 }],
     });
     const { dependencies, operations } = recordingCanvas('data:image/png;base64,bG9uZy1lZGdl');
 
@@ -239,8 +242,8 @@ describe('renderSignal', () => {
       id: 'signal-short-edge',
       direction: 'short',
       entry: { priceLabel: 'TOP', xRatio: 1, yRatio: 0 },
-      stop: { priceLabel: 'STOP', yRatio: 1 },
-      targets: [{ priceLabel: 'TARGET', yRatio: 0 }],
+      stopLoss: { priceLabel: 'STOP', yRatio: 1 },
+      takeProfits: [{ priceLabel: 'TARGET', yRatio: 0 }],
     });
     const { dependencies, operations } = recordingCanvas('data:image/png;base64,c2hvcnQtZWRnZQ==');
 
@@ -269,8 +272,8 @@ describe('renderSignal', () => {
   it('places three same-price targets in deterministic non-overlapping text lanes', async () => {
     // Breaks on: independently clamping same-y labels to one baseline instead of moving labels only.
     const input = signal({
-      stop: { priceLabel: '99', yRatio: 0.6 },
-      targets: [
+      stopLoss: { priceLabel: '99', yRatio: 0.6 },
+      takeProfits: [
         { priceLabel: 'T1', yRatio: 0.5 },
         { priceLabel: 'T2', yRatio: 0.5 },
         { priceLabel: 'T3', yRatio: 0.5 },
@@ -298,8 +301,8 @@ describe('renderSignal', () => {
     // Breaks on: returning the per-label greedy lanes instead of a globally ordered packing.
     const input = signal({
       entry: { priceLabel: 'ENTRY', xRatio: 0.5, yRatio: 0 },
-      stop: { priceLabel: 'STOP', yRatio: 0 },
-      targets: [
+      stopLoss: { priceLabel: 'STOP', yRatio: 0 },
+      takeProfits: [
         { priceLabel: 'T1', yRatio: 0 },
         { priceLabel: 'T2', yRatio: 0 },
         { priceLabel: 'T3', yRatio: 0 },
@@ -320,8 +323,8 @@ describe('renderSignal', () => {
     // Breaks on: greedy placement choosing order-dependent lanes or falling back to a collision.
     const input = signal({
       entry: { priceLabel: 'ENTRY', xRatio: 0.5, yRatio: 1 },
-      stop: { priceLabel: 'STOP', yRatio: 1 },
-      targets: [
+      stopLoss: { priceLabel: 'STOP', yRatio: 1 },
+      takeProfits: [
         { priceLabel: 'T1', yRatio: 1 },
         { priceLabel: 'T2', yRatio: 1 },
         { priceLabel: 'T3', yRatio: 1 },
@@ -343,8 +346,8 @@ describe('renderSignal', () => {
     // Breaks on: skipping the stable sort by preferred baseline then original field order.
     const input = signal({
       entry: { priceLabel: 'ENTRY', xRatio: 0.5, yRatio: 31 / 180 },
-      stop: { priceLabel: 'STOP', yRatio: 49 / 180 },
-      targets: [
+      stopLoss: { priceLabel: 'STOP', yRatio: 49 / 180 },
+      takeProfits: [
         { priceLabel: 'T1', yRatio: 22 / 180 },
         { priceLabel: 'T2', yRatio: 80 / 180 },
         { priceLabel: 'T3', yRatio: 140 / 180 },

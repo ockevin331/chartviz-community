@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { buildCommunityPrompt } from '../../src/analysis/community-prompt';
-import { parseCommunityReport, type CommunityReport } from '../../src/analysis/community-report';
-import { runThreeStageAnalysis } from '../../src/analysis/stages/analysis-pipeline';
+import { runThreeStageAnalysis, type ThreeStageAnalysisInput } from '../../src/analysis/stages/analysis-pipeline';
+import type { CommunityReportV3 } from '../../src/analysis/stages/community-report-v3';
 import { buildAnnotations } from '../../src/annotations/build-annotations';
 import type { AnnotatedReportImages } from '../../src/annotations/annotation-types';
 import { activeChartClient, type CapturedChart } from '../../src/capture/active-chart';
 import type { ProcessedImage } from '../../src/capture/image-types';
 import type { ChartContext } from '../../src/domain/chart-context';
 import { providerRegistry } from '../../src/providers/provider-registry';
-import type { ProviderConfig, ProviderKind, VisionProvider } from '../../src/providers/provider-types';
+import type { ProviderConfig, ProviderKind, StructuredVisionProvider, VisionProvider } from '../../src/providers/provider-types';
 import { loadProviderConfig } from '../../src/storage/provider-session';
 import { AnalysisError } from '../../src/ui/components/AnalysisError';
 import { AnalysisProgress } from '../../src/ui/components/AnalysisProgress';
@@ -24,8 +23,9 @@ export type AppDependencies = {
   loadConfig(): Promise<ProviderConfig | null>;
   inspect(): Promise<ChartContext>;
   capture(signal: AbortSignal): Promise<CapturedChart>;
-  getProvider(kind: ProviderKind): VisionProvider;
-  buildAnnotations(image: ProcessedImage, report: CommunityReport): Promise<AnnotatedReportImages>;
+  getProvider(kind: ProviderKind): VisionProvider | StructuredVisionProvider;
+  runAnalysis(input: ThreeStageAnalysisInput): Promise<CommunityReportV3>;
+  buildAnnotations(image: ProcessedImage, report: CommunityReportV3): Promise<AnnotatedReportImages>;
 };
 
 const defaultDependencies: AppDependencies = {
@@ -33,16 +33,15 @@ const defaultDependencies: AppDependencies = {
   inspect: () => activeChartClient.inspect(),
   capture: (signal) => activeChartClient.capture(signal),
   getProvider: (kind) => providerRegistry.get(kind),
+  runAnalysis: runThreeStageAnalysis,
   buildAnnotations,
 };
 
 export function App({ dependencies: overrides }: { dependencies?: Partial<AppDependencies> } = {}) {
   const dependencies = useMemo(() => ({ ...defaultDependencies, ...(overrides ?? {}) }), [overrides]);
   const controllerDependencies = useMemo<AnalysisControllerDependencies>(() => ({
-    runAnalysis: runThreeStageAnalysis,
     getProvider: dependencies.getProvider,
-    buildPrompt: buildCommunityPrompt,
-    validateReport: parseCommunityReport,
+    runAnalysis: dependencies.runAnalysis,
     buildAnnotations: dependencies.buildAnnotations,
   }), [dependencies]);
   const controller = useAnalysisController(controllerDependencies);

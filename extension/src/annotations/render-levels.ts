@@ -1,4 +1,4 @@
-import type { Level } from '../analysis/community-report';
+import type { CommunityReportV3 } from '../analysis/stages/community-report-v3-schema';
 import type { ProcessedImage } from '../capture/image-types';
 import type { AnnotatedImage } from './annotation-types';
 import {
@@ -42,7 +42,7 @@ function labelPosition(rawY: number, height: number, occupied: number[]): number
 
 export async function renderLevels(
   image: ProcessedImage,
-  levels: readonly Level[],
+  levels: CommunityReportV3['levels'],
   dependencies: AnnotationCanvasDependencies = browserAnnotationCanvasDependencies,
 ): Promise<AnnotatedImage | null> {
   if (levels.length === 0) {

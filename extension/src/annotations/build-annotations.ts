@@ -1,4 +1,4 @@
-import type { CommunityReport } from '../analysis/community-report';
+import type { CommunityReportV3 } from '../analysis/stages/community-report-v3-schema';
 import type { ProcessedImage } from '../capture/image-types';
 import type { AnnotatedImage, AnnotatedReportImages } from './annotation-types';
 import {
@@ -33,21 +33,21 @@ function assertUniqueIds(items: readonly { id: string }[], kind: 'signal' | 'pat
 
 export async function buildAnnotations(
   image: ProcessedImage,
-  report: CommunityReport,
+  report: CommunityReportV3,
   dependencies: AnnotationCanvasDependencies = browserAnnotationCanvasDependencies,
 ): Promise<AnnotatedReportImages> {
   if (image.width < 320 || image.height < 180) {
     throw new AnnotationImageTooSmallError();
   }
 
-  assertUniqueIds(report.signals, 'signal');
+  assertUniqueIds(report.tradeSignals, 'signal');
   assertUniqueIds(report.patterns, 'pattern');
 
   const levels = await renderLevels(image, report.levels, dependencies);
   const signalEntries: Array<[string, AnnotatedImage]> = [];
   const patternEntries: Array<[string, AnnotatedImage]> = [];
 
-  for (const signal of report.signals) {
+  for (const signal of report.tradeSignals) {
     signalEntries.push([signal.id, await renderSignal(image, signal, dependencies)]);
   }
   for (const pattern of report.patterns) {

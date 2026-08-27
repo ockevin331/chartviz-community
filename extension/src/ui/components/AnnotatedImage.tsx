@@ -8,12 +8,13 @@ type Props = {
   filename: string;
   onZoom(image: LightboxImage): void;
   downloadImage?: (dataUrl: string, filename: string) => void;
+  showDownload?: boolean;
 };
 
-export function AnnotatedImage({ language, image, filename, onZoom, downloadImage = defaultDownloadImage }: Props) {
+export function AnnotatedImage({ language, image, filename, onZoom, downloadImage = defaultDownloadImage, showDownload = true }: Props) {
   const t = translations[language];
   return <div className="annotated-image">
     <button type="button" className="preview-stage zoomable" aria-label={`${t.zoom}: ${image.title}`} onClick={() => onZoom(image)}><img className="preview" src={image.dataUrl} alt={image.title} /></button>
-    <button type="button" className="secondary download-image" aria-label={`${t.download}: ${image.title}`} onClick={() => downloadImage(image.dataUrl, filename)}>{t.download}</button>
+    {showDownload && <button type="button" className="secondary download-image" aria-label={`${t.download}: ${image.title}`} onClick={() => downloadImage(image.dataUrl, filename)}>{t.download}</button>}
   </div>;
 }

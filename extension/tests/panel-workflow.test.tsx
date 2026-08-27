@@ -4,7 +4,9 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../entrypoints/panel/App';
 import type { ChartContext } from '../src/domain/chart-context';
-import type { VisionProvider } from '../src/providers/provider-types';
+import { attachProviderFailureDetail } from '../src/providers/provider-diagnostics';
+import { ProviderError } from '../src/providers/provider-errors';
+import type { StructuredVisionProvider } from '../src/providers/provider-types';
 import { annotatedImages, communityReport, processedImage } from './community-ui-fixtures';
 
 afterEach(cleanup);
@@ -19,17 +21,20 @@ const chartContext: ChartContext = {
 
 const inspect = async () => chartContext;
 const capture = async () => ({ image: processedImage, context: chartContext });
-
+const provider: StructuredVisionProvider = {
+  kind: 'openrouter', validateConfig: () => ({ ok: true }), testConnection: async () => undefined,
+  generateStructured: async () => { throw new Error('The injected pipeline owns this test boundary.'); },
+};
 describe('direct Community panel workflow', () => {
   it('runs detected chart → capture → analyzing → completed with one request and no internal detail', async () => {
     const user = userEvent.setup();
     const analyze = vi.fn(async () => communityReport);
-    const provider: VisionProvider = { kind: 'openrouter', validateConfig: () => ({ ok: true }), testConnection: async () => undefined, analyze };
     render(<App dependencies={{
       loadConfig: async () => ({ provider: 'openrouter', apiKey: 'key', model: 'google/gemini-3.7-flash', customModel: false }),
       inspect,
       capture,
       getProvider: () => provider,
+      runAnalysis: analyze,
       buildAnnotations: async () => annotatedImages,
     }} />);
     await screen.findByRole('heading', { name: 'Detected chart' });
@@ -62,12 +67,12 @@ describe('direct Community panel workflow', () => {
   it('refreshes the panel workflow without reloading the page or calling the provider', async () => {
     const user = userEvent.setup();
     const analyze = vi.fn(async () => communityReport);
-    const provider: VisionProvider = { kind: 'openrouter', validateConfig: () => ({ ok: true }), testConnection: async () => undefined, analyze };
     render(<App dependencies={{
       loadConfig: async () => ({ provider: 'openrouter', apiKey: 'key', model: 'openai/gpt-5.6-terra', customModel: false }),
       inspect: vi.fn(inspect),
       capture,
       getProvider: () => provider,
+      runAnalysis: analyze,
     }} />);
     await screen.findByRole('heading', { name: 'Detected chart' });
     await screen.findByText('BTCUSD');
@@ -81,21 +86,22 @@ describe('direct Community panel workflow', () => {
 
   it('localizes a malformed provider report without exposing validation or schema details', async () => {
     const user = userEvent.setup();
-    const provider: VisionProvider = {
-      kind: 'openrouter', validateConfig: () => ({ ok: true }), testConnection: async () => undefined,
-      analyze: async () => ({ schemaVersion: 'private-bad-version', chart: { privatePath: 'chart.timeframe' } } as never),
-    };
+    const invalidReport = attachProviderFailureDetail(
+      new ProviderError('invalid_response', { params: { provider: 'openrouter' } }),
+      { stage: 'report_shape', issues: [{ path: 'chart.timeframe', code: 'invalid_type' }] },
+    );
     render(<App dependencies={{
       loadConfig: async () => ({ provider: 'openrouter', apiKey: 'key', model: 'google/gemini-3.7-flash', customModel: false }),
       inspect,
       capture,
       getProvider: () => provider,
+      runAnalysis: async () => { throw invalidReport; },
     }} />);
     await screen.findByRole('heading', { name: 'Detected chart' });
     await user.click(await screen.findByRole('button', { name: 'Capture and analyze' }));
 
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toContain('The provider returned an invalid report.');
+    expect(alert.textContent).toContain('The model response did not match the required report format.');
     expect(document.body.textContent).not.toMatch(/schemaVersion|private-bad-version|chart\.timeframe|invalid_type|Zod/i);
   });
 });

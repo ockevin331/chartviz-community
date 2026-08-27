@@ -7,6 +7,10 @@ export function ImageLightbox({ image, language, onClose }: { image: LightboxIma
   const t = translations[language];
   const closeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
+    window.parent.postMessage({ source: 'chartviz', type: 'image-lightbox-open' }, '*');
+    return () => window.parent.postMessage({ source: 'chartviz', type: 'image-lightbox-close' }, '*');
+  }, []);
+  useEffect(() => {
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     closeRef.current?.focus();
     const keydown = (event: KeyboardEvent) => {
