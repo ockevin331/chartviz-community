@@ -1,71 +1,51 @@
-# ChartViz Community 1.0.0 manual smoke test
+# ChartViz 1.0.0 manual smoke test
 
-Run this checklist only after `bash scripts/verify-release.sh` passes. Product release ZIPs are not part of this checklist and must not be created without separate explicit approval.
+Run this checklist after `bash scripts/verify-release.sh` passes. Stage 6 page checks require no provider key, paid request, or working Cloud API. Keep evidence limited to `PASS`, `FAIL`, or `PENDING`, browser/version, extension commit, and a short secret-free note.
 
-## Evidence safety
+## Test URLs
 
-- Use dedicated low-value test accounts/keys and provider-approved test images.
-- Enter real keys only into the extension setup field. Never paste them into a terminal, issue, screenshot, evidence row, prompt, or chat.
-- Never record authorization headers, raw request/response bodies, secret-bearing prompts, or key prefixes/suffixes.
-- Evidence may contain only `PASS`/`FAIL`/`PENDING`, browser/version, extension commit, sanitized public error codes, and a short secret-free note.
-- Stop and sanitize immediately if a key or private chart/account detail appears anywhere outside the masked extension field.
+- Supported chart: `https://www.tradingview.com/chart/?symbol=BITSTAMP%3ABTCUSD`
+- Supported domain, unsupported URL: `https://www.tradingview.com/symbols/BTCUSD/`
+- Unsupported domain: `https://gmgn.ai/`
+- ChartViz domain: `https://www.chartviz.xyz/`
 
-## Preparation
+## Chrome release smoke
 
-- [ ] `PENDING` — From the repository root, run `bash scripts/verify-release.sh` without creating ZIPs.
-- [ ] `PENDING` — Record the commit under test with `git rev-parse HEAD`; do not record keys or environment values.
-- [ ] `PENDING` — Prepare one non-sensitive TradingView HTTPS `/chart/` page with a single visible timeframe.
-- [ ] `PENDING` — Prepare one non-sensitive PNG, JPEG, or WebP chart image between 320×180 and 10 MB.
-- [ ] `PENDING` — Prepare user-owned OpenRouter, OpenAI, and Gemini test keys. Keep them outside all evidence.
+- [ ] `PENDING` — Open `chrome://extensions`, enable Developer mode, load `extension/.output/chrome-mv3`, and record the Chrome version and tested commit.
+- [ ] `PENDING` — Confirm the extension is named **ChartViz**, the icon opens a full-height floating panel, Close hides it, and the toolbar icon reopens it.
+- [ ] `PENDING` — With no saved mode/configuration, confirm **ChartViz Cloud** opens first, says Cloud will be enabled later, has no token/connect field, and links to ChartViz.
+- [ ] `PENDING` — Open **Direct model** and confirm the curated model selector, OpenRouter option, masked API-key field, language selector, test action, and save action are present.
+- [ ] `PENDING` — On the supported TradingView `/chart/` URL, confirm detected instrument/exchange/timeframe and the single/multi screenshot cards appear.
+- [ ] `PENDING` — In Direct mode, select multi-timeframe and confirm it does not capture; it explains that multi-timeframe analysis requires ChartViz Cloud.
+- [ ] `PENDING` — On the TradingView `/symbols/` URL, confirm the primary alert says the page is not a supported chart page and exactly one clickable TradingView BTC chart example is shown.
+- [ ] `PENDING` — On `gmgn.ai`, confirm the neutral unsupported-site guidance includes a prominent ChartViz website link plus green supported-site links, with no in-panel file picker.
+- [ ] `PENDING` — On `chartviz.xyz`, confirm the link copy tells the user to use the screenshot upload area on the current page.
+- [ ] `PENDING` — Confirm the browser console contains no Cloud network request, provider credential, screenshot payload, or uncaught panel error during these checks.
 
-## Chrome unpacked install and flow
+## Edge release smoke
 
-- [ ] `PENDING` — Record the Chrome version. Open `chrome://extensions`, enable Developer mode, choose Load unpacked, and select `extension/.output/chrome-mv3`.
-- [ ] `PENDING` — Confirm the extension is named **ChartViz**, opens from its toolbar action, closes, and can be reopened.
-- [ ] `PENDING` — On the prepared TradingView chart, choose capture. Confirm the panel hides, captures only the visible tab once, restores, and shows a one-image preview for the visible timeframe.
-- [ ] `PENDING` — Choose another image and upload exactly one prepared PNG/JPEG/WebP file. Confirm its preview replaces the prior source.
-- [ ] `PENDING` — Start an analysis and cancel during the initial chart-reading request. Confirm the localized cancelled state returns to the same preview without an automatic retry.
-- [ ] `PENDING` — Repeat cancellation during the signal-review request and during final report preparation. Each cancellation must stop the active provider request and must not start another request.
-- [ ] `PENDING` — Trigger one safe error using a deliberately invalid provider credential. Record only the sanitized public error code (expected `invalid_api_key` or another mapped code) and confirm retry requires a new explicit action.
-- [ ] `PENDING` — Select a deliberately unsupported custom model ID, review the multimodal warning, and confirm a sanitized `model_not_multimodal`, `model_not_found`, or `invalid_response` result. Do not record the model response body.
-- [ ] `PENDING` — Complete one three-request analysis with the curated default OpenRouter model. Confirm one report renders; record no prompt, response body, image, or credential.
-- [ ] `PENDING` — Complete one three-request analysis with the curated default OpenAI model under the same evidence restrictions.
-- [ ] `PENDING` — Complete one three-request analysis with the curated default Gemini model under the same evidence restrictions.
-- [ ] `PENDING` — With English selected, confirm all final report prose is English while chart labels, symbols, and quoted indicator names remain faithful to the screenshot.
-- [ ] `PENDING` — With Simplified Chinese selected, confirm all final report prose is Chinese while chart labels, symbols, and quoted indicator names remain faithful to the screenshot.
-- [ ] `PENDING` — Use a chart that produces at least two trade signals. Confirm each signal is paired with one separate annotated image and no image combines multiple signal plans.
-- [ ] `PENDING` — Open the original image and every generated annotation in the lightbox; close by button, backdrop, and Escape.
-- [ ] `PENDING` — Download the original and at least one annotation and confirm each file opens locally. Do not attach them to evidence.
-- [ ] `PENDING` — Copy the report and confirm the clipboard contains report text but no API key, authorization header, hidden prompt/schema, or raw provider body. Clear the clipboard afterward.
-- [ ] `PENDING` — Fully quit every Chrome window, restart Chrome, reopen ChartViz, and confirm provider setup is shown with no restored key.
+- [ ] `PENDING` — Open `edge://extensions`, enable Developer mode, load `extension/.output/edge-mv3`, and record the Edge version and tested commit.
+- [ ] `PENDING` — Repeat the open/close, Cloud-default, Direct-settings, supported TradingView `/chart/`, TradingView `/symbols/`, `gmgn.ai`, and `chartviz.xyz` checks.
+- [ ] `PENDING` — Confirm the Edge behavior and generated manifest match Chrome and no Cloud/provider request occurs during page-guidance checks.
 
-## Edge unpacked install and flow
+## Optional provider smoke before publishing
 
-- [ ] `PENDING` — Record the Edge version. Open `edge://extensions`, enable Developer mode, choose Load unpacked, and select `extension/.output/edge-mv3`.
-- [ ] `PENDING` — Confirm the extension is named **ChartViz**, opens from its toolbar action, closes, and can be reopened.
-- [ ] `PENDING` — Repeat TradingView visible-tab capture and one manual upload; confirm the same single-image preview behavior.
-- [ ] `PENDING` — Repeat cancellation in each of the three request phases and the safe invalid-credential error; record only sanitized public error codes and confirm there is no automatic retry.
-- [ ] `PENDING` — Complete one three-request analysis through OpenRouter, one through OpenAI, and one through Gemini.
-- [ ] `PENDING` — Repeat English and Simplified Chinese final-output checks and the one-signal-per-image check.
-- [ ] `PENDING` — Repeat custom unsupported-model handling and record only `model_not_multimodal`, `model_not_found`, or `invalid_response` if exposed.
-- [ ] `PENDING` — Repeat lightbox zoom/close, original and annotation download, and report copy checks.
-- [ ] `PENDING` — Fully quit every Edge window, restart Edge, reopen ChartViz, and confirm provider setup is shown with no restored key.
+Use only a maintainer-owned low-value test key. Enter it only in the masked extension field and never record the key, authorization header, prompt, raw response, or chart image.
 
-## Sanitized evidence table
+- [ ] `PENDING` — Complete one English and one Simplified Chinese Direct analysis with a curated model; confirm exactly three visible progress phases and one validated report.
+- [ ] `PENDING` — Cancel once during each Direct phase; confirm no silent retry and no later phase starts.
+- [ ] `PENDING` — Use an invalid test credential and confirm only a sanitized public error is shown.
+- [ ] `PENDING` — Confirm original and annotation images open in the lightbox, downloads open locally, report copy contains no secret/internal prompt, and each signal has a separate annotation image.
+- [ ] `PENDING` — Fully quit and restart the browser; confirm the Direct provider key is no longer present.
 
-Keep every result `PENDING` until a person performs the matching browser step. Duplicate rows if a step needs separate provider/browser evidence.
+## Sanitized evidence
 
-| Check | Result | Browser/version | Extension commit | Sanitized error code | Secret-free note |
-|---|---|---|---|---|---|
-| Chrome unpacked install/action | PENDING | PENDING | PENDING | N/A | PENDING |
-| Chrome TradingView capture/upload | PENDING | PENDING | PENDING | N/A | PENDING |
-| Chrome OpenRouter/OpenAI/Gemini | PENDING | PENDING | PENDING | N/A | PENDING |
-| Chrome cancel/error/custom model | PENDING | PENDING | PENDING | PENDING | PENDING |
-| Chrome zoom/download/copy | PENDING | PENDING | PENDING | N/A | PENDING |
-| Chrome restart clears key | PENDING | PENDING | PENDING | N/A | PENDING |
-| Edge unpacked install/action | PENDING | PENDING | PENDING | N/A | PENDING |
-| Edge TradingView capture/upload | PENDING | PENDING | PENDING | N/A | PENDING |
-| Edge OpenRouter/OpenAI/Gemini | PENDING | PENDING | PENDING | N/A | PENDING |
-| Edge cancel/error/custom model | PENDING | PENDING | PENDING | PENDING | PENDING |
-| Edge zoom/download/copy | PENDING | PENDING | PENDING | N/A | PENDING |
-| Edge restart clears key | PENDING | PENDING | PENDING | N/A | PENDING |
+| Check | Result | Browser/version | Extension commit | Secret-free note |
+|---|---|---|---|---|
+| Chrome install/open/close | PENDING | PENDING | PENDING | PENDING |
+| Chrome Cloud/Direct settings | PENDING | PENDING | PENDING | PENDING |
+| Chrome supported chart | PENDING | PENDING | PENDING | PENDING |
+| Chrome supported-domain unsupported URL | PENDING | PENDING | PENDING | PENDING |
+| Chrome unsupported domain / ChartViz domain | PENDING | PENDING | PENDING | PENDING |
+| Edge parity | PENDING | PENDING | PENDING | PENDING |
+| Optional provider flow | PENDING | PENDING | PENDING | PENDING |

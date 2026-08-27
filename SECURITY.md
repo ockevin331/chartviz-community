@@ -1,7 +1,25 @@
-# Security policy
+# Security
 
-Report a vulnerability privately to the maintainers rather than opening a public issue. Do not include API keys, screenshots containing sensitive information, or other secrets in a report.
+Report vulnerabilities privately to the maintainers. Do not include API keys, authorization headers, raw provider bodies, screenshots containing sensitive information, or other secrets.
 
-This baseline has no account service, server, analytics, or persistent user data. Provider credentials are session-only and must never be exposed to page scripts, URLs, logs, or telemetry.
+## Product and data boundary
 
-Runtime provider origins are fixed by the reviewed provider implementations and the extension manifest permissions. Manifest Version 3 content-security policy forbids remote code. Arbitrary monkey-patching by reviewed project source is outside this project's custom verification boundary; it is addressed through code review, lockfile review, ordinary tests, and browser platform protections rather than source-language analysis.
+ChartViz 1.0.0 is an open-source browser extension with no bundled account service, backend, website runtime, analytics, history, news, exchange-data feed, billing, or local-model runtime.
+
+Direct analysis uses one processed screenshot and three sequential provider requests. The screenshot is sent directly to the selected OpenRouter, OpenAI, or Gemini endpoint in the first two requests; normalized evidence rather than the image is sent in the third. Provider credentials are held only in `browser.storage.session` and must never reach page scripts, URLs, logs, telemetry, reports, downloads, copied diagnostics, local storage, or sync storage.
+
+Multi-timeframe capture is capability-gated for ChartViz Cloud. The production 1.0.0 unavailable Cloud gateway has no credential, connection, upload, capture, analyze, fetch, or screenshot input; therefore it accepts no token and sends no screenshot. Tests may inject a fake in-memory gateway to verify the one-to-three-image runtime contract without a network service.
+
+The extension validates chart inputs, provider HTTP/response envelopes, staged evidence, and final report JSON. MV3 CSP limits executable code to the package. Manifest access is limited to `activeTab`, `storage`, `scripting`, supported chart hosts, and the three reviewed provider origins. There is no optional host access, broad `<all_urls>` access, remote executable code, or custom provider origin.
+
+## Threat and review boundary
+
+Reviewed source, the frozen `pnpm-lock.yaml` graph, WXT/TypeScript output, browser extension globals, and the user's chosen model provider are trusted components. A compromised browser, build machine, registry, dependency publisher, provider, or approved malicious source is outside the automated verification model.
+
+Release gates include focused behavior tests, TypeScript compilation, Chrome/Edge builds, exact parsed-manifest parity checks, package allow/deny listing, documentation consistency checks, and manual browser smoke tests. Package verification parses manifests, paths, and ZIP metadata; it does not prove arbitrary JavaScript semantics.
+
+Block a release for credential exposure or persistence beyond the session boundary, an undeclared runtime endpoint or permission, invalid untrusted-input handling, remote executable code, package/repository leakage, unintended Direct multi-timeframe behavior, screenshot submission to unavailable Cloud, or a real build/install/user-flow failure.
+
+## Reporting guidance
+
+Provide the extension version, browser/version, minimal reproduction steps, and sanitized public error code. Replace every secret with `<redacted>` before saving or sending evidence.
