@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../entrypoints/panel/App';
 import { ChartAvailabilityError } from '../src/capture/active-chart';
+import { unavailableCloudGateway } from '../src/cloud/cloud-gateway';
 import type { ChartContext } from '../src/domain/chart-context';
 import { attachProviderFailureDetail } from '../src/providers/provider-diagnostics';
 import { ProviderError } from '../src/providers/provider-errors';
@@ -26,11 +27,43 @@ const provider: StructuredVisionProvider = {
   kind: 'openrouter', validateConfig: () => ({ ok: true }), testConnection: async () => undefined,
   generateStructured: async () => { throw new Error('The injected pipeline owns this test boundary.'); },
 };
+const directModeDependencies = {
+  loadMode: async () => 'direct' as const,
+  saveMode: async () => undefined,
+  cloudGateway: unavailableCloudGateway,
+};
 describe('direct Community panel workflow', () => {
+  it('defaults a new installation to the unavailable Cloud tab without inspecting the page', async () => {
+    const inspectPage = vi.fn(inspect);
+    render(<App dependencies={{
+      loadConfig: async () => null,
+      loadMode: async () => 'cloud',
+      saveMode: async () => undefined,
+      cloudGateway: unavailableCloudGateway,
+      inspect: inspectPage,
+    }} />);
+
+    expect(await screen.findByRole('tab', { name: 'ChartViz Cloud' })).toHaveProperty('ariaSelected', 'true');
+    expect(screen.getByText('Cloud connection will be enabled in a later update.')).toBeTruthy();
+    expect(screen.queryByLabelText('API key')).toBeNull();
+    expect(inspectPage).not.toHaveBeenCalled();
+  });
+
+  it('opens Direct setup when its mode is saved but the session key has expired', async () => {
+    render(<App dependencies={{
+      loadConfig: async () => null,
+      ...directModeDependencies,
+    }} />);
+
+    expect(await screen.findByRole('tab', { name: 'Direct model' })).toHaveProperty('ariaSelected', 'true');
+    expect(screen.getByLabelText('API key')).toBeTruthy();
+  });
+
   it('guides an unsupported site to ChartViz without invoking analysis', async () => {
     const analyze = vi.fn(async () => communityReport);
     render(<App dependencies={{
       loadConfig: async () => ({ provider: 'openrouter', apiKey: 'key', model: 'google/gemini-3.7-flash', customModel: false }),
+      ...directModeDependencies,
       inspect: async () => {
         throw new ChartAvailabilityError(
           'This site is not supported.',
@@ -52,6 +85,7 @@ describe('direct Community panel workflow', () => {
     const analyze = vi.fn(async () => communityReport);
     render(<App dependencies={{
       loadConfig: async () => ({ provider: 'openrouter', apiKey: 'key', model: 'google/gemini-3.7-flash', customModel: false }),
+      ...directModeDependencies,
       inspect,
       capture,
       getProvider: () => provider,
@@ -81,6 +115,7 @@ describe('direct Community panel workflow', () => {
       .mockResolvedValueOnce(communityReport);
     render(<App dependencies={{
       loadConfig: async () => ({ provider: 'openrouter', apiKey: 'key', model: 'google/gemini-3.7-flash', customModel: false }),
+      ...directModeDependencies,
       inspect,
       capture,
       getProvider: () => provider,
@@ -98,10 +133,16 @@ describe('direct Community panel workflow', () => {
     await screen.findByText('Higher lows remain visible.');
     expect(analyze).toHaveBeenCalledTimes(2);
   });
+
   it('keeps the v1 close and drag interactions on the floating panel header', async () => {
     const postMessage = vi.spyOn(window.parent, 'postMessage');
-    render(<App dependencies={{ loadConfig: async () => null }} />);
-    await screen.findByRole('heading', { name: 'Connect your own vision model' });
+    render(<App dependencies={{
+      loadConfig: async () => null,
+      loadMode: async () => 'cloud',
+      saveMode: async () => undefined,
+      cloudGateway: unavailableCloudGateway,
+    }} />);
+    await screen.findByRole('heading', { name: 'Managed chart analysis' });
     expect(screen.getByRole('heading', { name: 'ChartViz' })).toBeTruthy();
     expect(screen.queryByText('ChartViz Community')).toBeNull();
     expect(screen.getAllByRole('button', { name: 'Language' })).toHaveLength(1);
@@ -120,6 +161,7 @@ describe('direct Community panel workflow', () => {
     const analyze = vi.fn(async () => communityReport);
     render(<App dependencies={{
       loadConfig: async () => ({ provider: 'openrouter', apiKey: 'key', model: 'openai/gpt-5.6-terra', customModel: false }),
+      ...directModeDependencies,
       inspect: vi.fn(inspect),
       capture,
       getProvider: () => provider,
@@ -135,6 +177,89 @@ describe('direct Community panel workflow', () => {
     expect(analyze).not.toHaveBeenCalled();
   });
 
+  it('opens the current model settings, saves changes, and returns to the chart', async () => {
+    const user = userEvent.setup();
+    const saveConfig = vi.fn(async () => undefined);
+    render(<App dependencies={{
+      loadConfig: async () => ({ provider: 'openrouter', apiKey: 'existing-key', model: 'openai/gpt-5.6-terra', customModel: false }),
+      ...directModeDependencies,
+      saveConfig,
+      inspect,
+      capture,
+      getProvider: () => provider,
+      runAnalysis: async () => communityReport,
+    }} />);
+    await screen.findByRole('heading', { name: 'Detected chart' });
+
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(screen.getByRole('dialog', { name: 'Analysis settings' })).toBeTruthy();
+    expect(screen.getByLabelText('API key')).toHaveProperty('value', 'existing-key');
+    expect(screen.getByRole('combobox', { name: 'Model' })).toHaveProperty('textContent', expect.stringContaining('openai/gpt-5.6-terra'));
+
+    await user.click(screen.getByRole('combobox', { name: 'Model' }));
+    await user.click(screen.getByRole('option', { name: /qwen\/qwen3\.7-plus/i }));
+    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+
+    await waitFor(() => expect(saveConfig).toHaveBeenCalledWith({
+      provider: 'openrouter', apiKey: 'existing-key', model: 'qwen/qwen3.7-plus', customModel: false,
+    }));
+    expect(screen.queryByRole('dialog', { name: 'Analysis settings' })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Detected chart' })).toBeTruthy();
+  });
+
+  it('lets a Direct user inspect Cloud settings without activating or clearing Direct', async () => {
+    const user = userEvent.setup();
+    const saveConfig = vi.fn(async () => undefined);
+    const saveMode = vi.fn(async () => undefined);
+    render(<App dependencies={{
+      loadConfig: async () => ({ provider: 'openrouter', apiKey: 'existing-key', model: 'openai/gpt-5.6-terra', customModel: false }),
+      loadMode: async () => 'direct',
+      saveMode,
+      cloudGateway: unavailableCloudGateway,
+      saveConfig,
+      inspect,
+      capture,
+      getProvider: () => provider,
+    }} />);
+    await screen.findByRole('heading', { name: 'Detected chart' });
+
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(screen.getByRole('tab', { name: 'Direct model' })).toHaveProperty('ariaSelected', 'true');
+    await user.click(screen.getByRole('tab', { name: 'ChartViz Cloud' }));
+    expect(screen.getByText('Cloud connection will be enabled in a later update.')).toBeTruthy();
+    expect(saveConfig).not.toHaveBeenCalled();
+    expect(saveMode).not.toHaveBeenCalled();
+
+    const dialog = screen.getByRole('dialog', { name: 'Analysis settings' });
+    await user.click(within(dialog).getByRole('button', { name: 'Close' }));
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(screen.getByRole('tab', { name: 'Direct model' })).toHaveProperty('ariaSelected', 'true');
+    expect(screen.getByLabelText('API key')).toHaveProperty('value', 'existing-key');
+  });
+
+  it('persists Direct config and mode before entering chart capture', async () => {
+    const user = userEvent.setup();
+    const events: string[] = [];
+    render(<App dependencies={{
+      loadConfig: async () => null,
+      loadMode: async () => 'cloud',
+      saveMode: async () => { events.push('mode'); },
+      cloudGateway: unavailableCloudGateway,
+      saveConfig: async () => { events.push('config'); },
+      inspect,
+      capture,
+      getProvider: () => provider,
+    }} />);
+    await screen.findByRole('tab', { name: 'ChartViz Cloud' });
+
+    await user.click(screen.getByRole('tab', { name: 'Direct model' }));
+    await user.type(screen.getByLabelText('API key'), 'session-secret');
+    await user.click(screen.getByRole('button', { name: 'Save and continue' }));
+
+    await screen.findByRole('heading', { name: 'Detected chart' });
+    expect(events).toEqual(['config', 'mode']);
+  });
+
   it('localizes a malformed provider report without exposing validation or schema details', async () => {
     const user = userEvent.setup();
     const invalidReport = attachProviderFailureDetail(
@@ -143,6 +268,7 @@ describe('direct Community panel workflow', () => {
     );
     render(<App dependencies={{
       loadConfig: async () => ({ provider: 'openrouter', apiKey: 'key', model: 'google/gemini-3.7-flash', customModel: false }),
+      ...directModeDependencies,
       inspect,
       capture,
       getProvider: () => provider,
