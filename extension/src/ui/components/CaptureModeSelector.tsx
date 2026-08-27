@@ -9,6 +9,7 @@ export type CaptureModeSelectorProps = {
   mode: CaptureMode;
   capabilities: AnalysisCapabilities;
   siteSupportsMultiTimeframe: boolean;
+  disabled?: boolean;
   onModeChange(mode: CaptureMode): void;
   onOpenCloudSettings(): void;
 };
@@ -20,6 +21,7 @@ export function CaptureModeSelector({
   mode,
   capabilities,
   siteSupportsMultiTimeframe,
+  disabled = false,
   onModeChange,
   onOpenCloudSettings,
 }: CaptureModeSelectorProps) {
@@ -50,6 +52,7 @@ export function CaptureModeSelector({
     <div className="capture-mode-cards" role="group" aria-label={t.screenshotMode}>
       <button
         type="button"
+        disabled={disabled}
         className={mode === 'single' ? 'active' : ''}
         aria-pressed={mode === 'single'}
         onClick={selectSingle}
@@ -59,6 +62,7 @@ export function CaptureModeSelector({
       </button>
       <button
         type="button"
+        disabled={disabled}
         className={mode === 'multi' ? 'active' : ''}
         aria-pressed={mode === 'multi'}
         aria-disabled={runtimeSupportsMulti && !siteSupportsMultiTimeframe ? 'true' : undefined}

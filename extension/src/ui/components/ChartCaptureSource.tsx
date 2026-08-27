@@ -5,6 +5,7 @@ import {
   type CapturedChart,
 } from '../../capture/active-chart';
 import type { ChartContext } from '../../domain/chart-context';
+import type { SupportedCaptureTimeframe } from '../../domain/chart-messages';
 import {
   findSupportedSiteByChartUrl,
   supportedSiteLinks,
@@ -18,7 +19,11 @@ type ChartCaptureSourceProps = {
   capabilities: AnalysisCapabilities;
   inspect(): Promise<ChartContext>;
   capture(signal: AbortSignal): Promise<CapturedChart>;
-  onCaptured(captured: CapturedChart): void;
+  captureMany?(
+    timeframes: readonly SupportedCaptureTimeframe[],
+    signal: AbortSignal,
+  ): Promise<readonly CapturedChart[]>;
+  onCaptured(captured: readonly CapturedChart[]): void;
   onOpenCloudSettings(): void;
 };
 
@@ -31,6 +36,7 @@ export function ChartCaptureSource({
   capabilities,
   inspect,
   capture,
+  captureMany,
   onCaptured,
   onOpenCloudSettings,
 }: ChartCaptureSourceProps) {
@@ -68,13 +74,20 @@ export function ChartCaptureSource({
   }, [refresh]);
 
   async function startCapture() {
-    if (!context || capturing || captureMode !== 'single') return;
+    if (!context || capturing) return;
     const controller = new AbortController();
     captureController.current = controller;
     setCapturing(true);
     setError(null);
     try {
-      onCaptured(await capture(controller.signal));
+      if (captureMode === 'multi') {
+        if (!siteSupportsMultiTimeframe || !capabilities.multiTimeframe || !captureMany) {
+          throw new Error(t.multi_timeframe_requires_cloud);
+        }
+        onCaptured(await captureMany(DEFAULT_MULTI_TIMEFRAMES, controller.signal));
+      } else {
+        onCaptured([await capture(controller.signal)]);
+      }
     } catch (nextError) {
       if (!controller.signal.aborted) setError(publicMessage(nextError, t.chartCaptureError));
     } finally {
@@ -110,10 +123,12 @@ export function ChartCaptureSource({
         mode={captureMode}
         capabilities={capabilities}
         siteSupportsMultiTimeframe={siteSupportsMultiTimeframe}
+        disabled={capturing}
         onModeChange={setCaptureMode}
         onOpenCloudSettings={onOpenCloudSettings}
       />
-      <button className="primary" type="button" disabled={capturing || captureMode === 'multi'} onClick={() => void startCapture()}>{capturing ? t.capturingChart : t.captureAnalyze}</button>
+      {captureMode === 'multi' && <p className="multi-capture-warning" role="status">⚠ {t.multiTimeframeFlicker}</p>}
+      <button className="primary" type="button" disabled={capturing} onClick={() => void startCapture()}>{capturing ? t.capturingChart : t.captureAnalyze}</button>
     </>}
     {!loading && error && <div className="chart-guidance" role="alert">
       <strong>{t.chartUnavailable}</strong><p>{error}</p>
@@ -144,3 +159,5 @@ export function ChartCaptureSource({
     {!loading && !availability && <button className="secondary refresh-detection" type="button" disabled={capturing} onClick={() => void refresh()}>{t.refreshChartDetection}</button>}
   </section>;
 }
+
+const DEFAULT_MULTI_TIMEFRAMES: readonly SupportedCaptureTimeframe[] = ['4h', '1h', '15m'];

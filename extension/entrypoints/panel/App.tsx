@@ -5,6 +5,7 @@ import type { AnalysisCapabilities, AnalysisRuntime } from '../../src/analysis/r
 import { activeChartClient, type CapturedChart } from '../../src/capture/active-chart';
 import { resolveCloudRuntime, unavailableCloudGateway, type CloudAnalysisGateway } from '../../src/cloud/cloud-gateway';
 import type { ChartContext } from '../../src/domain/chart-context';
+import type { SupportedCaptureTimeframe } from '../../src/domain/chart-messages';
 import { providerRegistry } from '../../src/providers/provider-registry';
 import type { ProviderConfig } from '../../src/providers/provider-types';
 import { loadAnalysisMode, saveAnalysisMode } from '../../src/storage/analysis-mode-storage';
@@ -27,6 +28,10 @@ export type AppDependencies = {
   cloudGateway: CloudAnalysisGateway;
   inspect(): Promise<ChartContext>;
   capture(signal: AbortSignal): Promise<CapturedChart>;
+  captureMany(
+    timeframes: readonly SupportedCaptureTimeframe[],
+    signal: AbortSignal,
+  ): Promise<readonly CapturedChart[]>;
   createDirectRuntime(config: ProviderConfig): AnalysisRuntime;
   testDirectConnection(config: ProviderConfig, signal: AbortSignal): Promise<void>;
 };
@@ -39,6 +44,7 @@ const defaultDependencies: AppDependencies = {
   cloudGateway: unavailableCloudGateway,
   inspect: () => activeChartClient.inspect(),
   capture: (signal) => activeChartClient.capture(signal),
+  captureMany: (timeframes, signal) => activeChartClient.captureMany(timeframes, signal),
   createDirectRuntime: (config) => new DirectAnalysisRuntime(config),
   testDirectConnection: (config, signal) =>
     providerRegistry.get(config.provider).testConnection(config, signal),
@@ -101,10 +107,18 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     return () => window.removeEventListener('message', handlePageMessage);
   }, [refreshAll]);
 
-  function analyzeCaptured(captured: CapturedChart) {
-    lastContext.current = captured.context;
-    controller.selectImage(captured.image);
-    void controller.analyze({ instrument: captured.context.symbol ?? null, timeframe: captured.context.timeframe ?? null }, language);
+  function analyzeCaptured(captures: readonly CapturedChart[]) {
+    const first = captures[0];
+    if (!first) return;
+    lastContext.current = first.context;
+    controller.selectCaptures(captures.map((captured) => ({
+      image: captured.image,
+      context: {
+        instrument: captured.context.symbol ?? null,
+        timeframe: captured.context.timeframe ?? null,
+      },
+    })));
+    void controller.analyze({ instrument: first.context.symbol ?? null, timeframe: first.context.timeframe ?? null }, language);
   }
 
   function captureAgain() {
@@ -168,7 +182,7 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     </header>
     {loading && <section className="backend-loading" role="status">…</section>}
     {!loading && state.status === 'setup' && <AnalysisModeSettings language={language} variant="setup" activeMode={activeMode} selectedMode={setupMode} onSelectedModeChange={setSetupMode} initialDirectConfig={providerConfig} saveDirectConfig={dependencies.saveConfig} saveMode={dependencies.saveMode} onDirectActivated={finishInitialSetup} testConnection={dependencies.testDirectConnection} cloudGateway={dependencies.cloudGateway} />}
-    {!loading && state.status === 'source' && analysisCapabilities && <ChartCaptureSource key={contextRevision} language={language} capabilities={analysisCapabilities} inspect={dependencies.inspect} capture={dependencies.capture} onCaptured={analyzeCaptured} onOpenCloudSettings={openCloudSettings} />}
+    {!loading && state.status === 'source' && analysisCapabilities && <ChartCaptureSource key={contextRevision} language={language} capabilities={analysisCapabilities} inspect={dependencies.inspect} capture={dependencies.capture} captureMany={dependencies.captureMany} onCaptured={analyzeCaptured} onOpenCloudSettings={openCloudSettings} />}
     {state.status === 'preview' && state.image && <ImagePreview language={language} image={state.image} onZoom={setLightbox} onChange={captureAgain} onAnalyze={retryAnalysis} />}
     {state.status === 'analyzing' && state.image && <><ImagePreview language={language} image={state.image} analyzing onZoom={setLightbox} onChange={captureAgain} onAnalyze={() => undefined} /><AnalysisProgress language={language} progress={state.progress} onCancel={controller.cancel} /></>}
     {state.status === 'failed' && <AnalysisError language={language} errorCode={state.errorCode} diagnostic={state.diagnostic} onBack={retryAnalysis} />}

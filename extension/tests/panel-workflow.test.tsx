@@ -28,6 +28,10 @@ const chartContext: ChartContext = {
 
 const inspect = async () => chartContext;
 const capture = async () => ({ image: processedImage, context: chartContext });
+const multiCaptures = (['4h', '1h', '15m'] as const).map((timeframe, index) => ({
+  image: { ...processedImage, dataUrl: `${processedImage.dataUrl}-${index}` },
+  context: { ...chartContext, timeframe },
+}));
 const outcome: AnalysisRuntimeOutcome = { report: communityReport, annotations: annotatedImages };
 
 function fakeRuntime(
@@ -105,9 +109,10 @@ describe('direct Community panel workflow', () => {
     expect(screen.getByRole('tab', { name: 'ChartViz Cloud' })).toHaveProperty('ariaSelected', 'true');
   });
 
-  it('uses an available injected Cloud runtime to enable the multi-timeframe card', async () => {
+  it('captures and submits three ordered timeframes to an available injected Cloud runtime', async () => {
     const user = userEvent.setup();
     const runtime = fakeCloudRuntime();
+    const captureMany = vi.fn(async () => multiCaptures);
     const cloudGateway: CloudAnalysisGateway = {
       availability: () => ({ available: true }),
       runtime: () => runtime,
@@ -121,12 +126,22 @@ describe('direct Community panel workflow', () => {
       createDirectRuntime,
       inspect,
       capture,
+      captureMany,
     }} />);
 
     await screen.findByText('BTCUSD');
     await user.click(screen.getByRole('button', { name: /Multi-timeframe/ }));
-
     expect(screen.getByRole('button', { name: /Multi-timeframe/ }).getAttribute('aria-pressed')).toBe('true');
+    await user.click(screen.getByRole('button', { name: 'Capture and analyze' }));
+
+    await waitFor(() => expect(runtime.analyze).toHaveBeenCalledTimes(1));
+    expect(captureMany).toHaveBeenCalledWith(['4h', '1h', '15m'], expect.any(AbortSignal));
+    expect(runtime.analyze).toHaveBeenCalledWith(expect.objectContaining({
+      captures: multiCaptures.map((captured) => ({
+        image: captured.image,
+        context: { instrument: 'BTCUSD', timeframe: captured.context.timeframe },
+      })),
+    }));
     expect(createDirectRuntime).not.toHaveBeenCalled();
   });
 

@@ -44,7 +44,7 @@ describe('ChartCaptureSource', () => {
     expect(document.querySelector('input[type="file"]')).toBeNull();
 
     await user.click(screen.getByRole('button', { name: 'Capture and analyze' }));
-    await waitFor(() => expect(onCaptured).toHaveBeenCalledWith(captured));
+    await waitFor(() => expect(onCaptured).toHaveBeenCalledWith([captured]));
     expect(capture).toHaveBeenCalledTimes(1);
   });
 
@@ -135,15 +135,25 @@ describe('ChartCaptureSource', () => {
     expect(openCloudSettings).toHaveBeenCalledTimes(1);
   });
 
-  it('selects multi for a capable runtime but does not invoke single capture', async () => {
+  it('captures the three role timeframes for a capable runtime without invoking single capture', async () => {
     const user = userEvent.setup();
     const capture = vi.fn(async () => captured);
+    const multiCaptures = (['4h', '1h', '15m'] as const).map((timeframe) => ({
+      ...captured,
+      context: { ...context, timeframe },
+    }));
+    let finishCapture!: (captures: readonly CapturedChart[]) => void;
+    const captureMany = vi.fn(() => new Promise<readonly CapturedChart[]>((resolve) => {
+      finishCapture = resolve;
+    }));
+    const onCaptured = vi.fn();
     render(<ChartCaptureSource
       language="en"
       capabilities={cloudCapabilities}
       inspect={async () => context}
       capture={capture}
-      onCaptured={() => undefined}
+      captureMany={captureMany}
+      onCaptured={onCaptured}
       onOpenCloudSettings={() => undefined}
     />);
 
@@ -151,7 +161,13 @@ describe('ChartCaptureSource', () => {
     await user.click(screen.getByRole('button', { name: /Multi-timeframe/ }));
 
     expect(screen.getByRole('button', { name: /Multi-timeframe/ }).getAttribute('aria-pressed')).toBe('true');
-    expect(screen.getByRole('button', { name: 'Capture and analyze' })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('status').textContent).toContain('page may briefly flicker');
+    await user.click(screen.getByRole('button', { name: 'Capture and analyze' }));
+    expect(screen.getByRole('button', { name: /Single timeframe/ })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: /Multi-timeframe/ })).toHaveProperty('disabled', true);
+    finishCapture(multiCaptures);
+    await waitFor(() => expect(onCaptured).toHaveBeenCalledWith(multiCaptures));
+    expect(captureMany).toHaveBeenCalledWith(['4h', '1h', '15m'], expect.any(AbortSignal));
     expect(capture).not.toHaveBeenCalled();
   });
 
