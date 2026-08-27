@@ -15,7 +15,10 @@ export type SetFloatingPanelVisibilityMessage = {
 };
 
 export type InspectActiveChartMessage = { type: 'chartviz/active-chart/inspect' };
-export type CaptureActiveChartMessage = { type: 'chartviz/active-chart/capture' };
+export type CaptureActiveChartMessage = {
+  type: 'chartviz/active-chart/capture';
+  timeframes?: SupportedCaptureTimeframe[];
+};
 
 export type ContentMessage =
   | GetChartContextMessage
@@ -41,5 +44,14 @@ export type PanelResponse =
   | { ok: false; error: string };
 
 export type CaptureResponse =
-  | { ok: true; context: ChartContext; previewDataUrl: string }
+  | {
+      ok: true;
+      context: ChartContext;
+      previewDataUrl: string;
+      captures?: Array<{
+        timeframe: SupportedCaptureTimeframe;
+        context: ChartContext;
+        previewDataUrl: string;
+      }>;
+    }
   | ChartFailure;

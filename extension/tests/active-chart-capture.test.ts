@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createBackgroundHandlers, type BackgroundDependencies } from '../entrypoints/background';
 import { createActiveChartClient } from '../src/capture/active-chart';
 import type { ProcessedImage } from '../src/capture/image-types';
 import type { ChartContext } from '../src/domain/chart-context';
@@ -99,5 +100,109 @@ describe('active chart client', () => {
 
     await expect(client.capture(controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
     expect(processImage).not.toHaveBeenCalled();
+  });
+});
+
+function backgroundFixture(initialTimeframe = '5m') {
+  let timeframe = initialTimeframe;
+  let captureNumber = 0;
+  const sendTabMessage = vi.fn<BackgroundDependencies['sendTabMessage']>(async (_tabId, message) => {
+    const record = message as { type: string; timeframe?: string; visible?: boolean };
+    if (record.type === 'chartviz/chart/timeframe') {
+      timeframe = record.timeframe!;
+      return { ok: true, context: { ...context, timeframe } };
+    }
+    if (record.type === 'chartviz/chart/ready') {
+      return { ok: true, context: { ...context, timeframe } };
+    }
+    if (record.type === 'chartviz/panel/visibility') {
+      return { ok: true, visible: record.visible };
+    }
+    return undefined;
+  });
+  const dependencies: BackgroundDependencies = {
+    getActiveTab: async () => ({ id: 17, windowId: 23, url: context.url }),
+    sendTabMessage,
+    captureVisibleTab: vi.fn(async () => `data:image/png;base64,c2NyZWVuLS${captureNumber += 1}`),
+    cropScreenshot: vi.fn(async () => new Blob([timeframe], { type: 'image/png' })),
+    blobToDataUrl: vi.fn(async () => `data:image/png;base64,${btoa(timeframe)}`),
+    injectContentScript: vi.fn(async () => undefined),
+    wait: vi.fn(async () => undefined),
+  };
+  return { dependencies, sendTabMessage, handlers: createBackgroundHandlers(dependencies) };
+}
+
+describe('multi-timeframe background capture', () => {
+  it('captures three timeframes in requested order and restores the original timeframe', async () => {
+    const { dependencies, handlers, sendTabMessage } = backgroundFixture('5m');
+
+    const response = await handlers.onMessage({
+      type: 'chartviz/active-chart/capture',
+      timeframes: ['4h', '1h', '15m'],
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      context: { timeframe: '4h' },
+      captures: [
+        { timeframe: '4h', context: { timeframe: '4h' } },
+        { timeframe: '1h', context: { timeframe: '1h' } },
+        { timeframe: '15m', context: { timeframe: '15m' } },
+      ],
+    });
+    expect(dependencies.captureVisibleTab).toHaveBeenCalledTimes(3);
+    expect(sendTabMessage.mock.calls
+      .filter(([, message]) => message.type === 'chartviz/chart/timeframe')
+      .map(([, message]) => 'timeframe' in message ? message.timeframe : null)).toEqual(['4h', '1h', '15m', '5m']);
+    expect(sendTabMessage.mock.calls
+      .filter(([, message]) => message.type === 'chartviz/panel/visibility')
+      .map(([, message]) => 'visible' in message ? message.visible : null)).toEqual([false, true, false, true, false, true]);
+  });
+
+  it('returns no partial captures and restores the original timeframe after a failed switch', async () => {
+    const { dependencies, handlers, sendTabMessage } = backgroundFixture('15m');
+    sendTabMessage.mockImplementation(async (_tabId, message) => {
+      if (message.type === 'chartviz/chart/timeframe' && message.timeframe === '1h') {
+        return { ok: false, error: 'The chart did not switch to 1h.' };
+      }
+      if (message.type === 'chartviz/chart/timeframe') return { ok: true, context: { ...context, timeframe: message.timeframe } };
+      if (message.type === 'chartviz/chart/ready') {
+        const lastSwitchTimeframe = [...sendTabMessage.mock.calls].reverse()
+          .map(([, call]) => call.type === 'chartviz/chart/timeframe' ? call.timeframe : null)
+          .find((value) => value !== null && value !== '1h');
+        return { ok: true, context: { ...context, timeframe: lastSwitchTimeframe ?? '15m' } };
+      }
+      if (message.type === 'chartviz/panel/visibility') return { ok: true, visible: message.visible };
+      return undefined;
+    });
+
+    const response = await handlers.onMessage({
+      type: 'chartviz/active-chart/capture',
+      timeframes: ['4h', '1h', '15m'],
+    });
+
+    expect(response).toEqual({ ok: false, error: 'The chart did not switch to 1h.' });
+    expect(response).not.toHaveProperty('captures');
+    expect(dependencies.captureVisibleTab).toHaveBeenCalledTimes(1);
+    expect(sendTabMessage.mock.calls
+      .filter(([, message]) => message.type === 'chartviz/chart/timeframe')
+      .at(-1)?.[1]).toMatchObject({ timeframe: '15m' });
+  });
+
+  it.each([
+    ['duplicate', ['4h', '4h']],
+    ['too many', ['5m', '15m', '1h', '4h']],
+    ['unknown', ['4h', '2h']],
+  ])('rejects %s timeframe input before changing or capturing the page', async (_name, timeframes) => {
+    const { dependencies, handlers, sendTabMessage } = backgroundFixture('5m');
+
+    const response = await handlers.onMessage({
+      type: 'chartviz/active-chart/capture',
+      timeframes,
+    });
+
+    expect(response).toMatchObject({ ok: false });
+    expect(sendTabMessage).not.toHaveBeenCalled();
+    expect(dependencies.captureVisibleTab).not.toHaveBeenCalled();
   });
 });
