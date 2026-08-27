@@ -82,7 +82,7 @@ describe('active-chart background boundary', () => {
   });
 
   it.each(['chartviz/active-chart/inspect', 'chartviz/active-chart/capture'] as const)(
-    'rejects an unsupported active-tab URL before contacting the page for %s',
+    'classifies an unsupported site before contacting the page for %s',
     async (type) => {
       const { dependencies, events } = captureDependencies({
         getActiveTab: vi.fn(async () => {
@@ -98,7 +98,8 @@ describe('active-chart background boundary', () => {
 
       await expect(handlers.onMessage({ type })).resolves.toEqual({
         ok: false,
-        error: 'This page is not a supported chart URL.',
+        error: 'This site is not supported.',
+        availability: { code: 'unsupported_site', onChartVizSite: false },
       });
       expect(events).toEqual(['active-tab']);
       expect(dependencies.sendTabMessage).not.toHaveBeenCalled();
@@ -106,6 +107,47 @@ describe('active-chart background boundary', () => {
       expect(dependencies.captureVisibleTab).not.toHaveBeenCalled();
     },
   );
+
+  it('classifies a wrong URL on a supported site before contacting the page', async () => {
+    const { dependencies } = captureDependencies({
+      getActiveTab: vi.fn(async () => ({
+        id: 42,
+        windowId: 17,
+        url: 'https://www.binance.com/en/markets',
+      })),
+    });
+    const handlers = createBackgroundHandlers(dependencies);
+
+    await expect(handlers.onMessage({ type: 'chartviz/active-chart/inspect' })).resolves.toEqual({
+      ok: false,
+      error: 'This page is not a supported chart URL.',
+      availability: {
+        code: 'unsupported_url',
+        site: 'binance',
+        siteName: 'Binance',
+        exampleUrl: 'https://www.binance.com/en/trade/BTC_USDT?type=spot',
+      },
+    });
+    expect(dependencies.sendTabMessage).not.toHaveBeenCalled();
+  });
+
+  it('marks the ChartViz domain for same-page upload guidance', async () => {
+    const { dependencies } = captureDependencies({
+      getActiveTab: vi.fn(async () => ({
+        id: 42,
+        windowId: 17,
+        url: 'https://www.chartviz.xyz/',
+      })),
+    });
+    const handlers = createBackgroundHandlers(dependencies);
+
+    await expect(handlers.onMessage({ type: 'chartviz/active-chart/inspect' })).resolves.toEqual({
+      ok: false,
+      error: 'This site is not supported.',
+      availability: { code: 'unsupported_site', onChartVizSite: true },
+    });
+    expect(dependencies.sendTabMessage).not.toHaveBeenCalled();
+  });
 
   it('returns readiness failure without hiding or capturing', async () => {
     const { dependencies } = captureDependencies({

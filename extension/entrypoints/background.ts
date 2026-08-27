@@ -4,12 +4,16 @@ import type { ChartContext } from '../src/domain/chart-context';
 import type {
   BackgroundMessage,
   CaptureResponse,
+  ChartFailure,
   ChartContextResponse,
   ContentMessage,
   PanelResponse,
 } from '../src/domain/chart-messages';
 import { blobToDataUrl, cropScreenshot } from '../src/platform/capture/crop';
-import { isSupportedChartHost, UNSUPPORTED_CHART_URL_ERROR } from '../src/sites/supported-sites';
+import {
+  classifyChartAvailability,
+  type ChartAvailabilityFailure,
+} from '../src/sites/supported-sites';
 
 export type ActiveTab = {
   id: number;
@@ -39,6 +43,12 @@ function publicError(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+function availabilityMessage(failure: ChartAvailabilityFailure): string {
+  return failure.code === 'unsupported_site'
+    ? 'This site is not supported.'
+    : 'This page is not a supported chart URL.';
+}
+
 export function createBackgroundHandlers(dependencies: BackgroundDependencies) {
   async function activeTab(): Promise<ActiveTab> {
     const tab = await dependencies.getActiveTab();
@@ -48,10 +58,12 @@ export function createBackgroundHandlers(dependencies: BackgroundDependencies) {
     return tab;
   }
 
-  async function supportedActiveTab(): Promise<ActiveTab> {
+  async function supportedActiveTab(): Promise<ActiveTab | ChartFailure> {
     const tab = await activeTab();
-    if (!tab.url || !isSupportedChartHost(tab.url)) throw new Error(UNSUPPORTED_CHART_URL_ERROR);
-    return tab;
+    const availability = classifyChartAvailability(tab.url ?? '');
+    return availability
+      ? { ok: false, error: availabilityMessage(availability), availability }
+      : tab;
   }
 
   async function readyActiveChart(tabId: number): Promise<ChartContextResponse> {
@@ -72,6 +84,7 @@ export function createBackgroundHandlers(dependencies: BackgroundDependencies) {
   async function inspectActiveChart(): Promise<ChartContextResponse> {
     try {
       const tab = await supportedActiveTab();
+      if ('ok' in tab) return tab;
       return await readyActiveChart(tab.id);
     } catch (error) {
       return { ok: false, error: publicError(error, 'Unable to inspect the active chart.') };
@@ -81,6 +94,7 @@ export function createBackgroundHandlers(dependencies: BackgroundDependencies) {
   async function captureActiveChart(): Promise<CaptureResponse> {
     try {
       const tab = await supportedActiveTab();
+      if ('ok' in tab) return tab;
       const ready = await readyActiveChart(tab.id);
       if (!ready.ok) return ready;
 

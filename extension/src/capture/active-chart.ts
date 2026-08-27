@@ -1,6 +1,7 @@
 import { browser } from 'wxt/browser';
 import type { ChartContext } from '../domain/chart-context';
 import type { CaptureResponse, ChartContextResponse } from '../domain/chart-messages';
+import type { ChartAvailabilityFailure } from '../sites/supported-sites';
 import type { ProcessedImage } from './image-types';
 import { processImage } from './process-image';
 
@@ -20,8 +21,38 @@ type ActiveChartDependencies = {
   processImage(blob: Blob): Promise<ProcessedImage>;
 };
 
+export class ChartAvailabilityError extends Error {
+  override readonly name = 'ChartAvailabilityError';
+
+  constructor(
+    message: string,
+    readonly availability: ChartAvailabilityFailure,
+  ) {
+    super(message);
+  }
+}
+
+export function isChartAvailabilityError(error: unknown): error is ChartAvailabilityError {
+  return error instanceof ChartAvailabilityError;
+}
+
+function isChartAvailabilityFailure(value: unknown): value is ChartAvailabilityFailure {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.code === 'unsupported_site') {
+    return typeof candidate.onChartVizSite === 'boolean';
+  }
+  return candidate.code === 'unsupported_url'
+    && typeof candidate.site === 'string'
+    && typeof candidate.siteName === 'string'
+    && typeof candidate.exampleUrl === 'string';
+}
+
 function responseError(response: unknown, fallback: string): Error {
   if (response && typeof response === 'object' && 'error' in response && typeof response.error === 'string') {
+    if ('availability' in response && isChartAvailabilityFailure(response.availability)) {
+      return new ChartAvailabilityError(response.error, response.availability);
+    }
     return new Error(response.error);
   }
   return new Error(fallback);

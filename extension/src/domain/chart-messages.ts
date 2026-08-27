@@ -1,4 +1,5 @@
 import type { ChartContext } from './chart-context';
+import type { ChartAvailabilityFailure } from '../sites/supported-sites';
 
 export type GetChartContextMessage = { type: 'chartviz/context/get' };
 export type WaitForChartReadyMessage = { type: 'chartviz/chart/ready' };
@@ -19,9 +20,15 @@ export type ContentMessage =
 
 export type BackgroundMessage = InspectActiveChartMessage | CaptureActiveChartMessage;
 
+export type ChartFailure = {
+  ok: false;
+  error: string;
+  availability?: ChartAvailabilityFailure;
+};
+
 export type ChartContextResponse =
   | { ok: true; context: ChartContext }
-  | { ok: false; error: string };
+  | ChartFailure;
 
 export type PanelResponse =
   | { ok: true; visible: boolean }
@@ -29,4 +36,4 @@ export type PanelResponse =
 
 export type CaptureResponse =
   | { ok: true; context: ChartContext; previewDataUrl: string }
-  | { ok: false; error: string };
+  | ChartFailure;

@@ -53,6 +53,28 @@ describe('active chart client', () => {
     await expect(client.capture(new AbortController().signal)).rejects.toThrow('This page is not a supported chart URL.');
   });
 
+  it('preserves structured chart availability failures for the panel', async () => {
+    const client = createActiveChartClient({
+      sendMessage: async () => ({
+        ok: false,
+        error: 'This page is not a supported chart URL.',
+        availability: {
+          code: 'unsupported_url',
+          site: 'binance',
+          siteName: 'Binance',
+          exampleUrl: 'https://www.binance.com/en/trade/BTC_USDT?type=spot',
+        },
+      }),
+      dataUrlToBlob: () => new Blob(),
+      processImage: async () => processed,
+    });
+
+    await expect(client.inspect()).rejects.toMatchObject({
+      name: 'ChartAvailabilityError',
+      availability: { code: 'unsupported_url', site: 'binance' },
+    });
+  });
+
   it('does not message or process when capture is already cancelled', async () => {
     const { client, sendMessage, processImage } = fixture();
     const controller = new AbortController();
