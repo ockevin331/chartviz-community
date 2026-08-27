@@ -34,13 +34,35 @@ describe('safe provider response diagnostics', () => {
     expect(Object.keys(error).sort()).toEqual(['code', 'httpStatus', 'name', 'params']);
   });
 
-  it('preserves a safe semantic reason instead of collapsing every policy failure to custom', () => {
-    expect(validationFailureDetail({ issues: [{
-      path: ['chart', 'timeframe'], code: 'custom', message: 'Report must describe exactly one visible timeframe',
-    }] })).toEqual({ stage: 'report_semantics', issues: [{ path: 'chart.timeframe', code: 'multiple_timeframes' }] });
+  it.each([
+    ['output_language_mismatch', ['conclusion', 'summary']],
+    ['internal_evidence_id_exposed', ['tradePlan', 'summary']],
+    ['unknown_level_id', ['levels']],
+    ['unknown_indicator_id', ['marketExplanation', 'indicators']],
+    ['unknown_pattern_id', ['patterns']],
+    ['signal_set_mismatch', ['tradeSignals']],
+    ['too_many_levels', ['levels']],
+    ['price_scale_not_monotonic', ['priceScaleAnchors', 1]],
+    ['multiple_timeframes', ['chart', 'timeframe']],
+    ['external_source_claim', ['conclusion', 'summary']],
+    ['duplicate_id', ['levels', 1, 'id']],
+    ['invalid_price_panel_bounds', ['pricePanelBounds']],
+  ])('preserves the stable semantic code %s', (code, path) => {
+    expect(validationFailureDetail({ issues: [{ path, code: 'custom', message: code }] })).toEqual({
+      stage: 'report_semantics',
+      issues: [{ path: path.map(String).join('.'), code }],
+    });
+  });
 
-    expect(validationFailureDetail({ issues: [{
-      path: [], code: 'custom', message: 'Report text must not claim external data evidence',
-    }] })).toEqual({ stage: 'report_semantics', issues: [{ path: '', code: 'external_source_claim' }] });
+  it('classifies an unknown custom semantic failure without exposing its message', () => {
+    const detail = validationFailureDetail({ issues: [{
+      path: ['conclusion', 'summary'], code: 'custom', message: 'secret provider prose',
+    }] });
+
+    expect(detail).toEqual({
+      stage: 'report_semantics',
+      issues: [{ path: 'conclusion.summary', code: 'unclassified_semantic_error' }],
+    });
+    expect(JSON.stringify(detail)).not.toContain('secret provider prose');
   });
 });

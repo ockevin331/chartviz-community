@@ -162,7 +162,10 @@ describe('three-stage analysis pipeline', () => {
     try { await runThreeStageAnalysis(input(provider)); }
     catch (error) { caught = error; }
 
-    expect(getProviderFailureDetail(caught)).toMatchObject({ stage: 'visual_extraction_semantics' });
+    expect(getProviderFailureDetail(caught)).toEqual({
+      stage: 'visual_extraction_semantics',
+      issues: [{ path: 'priceScaleAnchors.1', code: 'price_scale_not_monotonic' }],
+    });
     expect(provider.calls).toHaveLength(1);
   });
 
@@ -200,7 +203,26 @@ describe('three-stage analysis pipeline', () => {
     try { await runThreeStageAnalysis({ ...input(provider), outputLanguage: 'zh-CN' }); }
     catch (error) { caught = error; }
 
-    expect(getProviderFailureDetail(caught)).toMatchObject({ stage: 'report_semantics' });
+    expect(getProviderFailureDetail(caught)).toEqual({
+      stage: 'report_semantics',
+      issues: [{ path: 'conclusion.summary', code: 'output_language_mismatch' }],
+    });
+    expect(provider.calls).toHaveLength(3);
+  });
+
+  it('reports the exact visible field that exposes an internal evidence id', async () => {
+    const alteredReport = clone(validReportV3) as any;
+    alteredReport.tradePlan.summary = 'Wait while L01 remains under review.';
+    const provider = new FixtureProvider([validVisualFacts, validSignalFacts, alteredReport]);
+    let caught: unknown;
+
+    try { await runThreeStageAnalysis(input(provider)); }
+    catch (error) { caught = error; }
+
+    expect(getProviderFailureDetail(caught)).toEqual({
+      stage: 'report_semantics',
+      issues: [{ path: 'tradePlan.summary', code: 'internal_evidence_id_exposed' }],
+    });
     expect(provider.calls).toHaveLength(3);
   });
 

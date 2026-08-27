@@ -93,7 +93,7 @@ function collectStrings(value: unknown, result: string[] = []): string[] {
 function uniqueIds(items: readonly { id: string }[], path: string, context: z.RefinementCtx): void {
   const seen = new Set<string>();
   items.forEach(({ id }, index) => {
-    if (seen.has(id)) context.addIssue({ code: 'custom', path: [path, index, 'id'], message: `Duplicate ${path} id` });
+    if (seen.has(id)) context.addIssue({ code: 'custom', path: [path, index, 'id'], message: 'duplicate_id' });
     seen.add(id);
   });
 }
@@ -106,13 +106,13 @@ export const communityReportV3Schema = reportV3Shape.superRefine((report, contex
   const strings = collectStrings(report);
   strings.forEach((value) => {
     try { assertScreenshotOnlyText(value); }
-    catch (error) {
-      context.addIssue({ code: 'custom', path: [], message: error instanceof Error ? error.message : 'Screenshot-only report required' });
+    catch {
+      context.addIssue({ code: 'custom', path: [], message: 'external_source_claim' });
     }
   });
   try { assertSingleTimeframe(strings, report.chart.timeframe); }
-  catch (error) {
-    context.addIssue({ code: 'custom', path: ['chart', 'timeframe'], message: error instanceof Error ? error.message : 'Single timeframe required' });
+  catch {
+    context.addIssue({ code: 'custom', path: ['chart', 'timeframe'], message: 'multiple_timeframes' });
   }
 });
 

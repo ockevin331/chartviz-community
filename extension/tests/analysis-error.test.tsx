@@ -9,6 +9,8 @@ import { AnalysisProgress } from '../src/ui/components/AnalysisProgress';
 afterEach(cleanup);
 
 const diagnostic: AnalysisDiagnostic = {
+  source: 'extension_local',
+  pipelineVersion: 'community-3.0',
   requestId: 'cv_test_123',
   provider: 'openrouter',
   model: 'openai/gpt-5.6-terra',
@@ -40,12 +42,17 @@ describe('AnalysisError diagnostics', () => {
     expect(screen.queryByText('cv_test_123')).toBeNull();
     await user.click(screen.getByRole('button', { name: 'View diagnostics' }));
     expect(screen.getByText('cv_test_123')).toBeTruthy();
+    expect(screen.getByText('extension_local')).toBeTruthy();
+    expect(screen.getByText('community-3.0')).toBeTruthy();
+    expect(screen.getByText(/cannot be queried on a ChartViz server/i)).toBeTruthy();
     expect(screen.getByText('chart.timeframe · multiple_timeframes')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
 
     expect(copyText).toHaveBeenCalledTimes(1);
     const copied = copyText.mock.calls[0]?.[0] ?? '';
     expect(copied).toContain('report_semantics');
+    expect(copied).toContain('"source": "extension_local"');
+    expect(copied).toContain('"pipelineVersion": "community-3.0"');
     expect(copied).not.toMatch(/api.?key|data:image|system prompt/i);
   });
 });

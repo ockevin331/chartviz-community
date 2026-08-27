@@ -1,19 +1,22 @@
 import { z } from 'zod';
+import type { SemanticDiagnosticCode } from '../semantic-diagnostics';
 import type { CommunityEvidenceBundle } from './evidence-bundle';
 import { parseCommunityReportV3, type CommunityReportV3 } from './community-report-v3';
 import type { OutputLanguage } from './shared-stage-types';
 
-function semanticError(path: Array<string | number>, message: string): never {
-  throw new z.ZodError([{ code: 'custom', path, message }]);
+type Narrative = Readonly<{ text: string; path: Array<string | number> }>;
+
+function semanticError(path: Array<string | number>, code: SemanticDiagnosticCode): never {
+  throw new z.ZodError([{ code: 'custom', path, message: code }]);
 }
 
-function narratives(value: unknown, path: Array<string | number> = [], result: string[] = []): string[] {
+function narratives(value: unknown, path: Array<string | number> = [], result: Narrative[] = []): Narrative[] {
   if (typeof value === 'string') {
     const key = path[path.length - 1];
     if (![
       'schemaVersion', 'id', 'instrument', 'timeframe', 'priceLabel', 'riskReward',
       'direction', 'trend', 'structure', 'strength', 'type', 'tier', 'status', 'bias',
-    ].includes(String(key))) result.push(value);
+    ].includes(String(key))) result.push({ text: value, path });
   } else if (Array.isArray(value)) {
     value.forEach((entry, index) => narratives(entry, [...path, index], result));
   } else if (value !== null && typeof value === 'object') {
@@ -23,15 +26,15 @@ function narratives(value: unknown, path: Array<string | number> = [], result: s
 }
 
 function assertLanguage(report: CommunityReportV3, outputLanguage: OutputLanguage): void {
-  for (const text of narratives(report)) {
+  for (const { text, path } of narratives(report)) {
     if (outputLanguage === 'en' && /\p{Script=Han}/u.test(text)) {
-      semanticError([], 'Final report language does not match English');
+      semanticError(path, 'output_language_mismatch');
     }
     if (outputLanguage === 'zh-CN'
       && /[A-Za-z]{4,}/.test(text)
       && !/\p{Script=Han}/u.test(text)
       && !/^(?:RSI|MACD|OTHER)$/.test(text)) {
-      semanticError([], 'Final report language does not match Simplified Chinese');
+      semanticError(path, 'output_language_mismatch');
     }
   }
 }
@@ -47,8 +50,9 @@ export function validateCommunityReportV3Semantics(
 ): CommunityReportV3 {
   const report = parseCommunityReportV3(value);
   const visibleNarratives = narratives(report);
-  if (visibleNarratives.some((text) => /\b(?:SEG|L|I|S|P)\d{2}\b/.test(text))) {
-    semanticError([], 'Internal evidence ids must not appear in visible text');
+  const exposedId = visibleNarratives.find(({ text }) => /\b(?:SEG|L|I|S|P)\d{2}\b/.test(text));
+  if (exposedId) {
+    semanticError(exposedId.path, 'internal_evidence_id_exposed');
   }
   assertLanguage(report, outputLanguage);
 
@@ -57,15 +61,15 @@ export function validateCommunityReportV3Semantics(
   const visualPatterns = byId(evidence.visualFacts.patterns);
   const signalFacts = byId(evidence.signalFacts.signals);
 
-  if (report.levels.some(({ id }) => !visualLevels.has(id))) semanticError(['levels'], 'Unknown level id');
+  if (report.levels.some(({ id }) => !visualLevels.has(id))) semanticError(['levels'], 'unknown_level_id');
   if (report.marketExplanation.indicators.some(({ id }) => !visualIndicators.has(id))) {
-    semanticError(['marketExplanation', 'indicators'], 'Unknown indicator id');
+    semanticError(['marketExplanation', 'indicators'], 'unknown_indicator_id');
   }
-  if (report.patterns.some(({ id }) => !visualPatterns.has(id))) semanticError(['patterns'], 'Unknown pattern id');
+  if (report.patterns.some(({ id }) => !visualPatterns.has(id))) semanticError(['patterns'], 'unknown_pattern_id');
   const reportSignalIds = report.tradeSignals.map(({ id }) => id).sort();
   const evidenceSignalIds = [...signalFacts.keys()].sort();
   if (JSON.stringify(reportSignalIds) !== JSON.stringify(evidenceSignalIds)) {
-    semanticError(['tradeSignals'], 'Final report must preserve every validated signal');
+    semanticError(['tradeSignals'], 'signal_set_mismatch');
   }
   const levels = report.levels.map((level) => {
     const fact = visualLevels.get(level.id)!;
@@ -79,7 +83,7 @@ export function validateCommunityReportV3Semantics(
   });
   for (const type of ['support', 'resistance'] as const) {
     if (levels.filter((level) => level.type === type).length > 2) {
-      semanticError(['levels'], 'Final report may contain at most two levels of each type');
+      semanticError(['levels'], 'too_many_levels');
     }
   }
   const tradeSignals = report.tradeSignals.map((signal) => {

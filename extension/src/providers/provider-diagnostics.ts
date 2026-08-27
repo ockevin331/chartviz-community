@@ -1,5 +1,9 @@
 import type { ProviderError } from './provider-errors';
 import type { ProviderKind } from './provider-types';
+import {
+  COMMUNITY_ANALYSIS_PIPELINE_VERSION,
+  isSemanticDiagnosticCode,
+} from '../analysis/semantic-diagnostics';
 
 export type ProviderDiagnosticStage =
   | 'transport'
@@ -27,6 +31,8 @@ export type ProviderFailureDetail = Readonly<{
 }>;
 
 export type AnalysisDiagnostic = Readonly<{
+  source: 'extension_local';
+  pipelineVersion: typeof COMMUNITY_ANALYSIS_PIPELINE_VERSION;
   requestId: string;
   provider: ProviderKind;
   model: string;
@@ -74,18 +80,13 @@ export function validationFailureDetail(error: unknown): ProviderFailureDetail {
     const message = typeof record.message === 'string' ? record.message : '';
     const code = record.code !== 'custom'
       ? record.code
-      : message === 'Report must describe exactly one visible timeframe'
-        ? 'multiple_timeframes'
-        : message.startsWith('Report text must not claim ')
-          ? 'external_source_claim'
-          : message.startsWith('Duplicate ')
-            ? 'duplicate_id'
-            : 'custom';
+      : isSemanticDiagnosticCode(message)
+        ? message
+        : 'unclassified_semantic_error';
     return [{ path, code }];
   });
-  const semanticCodes = new Set(['custom', 'multiple_timeframes', 'external_source_claim', 'duplicate_id']);
   return freezeDetail({
-    stage: issues.length > 0 && issues.every(({ code }) => semanticCodes.has(code))
+    stage: issues.length > 0 && issues.every(({ code }) => isSemanticDiagnosticCode(code))
       ? 'report_semantics'
       : 'report_shape',
     issues,
@@ -104,6 +105,8 @@ export function createAnalysisDiagnostic(input: {
 }): AnalysisDiagnostic {
   const detail = getProviderFailureDetail(input.error);
   const diagnostic: AnalysisDiagnostic = {
+    source: 'extension_local',
+    pipelineVersion: COMMUNITY_ANALYSIS_PIPELINE_VERSION,
     requestId: input.requestId,
     provider: input.provider,
     model: input.model,

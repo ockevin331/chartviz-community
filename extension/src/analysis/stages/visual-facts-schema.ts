@@ -86,7 +86,7 @@ function collectStrings(value: unknown, result: string[] = []): string[] {
 function uniqueIds(items: readonly { id: string }[], path: string, context: z.RefinementCtx): void {
   const seen = new Set<string>();
   items.forEach(({ id }, index) => {
-    if (seen.has(id)) context.addIssue({ code: 'custom', path: [path, index, 'id'], message: `Duplicate ${path} id` });
+    if (seen.has(id)) context.addIssue({ code: 'custom', path: [path, index, 'id'], message: 'duplicate_id' });
     seen.add(id);
   });
 }
@@ -99,18 +99,18 @@ export const communityVisualFactsSchema = visualFactsShape.superRefine((facts, c
   if (facts.pricePanelBounds
     && (facts.pricePanelBounds.leftRatio >= facts.pricePanelBounds.rightRatio
       || facts.pricePanelBounds.topRatio >= facts.pricePanelBounds.bottomRatio)) {
-    context.addIssue({ code: 'custom', path: ['pricePanelBounds'], message: 'Invalid price panel bounds' });
+    context.addIssue({ code: 'custom', path: ['pricePanelBounds'], message: 'invalid_price_panel_bounds' });
   }
   const strings = collectStrings(facts);
   strings.forEach((value) => {
     try { assertScreenshotOnlyText(value); }
-    catch (error) {
-      context.addIssue({ code: 'custom', path: [], message: error instanceof Error ? error.message : 'Screenshot-only facts required' });
+    catch {
+      context.addIssue({ code: 'custom', path: [], message: 'external_source_claim' });
     }
   });
   try { assertSingleTimeframe(strings, facts.chart.timeframe); }
-  catch (error) {
-    context.addIssue({ code: 'custom', path: ['chart', 'timeframe'], message: error instanceof Error ? error.message : 'Single timeframe required' });
+  catch {
+    context.addIssue({ code: 'custom', path: ['chart', 'timeframe'], message: 'multiple_timeframes' });
   }
 });
 

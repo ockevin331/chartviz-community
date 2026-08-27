@@ -41,13 +41,13 @@ function collectStrings(value: unknown, result: string[] = []): string[] {
 export const communitySignalFactsSchema = signalFactsShape.superRefine((facts, context) => {
   const ids = new Set<string>();
   facts.signals.forEach(({ id }, index) => {
-    if (ids.has(id)) context.addIssue({ code: 'custom', path: ['signals', index, 'id'], message: 'Duplicate signal id' });
+    if (ids.has(id)) context.addIssue({ code: 'custom', path: ['signals', index, 'id'], message: 'duplicate_id' });
     ids.add(id);
   });
   collectStrings(facts).forEach((value) => {
     try { assertScreenshotOnlyText(value); }
-    catch (error) {
-      context.addIssue({ code: 'custom', path: [], message: error instanceof Error ? error.message : 'Screenshot-only signals required' });
+    catch {
+      context.addIssue({ code: 'custom', path: [], message: 'external_source_claim' });
     }
   });
 });

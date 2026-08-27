@@ -29,6 +29,8 @@ export function AnalysisError({ language, errorCode = 'unknown', cancelled = fal
       {expanded && <div className="diagnostic-panel">
         <p>{t.diagnosticHelp}</p>
         <dl>
+          <div><dt>{t.diagnosticSource}</dt><dd>{diagnostic.source}</dd></div>
+          <div><dt>{t.pipelineVersion}</dt><dd>{diagnostic.pipelineVersion}</dd></div>
           <div><dt>{t.requestId}</dt><dd>{diagnostic.requestId}</dd></div>
           <div><dt>{t.failureStage}</dt><dd>{diagnostic.stage}</dd></div>
           <div><dt>{t.duration}</dt><dd>{diagnostic.durationMs} ms</dd></div>

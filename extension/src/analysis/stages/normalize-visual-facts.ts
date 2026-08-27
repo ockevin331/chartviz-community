@@ -1,10 +1,11 @@
 import { z } from 'zod';
+import type { SemanticDiagnosticCode } from '../semantic-diagnostics';
 import { parseCommunityVisualFacts, type CommunityVisualFacts } from './visual-facts';
 
 type PriceAnchor = CommunityVisualFacts['priceScaleAnchors'][number];
 
-function semanticError(path: Array<string | number>, message: string): never {
-  throw new z.ZodError([{ code: 'custom', path, message }]);
+function semanticError(path: Array<string | number>, code: SemanticDiagnosticCode): never {
+  throw new z.ZodError([{ code: 'custom', path, message: code }]);
 }
 
 function monotonicAnchors(anchors: readonly PriceAnchor[]): PriceAnchor[] {
@@ -13,7 +14,7 @@ function monotonicAnchors(anchors: readonly PriceAnchor[]): PriceAnchor[] {
     const previous = sorted[index - 1]!;
     const current = sorted[index]!;
     if (current.price <= previous.price || current.yRatio >= previous.yRatio) {
-      semanticError(['priceScaleAnchors', index], 'Price scale anchors must be strictly monotonic');
+      semanticError(['priceScaleAnchors', index], 'price_scale_not_monotonic');
     }
   }
   return sorted;
