@@ -243,6 +243,17 @@ describe('three-stage analysis pipeline', () => {
     });
   });
 
+  it('anchors the final chart timeframe before semantic validation', async () => {
+    const alteredReport = clone(validReportV3) as any;
+    alteredReport.chart = { instrument: 'INVENTED/PAIR', timeframe: '15m and 1h' };
+    const provider = new FixtureProvider([validVisualFacts, validSignalFacts, alteredReport]);
+
+    const report = await runThreeStageAnalysis(input(provider));
+
+    expect(report.chart).toEqual({ instrument: 'BTC/USDT', timeframe: '15m' });
+    expect(provider.calls).toHaveLength(3);
+  });
+
   it('starts a fresh three-call sequence when the caller retries explicitly', async () => {
     const provider = new FixtureProvider([
       validVisualFacts, validSignalFacts, validReportV3,

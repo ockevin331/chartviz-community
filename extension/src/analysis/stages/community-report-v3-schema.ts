@@ -120,6 +120,10 @@ export type CommunityReportV3 = z.infer<typeof communityReportV3Schema>;
 export type CommunityScenarioV3 = z.infer<typeof scenario>;
 export const communityReportV3JsonSchema = z.toJSONSchema(reportV3Shape, { target: 'draft-7' });
 
+export function parseCommunityReportV3Shape(value: unknown): CommunityReportV3 {
+  return reportV3Shape.parse(value);
+}
+
 export function parseCommunityReportV3(value: unknown): CommunityReportV3 {
   return communityReportV3Schema.parse(value);
 }

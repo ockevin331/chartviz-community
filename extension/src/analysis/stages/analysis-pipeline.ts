@@ -7,7 +7,7 @@ import {
   type ProviderDiagnosticStage,
 } from '../../providers/provider-diagnostics';
 import type { ProviderConfig, StructuredVisionProvider, SupportedImageMediaType } from '../../providers/provider-types';
-import { communityReportV3JsonSchema, parseCommunityReportV3, type CommunityReportV3 } from './community-report-v3';
+import { communityReportV3JsonSchema, parseCommunityReportV3Shape, type CommunityReportV3 } from './community-report-v3';
 import { mergeCommunityEvidence } from './evidence-bundle';
 import { buildEvidenceReasoningPrompt } from './evidence-reasoning-prompt';
 import { normalizeCommunitySignalFacts } from './normalize-signals';
@@ -134,7 +134,7 @@ export async function runThreeStageAnalysis(input: ThreeStageAnalysisInput): Pro
       userPrompt: reasoningPrompt.user,
       schemaName: 'community_report_v3',
       jsonSchema: communityReportV3JsonSchema,
-      parse: parseCommunityReportV3,
+      parse: parseCommunityReportV3Shape,
       signal: input.signal,
     });
   } catch (error) {

@@ -1,7 +1,11 @@
 import { z } from 'zod';
 import type { SemanticDiagnosticCode } from '../semantic-diagnostics';
 import type { CommunityEvidenceBundle } from './evidence-bundle';
-import { parseCommunityReportV3, type CommunityReportV3 } from './community-report-v3';
+import {
+  parseCommunityReportV3,
+  parseCommunityReportV3Shape,
+  type CommunityReportV3,
+} from './community-report-v3';
 import type { OutputLanguage } from './shared-stage-types';
 
 type Narrative = Readonly<{ text: string; path: Array<string | number> }>;
@@ -48,7 +52,11 @@ export function validateCommunityReportV3Semantics(
   evidence: CommunityEvidenceBundle,
   outputLanguage: OutputLanguage,
 ): CommunityReportV3 {
-  const report = parseCommunityReportV3(value);
+  const reportShape = parseCommunityReportV3Shape(value);
+  const report = parseCommunityReportV3({
+    ...reportShape,
+    chart: evidence.visualFacts.chart,
+  });
   const visibleNarratives = narratives(report);
   const exposedId = visibleNarratives.find(({ text }) => /\b(?:SEG|L|I|S|P)\d{2}\b/.test(text));
   if (exposedId) {
