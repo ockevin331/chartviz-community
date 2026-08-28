@@ -1,5 +1,6 @@
 import type { CommunityReportV3 } from '../analysis/stages/community-report-v3-schema';
 import type { ProcessedImage } from '../capture/image-types';
+import type { PresentationDrawing } from '../presentation/report-presentation-model';
 import type { AnnotatedImage } from './annotation-types';
 import {
   browserAnnotationCanvasDependencies,
@@ -79,5 +80,49 @@ export async function renderLevels(
     dataUrl,
     width: image.width,
     height: image.height,
+  };
+}
+
+export async function renderPresentationLevels(
+  image: ProcessedImage,
+  drawings: readonly PresentationDrawing[],
+  dependencies: AnnotationCanvasDependencies = browserAnnotationCanvasDependencies,
+): Promise<AnnotatedImage | null> {
+  const levels = drawings.filter((drawing) => (
+    drawing.layer === 'levels'
+    && (drawing.meaning === 'support' || drawing.meaning === 'resistance')
+    && (drawing.tool === 'horizontal_line' || drawing.tool === 'zone')
+  ));
+  if (levels.length === 0) return null;
+
+  const supportLabels: number[] = [];
+  const resistanceLabels: number[] = [];
+  const dataUrl = await drawOnSourceImage(image, dependencies, (surface) => {
+    const ordinal = { support: 0, resistance: 0 };
+    for (const drawing of levels) {
+      const type = drawing.meaning as 'support' | 'resistance';
+      ordinal[type] += 1;
+      const occupied = type === 'support' ? supportLabels : resistanceLabels;
+      drawing.points.forEach((point, pointIndex) => {
+        const lineY = ratioToDrawablePixel(point.yRatio, image.height, LINE_MARGIN);
+        surface.setStrokeStyle(COLORS[type]);
+        surface.setFillStyle(COLORS[type]);
+        surface.setLineWidth(2);
+        surface.beginPath();
+        surface.moveTo(LINE_MARGIN, lineY);
+        surface.lineTo(image.width - LINE_MARGIN, lineY);
+        surface.stroke();
+        if (pointIndex > 0) return;
+        const textY = labelPosition(lineY, image.height, occupied);
+        occupied.push(textY);
+        const prefix = type === 'support' ? 'S' : 'R';
+        surface.fillText(`${prefix}${ordinal[type]} ${point.priceLabel ?? ''}`.trim(), 12, textY);
+      });
+    }
+  });
+
+  return {
+    id: 'levels', kind: 'levels', title: 'Support and resistance',
+    dataUrl, width: image.width, height: image.height,
   };
 }

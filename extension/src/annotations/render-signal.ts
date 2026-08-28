@@ -1,5 +1,6 @@
 import type { CommunityReportV3 } from '../analysis/stages/community-report-v3-schema';
 import type { ProcessedImage } from '../capture/image-types';
+import type { PresentationDrawing } from '../presentation/report-presentation-model';
 import type { AnnotatedImage } from './annotation-types';
 import {
   browserAnnotationCanvasDependencies,
@@ -23,6 +24,15 @@ const LABEL_MIN_Y = 16;
 const LABEL_BOTTOM_PADDING = 8;
 const LABEL_SPACING = 18;
 type TradeSignal = CommunityReportV3['tradeSignals'][number];
+
+type RenderableSignal = {
+  id: string;
+  direction: 'long' | 'short';
+  entry: { priceLabel: string; xRatio: number; yRatio: number };
+  stopLoss: { priceLabel: string; yRatio: number };
+  takeProfits: Array<{ priceLabel: string; yRatio: number }>;
+  riskReward: string | null;
+};
 
 type SignalLabel = {
   key: string;
@@ -74,7 +84,7 @@ function drawPriceLine(
 function drawDirectionArrow(
   surface: AnnotationSurface,
   image: ProcessedImage,
-  signal: TradeSignal,
+  signal: RenderableSignal,
 ): void {
   const direction = signal.direction === 'long' ? 1 : -1;
   const x = ratioToDrawablePixel(
@@ -112,9 +122,9 @@ function drawDirectionArrow(
   surface.fillText(signal.direction.toUpperCase(), labelX, labelY);
 }
 
-export async function renderSignal(
+async function renderSignalShape(
   image: ProcessedImage,
-  signal: TradeSignal,
+  signal: RenderableSignal,
   dependencies: AnnotationCanvasDependencies = browserAnnotationCanvasDependencies,
 ): Promise<AnnotatedImage> {
   const dataUrl = await drawOnSourceImage(image, dependencies, (surface) => {
@@ -172,4 +182,46 @@ export async function renderSignal(
     width: image.width,
     height: image.height,
   };
+}
+
+export async function renderSignal(
+  image: ProcessedImage,
+  signal: TradeSignal,
+  dependencies: AnnotationCanvasDependencies = browserAnnotationCanvasDependencies,
+): Promise<AnnotatedImage> {
+  return renderSignalShape(image, signal, dependencies);
+}
+
+export async function renderPresentationSignal(
+  image: ProcessedImage,
+  drawings: readonly PresentationDrawing[],
+  dependencies: AnnotationCanvasDependencies = browserAnnotationCanvasDependencies,
+): Promise<AnnotatedImage | null> {
+  const entry = drawings.find((drawing) => (
+    drawing.layer === 'signal'
+    && (drawing.meaning === 'long_entry' || drawing.meaning === 'short_entry')
+    && drawing.tool === 'entry_arrow'
+  ));
+  const stop = drawings.find((drawing) => drawing.meaning === 'stop' && drawing.tool === 'stop_line');
+  const targets = drawings.filter((drawing) => drawing.meaning === 'target' && drawing.tool === 'target_line');
+  const entryPoint = entry?.points[0];
+  const stopPoint = stop?.points[0];
+  if (!entry || !entryPoint || entryPoint.xRatio === null || !stopPoint || targets.length === 0) return null;
+  const targetPoints = targets.map((drawing) => drawing.points[0]).filter((point) => point !== undefined);
+  if (targetPoints.length !== targets.length) return null;
+
+  return renderSignalShape(image, {
+    id: entry.refId,
+    direction: entry.meaning === 'long_entry' ? 'long' : 'short',
+    entry: {
+      priceLabel: entryPoint.priceLabel ?? '',
+      xRatio: entryPoint.xRatio,
+      yRatio: entryPoint.yRatio,
+    },
+    stopLoss: { priceLabel: stopPoint.priceLabel ?? '', yRatio: stopPoint.yRatio },
+    takeProfits: targetPoints.map((point) => ({
+      priceLabel: point.priceLabel ?? '', yRatio: point.yRatio,
+    })),
+    riskReward: entry.caption,
+  }, dependencies);
 }

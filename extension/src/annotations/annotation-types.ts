@@ -12,3 +12,9 @@ export type AnnotatedReportImages = {
   signals: Record<string, AnnotatedImage>;
   patterns: Record<string, AnnotatedImage>;
 };
+
+export type PresentationAnnotatedImages = {
+  levels: Record<string, AnnotatedImage>;
+  signals: Record<string, AnnotatedImage>;
+  patterns: Record<string, AnnotatedImage>;
+};
