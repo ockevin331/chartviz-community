@@ -1,0 +1,321 @@
+{
+  "error": null,
+  "progressEvents": [
+    {
+      "code": "preparing",
+      "createdAt": "2026-08-28T00:00:00Z"
+    },
+    {
+      "code": "reading_chart",
+      "createdAt": "2026-08-28T00:00:01Z"
+    },
+    {
+      "code": "reviewing_clues",
+      "createdAt": "2026-08-28T00:00:02Z"
+    },
+    {
+      "code": "checking_signals",
+      "createdAt": "2026-08-28T00:00:03Z"
+    },
+    {
+      "code": "preparing_result",
+      "createdAt": "2026-08-28T00:00:04Z"
+    }
+  ],
+  "report": {
+    "conclusion": {
+      "confidence": 0.78,
+      "direction": "long",
+      "primaryRisk": "A rejection from resistance would return price to the range.",
+      "strength": "moderate",
+      "structure": "hh-hl",
+      "summary": "Higher lows keep the chart constructive while resistance remains active.",
+      "trend": "bullish"
+    },
+    "context": {
+      "captures": [
+        {
+          "captureId": "C01",
+          "height": 720,
+          "instrument": "BTC/USDT",
+          "role": "context",
+          "site": "tradingview",
+          "timeframe": "4h",
+          "width": 1280
+        },
+        {
+          "captureId": "C02",
+          "height": 720,
+          "instrument": "BTC/USDT",
+          "role": "setup",
+          "site": "tradingview",
+          "timeframe": "1h",
+          "width": 1280
+        },
+        {
+          "captureId": "C03",
+          "height": 720,
+          "instrument": "BTC/USDT",
+          "role": "trigger",
+          "site": "tradingview",
+          "timeframe": "15m",
+          "width": 1280
+        }
+      ],
+      "instrument": "BTC/USDT",
+      "outputLanguage": "en",
+      "venue": "TradingView"
+    },
+    "drawings": [
+      {
+        "captureId": "C02",
+        "id": "D01",
+        "layer": "levels",
+        "points": [
+          {
+            "priceLabel": "63,900",
+            "timeAnchor": null,
+            "xRatio": null,
+            "yRatio": 0.7
+          }
+        ],
+        "refId": "L01",
+        "tool": "horizontal_line"
+      },
+      {
+        "captureId": "C02",
+        "id": "D02",
+        "layer": "levels",
+        "points": [
+          {
+            "priceLabel": "65,300",
+            "timeAnchor": null,
+            "xRatio": null,
+            "yRatio": 0.32
+          }
+        ],
+        "refId": "L02",
+        "tool": "horizontal_line"
+      },
+      {
+        "captureId": "C03",
+        "id": "D03",
+        "layer": "signal",
+        "points": [
+          {
+            "priceLabel": "65,350",
+            "timeAnchor": "Latest visible candle cluster",
+            "xRatio": 0.9,
+            "yRatio": 0.31
+          }
+        ],
+        "refId": "S01",
+        "tool": "entry_arrow"
+      },
+      {
+        "captureId": "C01",
+        "id": "D04",
+        "layer": "pattern",
+        "points": [
+          {
+            "priceLabel": null,
+            "timeAnchor": "Left side",
+            "xRatio": 0.2,
+            "yRatio": 0.7
+          },
+          {
+            "priceLabel": null,
+            "timeAnchor": "Right side",
+            "xRatio": 0.8,
+            "yRatio": 0.4
+          },
+          {
+            "priceLabel": null,
+            "timeAnchor": "Left side",
+            "xRatio": 0.2,
+            "yRatio": 0.5
+          },
+          {
+            "priceLabel": null,
+            "timeAnchor": "Right side",
+            "xRatio": 0.8,
+            "yRatio": 0.2
+          }
+        ],
+        "refId": "P01",
+        "tool": "channel"
+      }
+    ],
+    "levels": [
+      {
+        "captureId": "C02",
+        "confidence": 0.84,
+        "id": "L01",
+        "priceLabel": "63,900",
+        "reason": "Several visible reactions defend this price area.",
+        "status": "holding",
+        "tier": "major",
+        "timeAnchor": "Middle to right side",
+        "type": "support",
+        "yRatio": 0.7
+      },
+      {
+        "captureId": "C02",
+        "confidence": 0.81,
+        "id": "L02",
+        "priceLabel": "65,300",
+        "reason": "Recent upward candles repeatedly pause below this area.",
+        "status": "testing",
+        "tier": "nearest",
+        "timeAnchor": "Latest visible candles",
+        "type": "resistance",
+        "yRatio": 0.32
+      }
+    ],
+    "marketExplanation": {
+      "indicators": [
+        {
+          "id": "I01",
+          "implication": "Momentum leans upward but still needs price confirmation.",
+          "name": "RSI",
+          "state": "RSI is above its midpoint without a visible extreme.",
+          "timeAnchor": "Right edge of the RSI pane"
+        }
+      ],
+      "priceAction": {
+        "evidence": [
+          "Visible swing lows rise from left to right.",
+          "The latest pullback remains above the prior reaction low."
+        ],
+        "summary": "Price advances in steps and preserves the latest higher low.",
+        "timeAnchor": "Right half of the visible chart"
+      },
+      "volume": {
+        "implication": "Participation supports the current resistance test.",
+        "summary": "Volume expands on the latest upward candles.",
+        "timeAnchor": "Right-side volume bars"
+      }
+    },
+    "patterns": [
+      {
+        "bias": "bullish",
+        "captureId": "C01",
+        "confidence": 0.74,
+        "confirmation": "A close above the upper boundary confirms continuation.",
+        "evidence": "Alternating pivots remain inside two rising boundaries.",
+        "id": "P01",
+        "invalidation": "A close below the lower boundary invalidates the pattern.",
+        "name": "Rising channel",
+        "status": "forming",
+        "timeRange": "Left side to latest visible candles"
+      }
+    ],
+    "riskNotice": "Screenshot analysis may be incomplete or stale and is for chart research only.",
+    "schemaVersion": "extension-report-1.0",
+    "timeframeViews": [
+      {
+        "captureId": "C01",
+        "conclusion": "The 4h chart preserves a constructive higher-low structure.",
+        "confidence": 0.75,
+        "evidence": [
+          "Visible swing lows step upward."
+        ],
+        "role": "context",
+        "structure": "hh-hl",
+        "timeframe": "4h",
+        "trend": "bullish"
+      },
+      {
+        "captureId": "C02",
+        "conclusion": "The 1h chart preserves a constructive higher-low structure.",
+        "confidence": 0.75,
+        "evidence": [
+          "Visible swing lows step upward."
+        ],
+        "role": "setup",
+        "structure": "hh-hl",
+        "timeframe": "1h",
+        "trend": "bullish"
+      },
+      {
+        "captureId": "C03",
+        "conclusion": "The 15m chart preserves a constructive higher-low structure.",
+        "confidence": 0.75,
+        "evidence": [
+          "Visible swing lows step upward."
+        ],
+        "role": "trigger",
+        "structure": "hh-hl",
+        "timeframe": "15m",
+        "trend": "bullish"
+      }
+    ],
+    "tradePlan": {
+      "long": {
+        "condition": "A candle closes above 65,300 and holds on a retest.",
+        "entry": "Enter only after the retest confirms support.",
+        "reason": "A confirmed breakout would continue the higher-low structure.",
+        "stop": "Below the retest low or the 63,900 support area.",
+        "targets": [
+          "65,850",
+          "66,200"
+        ]
+      },
+      "short": {
+        "condition": "Price rejects 65,300 and closes below 63,900.",
+        "entry": "Enter after support fails and a rebound cannot reclaim it.",
+        "reason": "Support failure would invalidate the constructive structure.",
+        "stop": "Above the failed reclaim high.",
+        "targets": [
+          "Lower visible range boundary"
+        ]
+      },
+      "summary": "Use the visible range boundaries to define conditional decisions.",
+      "wait": {
+        "condition": "Price remains between 63,900 and 65,300.",
+        "reason": "Neither boundary has produced a closed-candle trigger."
+      }
+    },
+    "tradeSignals": [
+      {
+        "captureId": "C03",
+        "confidence": 0.73,
+        "direction": "long",
+        "entry": {
+          "priceLabel": "65,350",
+          "xRatio": 0.9,
+          "yRatio": 0.31
+        },
+        "evidenceAtSignal": [
+          "Higher lows lead into resistance.",
+          "Volume expands during the latest upward test."
+        ],
+        "id": "S01",
+        "invalidation": "The retest closes back below 64,900.",
+        "riskReward": "Approximately 1:2",
+        "signalTime": "Latest visible candle cluster",
+        "signalType": "Breakout and retest",
+        "stopLoss": {
+          "priceLabel": "64,900",
+          "xRatio": null,
+          "yRatio": 0.43
+        },
+        "takeProfits": [
+          {
+            "priceLabel": "65,850",
+            "xRatio": null,
+            "yRatio": 0.2
+          },
+          {
+            "priceLabel": "66,200",
+            "xRatio": null,
+            "yRatio": 0.12
+          }
+        ],
+        "thesisAtSignal": "A closed breakout followed by a defended retest offers a defined long setup."
+      }
+    ]
+  },
+  "requestId": "c_20260828_multi_fixture",
+  "status": "completed"
+}

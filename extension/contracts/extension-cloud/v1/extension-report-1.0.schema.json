@@ -1,0 +1,1017 @@
+{
+  "$defs": {
+    "ExtensionCaptureMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "captureId": {
+          "pattern": "^C0[1-3]$",
+          "title": "Captureid",
+          "type": "string"
+        },
+        "height": {
+          "maximum": 10000,
+          "minimum": 180,
+          "title": "Height",
+          "type": "integer"
+        },
+        "instrument": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instrument"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "enum": [
+                "context",
+                "setup",
+                "trigger"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role"
+        },
+        "site": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Site"
+        },
+        "timeframe": {
+          "maxLength": 8,
+          "minLength": 1,
+          "title": "Timeframe",
+          "type": "string"
+        },
+        "width": {
+          "maximum": 10000,
+          "minimum": 320,
+          "title": "Width",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "captureId",
+        "timeframe",
+        "width",
+        "height"
+      ],
+      "title": "ExtensionCaptureMetadata",
+      "type": "object"
+    },
+    "ExtensionConclusion": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "direction": {
+          "enum": [
+            "long",
+            "short",
+            "sideways"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "primaryRisk": {
+          "minLength": 1,
+          "title": "Primaryrisk",
+          "type": "string"
+        },
+        "strength": {
+          "enum": [
+            "strong",
+            "moderate",
+            "weak",
+            "unclear"
+          ],
+          "title": "Strength",
+          "type": "string"
+        },
+        "structure": {
+          "enum": [
+            "hh-hl",
+            "lh-ll",
+            "range",
+            "transition",
+            "unclear"
+          ],
+          "title": "Structure",
+          "type": "string"
+        },
+        "summary": {
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "trend": {
+          "enum": [
+            "bullish",
+            "bearish",
+            "sideways",
+            "unclear"
+          ],
+          "title": "Trend",
+          "type": "string"
+        }
+      },
+      "required": [
+        "direction",
+        "trend",
+        "structure",
+        "strength",
+        "summary",
+        "primaryRisk",
+        "confidence"
+      ],
+      "title": "ExtensionConclusion",
+      "type": "object"
+    },
+    "ExtensionDrawing": {
+      "additionalProperties": false,
+      "properties": {
+        "captureId": {
+          "pattern": "^C0[1-3]$",
+          "title": "Captureid",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^D\\d{2}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "layer": {
+          "enum": [
+            "levels",
+            "pattern",
+            "signal"
+          ],
+          "title": "Layer",
+          "type": "string"
+        },
+        "points": {
+          "items": {
+            "$ref": "#/$defs/ExtensionDrawingPoint"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Points",
+          "type": "array"
+        },
+        "refId": {
+          "pattern": "^(L|P|S)\\d{2}$",
+          "title": "Refid",
+          "type": "string"
+        },
+        "tool": {
+          "enum": [
+            "horizontal_line",
+            "zone",
+            "trend_line",
+            "channel",
+            "range",
+            "entry_arrow",
+            "stop_line",
+            "target_line",
+            "marker"
+          ],
+          "title": "Tool",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "captureId",
+        "layer",
+        "refId",
+        "tool",
+        "points"
+      ],
+      "title": "ExtensionDrawing",
+      "type": "object"
+    },
+    "ExtensionDrawingPoint": {
+      "additionalProperties": false,
+      "properties": {
+        "priceLabel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pricelabel"
+        },
+        "timeAnchor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeanchor"
+        },
+        "xRatio": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Xratio"
+        },
+        "yRatio": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Yratio",
+          "type": "number"
+        }
+      },
+      "required": [
+        "yRatio"
+      ],
+      "title": "ExtensionDrawingPoint",
+      "type": "object"
+    },
+    "ExtensionEvidenceExplanation": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 6,
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "summary": {
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "timeAnchor": {
+          "minLength": 1,
+          "title": "Timeanchor",
+          "type": "string"
+        }
+      },
+      "required": [
+        "summary",
+        "evidence",
+        "timeAnchor"
+      ],
+      "title": "ExtensionEvidenceExplanation",
+      "type": "object"
+    },
+    "ExtensionIndicatorExplanation": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^I\\d{2}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "implication": {
+          "minLength": 1,
+          "title": "Implication",
+          "type": "string"
+        },
+        "name": {
+          "enum": [
+            "RSI",
+            "MACD",
+            "OTHER"
+          ],
+          "title": "Name",
+          "type": "string"
+        },
+        "state": {
+          "minLength": 1,
+          "title": "State",
+          "type": "string"
+        },
+        "timeAnchor": {
+          "minLength": 1,
+          "title": "Timeanchor",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "state",
+        "implication",
+        "timeAnchor"
+      ],
+      "title": "ExtensionIndicatorExplanation",
+      "type": "object"
+    },
+    "ExtensionLevel": {
+      "additionalProperties": false,
+      "properties": {
+        "captureId": {
+          "pattern": "^C0[1-3]$",
+          "title": "Captureid",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "id": {
+          "pattern": "^L\\d{2}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "priceLabel": {
+          "minLength": 1,
+          "title": "Pricelabel",
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "holding",
+            "testing",
+            "broken",
+            "flip_candidate"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "tier": {
+          "enum": [
+            "nearest",
+            "secondary",
+            "major"
+          ],
+          "title": "Tier",
+          "type": "string"
+        },
+        "timeAnchor": {
+          "minLength": 1,
+          "title": "Timeanchor",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "support",
+            "resistance"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "yRatio": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Yratio"
+        }
+      },
+      "required": [
+        "id",
+        "captureId",
+        "type",
+        "tier",
+        "status",
+        "priceLabel",
+        "reason",
+        "timeAnchor",
+        "confidence"
+      ],
+      "title": "ExtensionLevel",
+      "type": "object"
+    },
+    "ExtensionMarketExplanation": {
+      "additionalProperties": false,
+      "properties": {
+        "indicators": {
+          "items": {
+            "$ref": "#/$defs/ExtensionIndicatorExplanation"
+          },
+          "maxItems": 8,
+          "title": "Indicators",
+          "type": "array"
+        },
+        "priceAction": {
+          "$ref": "#/$defs/ExtensionEvidenceExplanation"
+        },
+        "volume": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExtensionVolumeExplanation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "priceAction"
+      ],
+      "title": "ExtensionMarketExplanation",
+      "type": "object"
+    },
+    "ExtensionPattern": {
+      "additionalProperties": false,
+      "properties": {
+        "bias": {
+          "enum": [
+            "bullish",
+            "bearish",
+            "neutral"
+          ],
+          "title": "Bias",
+          "type": "string"
+        },
+        "captureId": {
+          "pattern": "^C0[1-3]$",
+          "title": "Captureid",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "confirmation": {
+          "minLength": 1,
+          "title": "Confirmation",
+          "type": "string"
+        },
+        "evidence": {
+          "minLength": 1,
+          "title": "Evidence",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^P\\d{2}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "invalidation": {
+          "minLength": 1,
+          "title": "Invalidation",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "forming",
+            "confirmed",
+            "invalidated"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "timeRange": {
+          "minLength": 1,
+          "title": "Timerange",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "captureId",
+        "name",
+        "status",
+        "bias",
+        "timeRange",
+        "evidence",
+        "confirmation",
+        "invalidation",
+        "confidence"
+      ],
+      "title": "ExtensionPattern",
+      "type": "object"
+    },
+    "ExtensionReportContext": {
+      "additionalProperties": false,
+      "properties": {
+        "captures": {
+          "items": {
+            "$ref": "#/$defs/ExtensionCaptureMetadata"
+          },
+          "maxItems": 3,
+          "minItems": 1,
+          "title": "Captures",
+          "type": "array"
+        },
+        "instrument": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instrument"
+        },
+        "outputLanguage": {
+          "enum": [
+            "en",
+            "zh-CN"
+          ],
+          "title": "Outputlanguage",
+          "type": "string"
+        },
+        "venue": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Venue"
+        }
+      },
+      "required": [
+        "outputLanguage",
+        "captures"
+      ],
+      "title": "ExtensionReportContext",
+      "type": "object"
+    },
+    "ExtensionScenario": {
+      "additionalProperties": false,
+      "properties": {
+        "condition": {
+          "minLength": 1,
+          "title": "Condition",
+          "type": "string"
+        },
+        "entry": {
+          "minLength": 1,
+          "title": "Entry",
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "stop": {
+          "minLength": 1,
+          "title": "Stop",
+          "type": "string"
+        },
+        "targets": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 3,
+          "minItems": 1,
+          "title": "Targets",
+          "type": "array"
+        }
+      },
+      "required": [
+        "condition",
+        "entry",
+        "stop",
+        "targets",
+        "reason"
+      ],
+      "title": "ExtensionScenario",
+      "type": "object"
+    },
+    "ExtensionSignalPoint": {
+      "additionalProperties": false,
+      "properties": {
+        "priceLabel": {
+          "minLength": 1,
+          "title": "Pricelabel",
+          "type": "string"
+        },
+        "xRatio": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Xratio"
+        },
+        "yRatio": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Yratio",
+          "type": "number"
+        }
+      },
+      "required": [
+        "priceLabel",
+        "yRatio"
+      ],
+      "title": "ExtensionSignalPoint",
+      "type": "object"
+    },
+    "ExtensionTimeframeView": {
+      "additionalProperties": false,
+      "properties": {
+        "captureId": {
+          "pattern": "^C0[1-3]$",
+          "title": "Captureid",
+          "type": "string"
+        },
+        "conclusion": {
+          "minLength": 1,
+          "title": "Conclusion",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "evidence": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 6,
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "enum": [
+                "context",
+                "setup",
+                "trigger"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role"
+        },
+        "structure": {
+          "enum": [
+            "hh-hl",
+            "lh-ll",
+            "range",
+            "transition",
+            "unclear"
+          ],
+          "title": "Structure",
+          "type": "string"
+        },
+        "timeframe": {
+          "maxLength": 8,
+          "minLength": 1,
+          "title": "Timeframe",
+          "type": "string"
+        },
+        "trend": {
+          "enum": [
+            "bullish",
+            "bearish",
+            "sideways",
+            "unclear"
+          ],
+          "title": "Trend",
+          "type": "string"
+        }
+      },
+      "required": [
+        "captureId",
+        "timeframe",
+        "trend",
+        "structure",
+        "conclusion",
+        "evidence",
+        "confidence"
+      ],
+      "title": "ExtensionTimeframeView",
+      "type": "object"
+    },
+    "ExtensionTradePlan": {
+      "additionalProperties": false,
+      "properties": {
+        "long": {
+          "$ref": "#/$defs/ExtensionScenario"
+        },
+        "short": {
+          "$ref": "#/$defs/ExtensionScenario"
+        },
+        "summary": {
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "wait": {
+          "$ref": "#/$defs/ExtensionWaitScenario"
+        }
+      },
+      "required": [
+        "summary",
+        "long",
+        "short",
+        "wait"
+      ],
+      "title": "ExtensionTradePlan",
+      "type": "object"
+    },
+    "ExtensionTradeSignal": {
+      "additionalProperties": false,
+      "properties": {
+        "captureId": {
+          "pattern": "^C0[1-3]$",
+          "title": "Captureid",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "direction": {
+          "enum": [
+            "long",
+            "short"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "entry": {
+          "$ref": "#/$defs/ExtensionSignalPoint"
+        },
+        "evidenceAtSignal": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 6,
+          "minItems": 1,
+          "title": "Evidenceatsignal",
+          "type": "array"
+        },
+        "id": {
+          "pattern": "^S\\d{2}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "invalidation": {
+          "minLength": 1,
+          "title": "Invalidation",
+          "type": "string"
+        },
+        "riskReward": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Riskreward"
+        },
+        "signalTime": {
+          "minLength": 1,
+          "title": "Signaltime",
+          "type": "string"
+        },
+        "signalType": {
+          "minLength": 1,
+          "title": "Signaltype",
+          "type": "string"
+        },
+        "stopLoss": {
+          "$ref": "#/$defs/ExtensionSignalPoint"
+        },
+        "takeProfits": {
+          "items": {
+            "$ref": "#/$defs/ExtensionSignalPoint"
+          },
+          "maxItems": 3,
+          "minItems": 1,
+          "title": "Takeprofits",
+          "type": "array"
+        },
+        "thesisAtSignal": {
+          "minLength": 1,
+          "title": "Thesisatsignal",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "captureId",
+        "direction",
+        "signalType",
+        "signalTime",
+        "thesisAtSignal",
+        "evidenceAtSignal",
+        "entry",
+        "stopLoss",
+        "takeProfits",
+        "invalidation",
+        "confidence"
+      ],
+      "title": "ExtensionTradeSignal",
+      "type": "object"
+    },
+    "ExtensionVolumeExplanation": {
+      "additionalProperties": false,
+      "properties": {
+        "implication": {
+          "minLength": 1,
+          "title": "Implication",
+          "type": "string"
+        },
+        "summary": {
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "timeAnchor": {
+          "minLength": 1,
+          "title": "Timeanchor",
+          "type": "string"
+        }
+      },
+      "required": [
+        "summary",
+        "implication",
+        "timeAnchor"
+      ],
+      "title": "ExtensionVolumeExplanation",
+      "type": "object"
+    },
+    "ExtensionWaitScenario": {
+      "additionalProperties": false,
+      "properties": {
+        "condition": {
+          "minLength": 1,
+          "title": "Condition",
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "condition",
+        "reason"
+      ],
+      "title": "ExtensionWaitScenario",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "conclusion": {
+      "$ref": "#/$defs/ExtensionConclusion"
+    },
+    "context": {
+      "$ref": "#/$defs/ExtensionReportContext"
+    },
+    "drawings": {
+      "items": {
+        "$ref": "#/$defs/ExtensionDrawing"
+      },
+      "maxItems": 32,
+      "title": "Drawings",
+      "type": "array"
+    },
+    "levels": {
+      "items": {
+        "$ref": "#/$defs/ExtensionLevel"
+      },
+      "maxItems": 8,
+      "title": "Levels",
+      "type": "array"
+    },
+    "marketExplanation": {
+      "$ref": "#/$defs/ExtensionMarketExplanation"
+    },
+    "patterns": {
+      "items": {
+        "$ref": "#/$defs/ExtensionPattern"
+      },
+      "maxItems": 3,
+      "title": "Patterns",
+      "type": "array"
+    },
+    "riskNotice": {
+      "minLength": 1,
+      "title": "Risknotice",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "extension-report-1.0",
+      "default": "extension-report-1.0",
+      "title": "Schemaversion",
+      "type": "string"
+    },
+    "timeframeViews": {
+      "items": {
+        "$ref": "#/$defs/ExtensionTimeframeView"
+      },
+      "maxItems": 3,
+      "minItems": 1,
+      "title": "Timeframeviews",
+      "type": "array"
+    },
+    "tradePlan": {
+      "$ref": "#/$defs/ExtensionTradePlan"
+    },
+    "tradeSignals": {
+      "items": {
+        "$ref": "#/$defs/ExtensionTradeSignal"
+      },
+      "maxItems": 6,
+      "title": "Tradesignals",
+      "type": "array"
+    }
+  },
+  "required": [
+    "context",
+    "conclusion",
+    "marketExplanation",
+    "tradePlan",
+    "timeframeViews",
+    "riskNotice"
+  ],
+  "title": "ExtensionReport",
+  "type": "object"
+}

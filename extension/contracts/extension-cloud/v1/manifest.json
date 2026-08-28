@@ -1,0 +1,12 @@
+{
+  "contractVersion": "extension-report-1.0",
+  "files": {
+    "extension-report-1.0.schema.json": "3f2b6d522d37b455e3fd27e656168859b8be18f23dd70c2a869d316de3e05477",
+    "fixtures/account.json": "1ec213e6709d884c895bfbb61dc02d4e1272196dfef459de9e0c7644eb2ac46f",
+    "fixtures/capabilities.json": "b1a4fd15516faba89c181e48608c7c3c96d98522a5ff550263fe227a9e3f299a",
+    "fixtures/multi-completed-task.json": "20da09a163dbdab83e0bc4d214796360229d5c9d23d1f3624e7c9dfe9059f08a",
+    "fixtures/quota-error.json": "d83516b8ee666559afa2a7dd15c1eba51ea0601c0965ad2c06d0f1dc549e9c91",
+    "fixtures/single-completed-task.json": "85c6cd9573034b3f8afaa1f8907829f9937ee127e4db8c065b47f0d5ed5faede",
+    "openapi.json": "f82c9a25517cb72f11e791d6c7b2823c2f7863646d5b140055d8cc9690eb8e5e"
+  }
+}

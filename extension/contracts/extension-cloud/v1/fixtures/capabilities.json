@@ -1,0 +1,16 @@
+{
+  "apiVersion": "1",
+  "edition": "cloud",
+  "features": {
+    "advancedAnnotations": true,
+    "cloudManagedModels": true,
+    "multiTimeframe": true,
+    "taskCancellation": true,
+    "taskResume": true
+  },
+  "limits": {
+    "maxImages": 3,
+    "maxTimeframes": 3
+  },
+  "reportSchemaVersion": "extension-report-1.0"
+}

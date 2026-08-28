@@ -1,0 +1,8 @@
+{
+  "code": "quota_exhausted",
+  "params": {
+    "remaining": 0,
+    "required": 2
+  },
+  "pricingUrl": "https://www.chartviz.xyz/#pricing"
+}
