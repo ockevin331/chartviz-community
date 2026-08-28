@@ -6,7 +6,7 @@ const nullableText = text.nullable();
 
 const captureSchema = z.object({
   captureId: z.string().regex(/^C\d{2}$/),
-  timeframe: text,
+  timeframe: text.nullable(),
   role: z.enum(['context', 'setup', 'trigger']).nullable(),
   instrument: text.nullable(),
   width: z.number().int().positive(),
@@ -91,7 +91,7 @@ const tradeSignalSchema = z.object({
   takeProfits: z.array(signalPriceSchema).min(1).max(3),
   riskReward: text.nullable(),
   confidence: ratio,
-  invalidation: text,
+  invalidation: text.nullable(),
 }).strict();
 
 const patternSchema = z.object({
@@ -109,7 +109,7 @@ const patternSchema = z.object({
 
 const timeframeViewSchema = z.object({
   captureId: z.string().regex(/^C\d{2}$/),
-  timeframe: text,
+  timeframe: text.nullable(),
   role: z.enum(['context', 'setup', 'trigger']).nullable(),
   trend: z.enum(['bullish', 'bearish', 'sideways', 'unclear']),
   structure: z.enum(['hh-hl', 'lh-ll', 'range', 'transition', 'unclear']),
@@ -276,4 +276,3 @@ export function parseReportPresentationModel(value: unknown): ReportPresentation
 export function parsePresentationBundle(value: unknown): PresentationBundle {
   return bundleSchema.parse(value);
 }
-
