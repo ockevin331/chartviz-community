@@ -396,6 +396,113 @@ describe('direct Community panel workflow', () => {
     }
   });
 
+  it('shows a localized transient restore error and retries restoration in the same panel', async () => {
+    const user = userEvent.setup();
+    const internalDetail = 'capture reader failed in worker 7';
+    const runtime = fakeCloudRuntime();
+    const restoredCaptures = outcome.captures;
+    const restoreActiveAnalysis = vi.fn()
+      .mockRejectedValueOnce(new AnalysisRuntimeFailure('service_unavailable', null, {
+        params: { internalDetail },
+      }))
+      .mockResolvedValueOnce({ captures: restoredCaptures, outputLanguage: 'en' as const });
+    runtime.restoreActiveAnalysis = restoreActiveAnalysis;
+    const loadConfig = vi.fn(async () => ({
+      provider: 'openrouter' as const,
+      apiKey: 'preserved-key',
+      model: 'google/gemini-3.7-flash',
+      customModel: false,
+    }));
+    const manager: CloudConnectionManager = {
+      load: vi.fn(async () => ({
+        status: 'connected' as const,
+        errorCode: null,
+        account: {
+          emailMasked: 'a***z@example.com', plan: 'pro' as const,
+          currentPeriodEnd: '2026-09-28T00:00:00+00:00',
+          quota: { limit: 50, used: 1, remaining: 49, unlimited: false },
+          selectedModel: { id: 'openai/gpt-5.4', name: 'GPT-5.4', quotaCost: 2 },
+          entitlements: { multiTimeframe: false, maxCaptures: 1 },
+        },
+      })),
+      connect: disconnectedCloudManager.connect,
+      disconnect: disconnectedCloudManager.disconnect,
+    };
+
+    render(<App dependencies={{
+      loadConfig,
+      loadMode: async () => 'cloud',
+      saveMode: async () => undefined,
+      cloudGateway: {
+        availability: () => ({ available: true }),
+        runtime: () => runtime,
+      },
+      cloudConnectionManager: manager,
+      inspect,
+      capture,
+    }} />);
+
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'ChartViz Cloud is temporarily unavailable.',
+    );
+    expect(document.body.textContent).not.toContain(internalDetail);
+    expect(screen.queryByRole('heading', { name: 'Detected chart' })).toBeNull();
+    expect(loadConfig).toHaveBeenCalledTimes(1);
+    expect(manager.load).toHaveBeenCalledTimes(1);
+    expect(runtime.cancel).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+
+    await waitFor(() => expect(runtime.analyze).toHaveBeenCalledTimes(1));
+    expect(restoreActiveAnalysis).toHaveBeenCalledTimes(2);
+    expect(runtime.analyze).toHaveBeenCalledWith(expect.objectContaining({
+      captures: restoredCaptures,
+      outputLanguage: 'en',
+    }));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(loadConfig).toHaveBeenCalledTimes(1);
+    expect(manager.load).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns to an empty chart source after a deterministic invalid restore', async () => {
+    const runtime = fakeCloudRuntime();
+    runtime.restoreActiveAnalysis = vi.fn(async () => {
+      throw new AnalysisRuntimeFailure('invalid_image');
+    });
+    const manager: CloudConnectionManager = {
+      load: vi.fn(async () => ({
+        status: 'connected' as const,
+        errorCode: null,
+        account: {
+          emailMasked: 'a***z@example.com', plan: 'pro' as const,
+          currentPeriodEnd: '2026-09-28T00:00:00+00:00',
+          quota: { limit: 50, used: 1, remaining: 49, unlimited: false },
+          selectedModel: { id: 'openai/gpt-5.4', name: 'GPT-5.4', quotaCost: 2 },
+          entitlements: { multiTimeframe: false, maxCaptures: 1 },
+        },
+      })),
+      connect: disconnectedCloudManager.connect,
+      disconnect: disconnectedCloudManager.disconnect,
+    };
+
+    render(<App dependencies={{
+      loadConfig: async () => null,
+      loadMode: async () => 'cloud',
+      saveMode: async () => undefined,
+      cloudGateway: {
+        availability: () => ({ available: true }),
+        runtime: () => runtime,
+      },
+      cloudConnectionManager: manager,
+      inspect,
+      capture,
+    }} />);
+
+    expect(await screen.findByRole('heading', { name: 'Detected chart' })).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(runtime.analyze).not.toHaveBeenCalled();
+  });
+
   it('contains legacy cleanup failure without blocking source configuration', async () => {
     let rejectCleanup!: (reason?: unknown) => void;
     const cleanupPromise = new Promise<void>((_resolve, reject) => { rejectCleanup = reject; });

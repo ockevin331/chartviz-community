@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { AnalysisMode } from '../../src/analysis/analysis-mode';
 import { DirectAnalysisRuntime } from '../../src/analysis/runtime/direct-analysis-runtime';
-import type { AnalysisCapabilities, AnalysisRuntime } from '../../src/analysis/runtime/analysis-runtime';
+import {
+  AnalysisRuntimeFailure,
+  type AnalysisCapabilities,
+  type AnalysisRuntime,
+} from '../../src/analysis/runtime/analysis-runtime';
 import { activeChartClient, type CapturedChart } from '../../src/capture/active-chart';
 import { productionCloudGateway, resolveCloudRuntime, type CloudAnalysisGateway } from '../../src/cloud/cloud-gateway';
 import { CloudConnectionError, createCloudClient, type CloudClient } from '../../src/cloud/cloud-client';
@@ -81,9 +85,12 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
   });
   const [cloudBusy, setCloudBusy] = useState(false);
   const [analysisCapabilities, setAnalysisCapabilities] = useState<AnalysisCapabilities | null>(null);
+  const [restoreError, setRestoreError] = useState<AnalysisRuntimeFailure | null>(null);
   const [contextRevision, setContextRevision] = useState(0);
   const [lightbox, setLightbox] = useState<LightboxImage | null>(null);
   const lastContext = useRef<ChartContext | null>(null);
+  const restorationRuntime = useRef<AnalysisRuntime | null>(null);
+  const restorationAttempt = useRef(0);
   const dragPosition = useRef<{ x: number; y: number } | null>(null);
   const t = translations[language];
 
@@ -91,6 +98,29 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     setAnalysisCapabilities(runtime.capabilities());
     controller.configure(runtime);
   }, [controller.configure]);
+
+  const restoreCloudRuntime = useCallback(async (
+    runtime: AnalysisRuntime,
+    attempt: number,
+  ): Promise<void> => {
+    try {
+      const restored = await runtime.restoreActiveAnalysis?.();
+      if (restorationAttempt.current !== attempt) return;
+      setRestoreError(null);
+      const first = restored?.captures[0];
+      if (!restored || !first) return;
+      setLanguage(restored.outputLanguage);
+      controller.restoreCaptures(restored.captures);
+      void controller.analyze(first.context, restored.outputLanguage);
+    } catch (error) {
+      if (restorationAttempt.current !== attempt) return;
+      setRestoreError(
+        error instanceof AnalysisRuntimeFailure && error.code === 'service_unavailable'
+          ? new AnalysisRuntimeFailure('service_unavailable')
+          : null,
+      );
+    }
+  }, [controller.restoreCaptures, controller.analyze]);
 
   useEffect(() => {
     let current = true;
@@ -117,19 +147,19 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
         const runtime = resolveCloudRuntime(dependencies.cloudGateway);
         if (runtime) {
           activateRuntime(runtime);
-          const restored = await runtime.restoreActiveAnalysis?.();
-          if (!current || !restored) return;
-          const first = restored.captures[0];
-          if (!first) return;
-          setLanguage(restored.outputLanguage);
-          controller.restoreCaptures(restored.captures);
-          void controller.analyze(first.context, restored.outputLanguage);
+          restorationRuntime.current = runtime;
+          const attempt = ++restorationAttempt.current;
+          await restoreCloudRuntime(runtime, attempt);
         }
       }
     })().catch(() => {
       // Startup restore failures stay local and leave the configured source state available.
     }).finally(() => { if (current) setLoading(false); });
-    return () => { current = false; };
+    return () => {
+      current = false;
+      restorationRuntime.current = null;
+      restorationAttempt.current += 1;
+    };
   }, [
     dependencies.loadConfig,
     dependencies.loadMode,
@@ -138,9 +168,19 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     dependencies.cloudConnectionManager,
     dependencies.cleanupLegacyCloudAnalysisStorage,
     activateRuntime,
-    controller.restoreCaptures,
-    controller.analyze,
+    restoreCloudRuntime,
   ]);
+
+  const retryRestoration = useCallback(() => {
+    const runtime = restorationRuntime.current;
+    if (!runtime) return;
+    const attempt = ++restorationAttempt.current;
+    setRestoreError(null);
+    setLoading(true);
+    void restoreCloudRuntime(runtime, attempt).finally(() => {
+      if (restorationAttempt.current === attempt) setLoading(false);
+    });
+  }, [restoreCloudRuntime]);
 
   const refreshAll = useCallback(() => {
     lastContext.current = null;
@@ -291,8 +331,9 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
       <AnalysisModeSettings language={language} variant="settings" activeMode={activeMode} selectedMode={settingsMode} onSelectedModeChange={setSettingsMode} initialDirectConfig={providerConfig} saveDirectConfig={dependencies.saveConfig} saveMode={dependencies.saveMode} onDirectActivated={finishSettings} testConnection={dependencies.testDirectConnection} cloudConnection={cloudConnection} cloudBusy={cloudBusy} onCloudConnect={connectCloud} onCloudDisconnect={disconnectCloud} />
     </section> : <>
       {loading && <section className="backend-loading" role="status">…</section>}
-      {!loading && state.status === 'setup' && <AnalysisModeSettings language={language} variant="setup" activeMode={activeMode} selectedMode={setupMode} onSelectedModeChange={setSetupMode} initialDirectConfig={providerConfig} saveDirectConfig={dependencies.saveConfig} saveMode={dependencies.saveMode} onDirectActivated={finishInitialSetup} testConnection={dependencies.testDirectConnection} cloudConnection={cloudConnection} cloudBusy={cloudBusy} onCloudConnect={connectCloud} onCloudDisconnect={disconnectCloud} />}
-      {!loading && state.status === 'source' && analysisCapabilities && <ChartCaptureSource key={contextRevision} language={language} capabilities={analysisCapabilities} inspect={dependencies.inspect} capture={dependencies.capture} captureMany={dependencies.captureMany} loadMultiTimeframes={loadMultiTimeframes} onCaptured={analyzeCaptured} onOpenCloudSettings={openCloudSettings} />}
+      {!loading && restoreError && <AnalysisError language={language} errorCode={restoreError.code} onBack={retryRestoration} />}
+      {!loading && !restoreError && state.status === 'setup' && <AnalysisModeSettings language={language} variant="setup" activeMode={activeMode} selectedMode={setupMode} onSelectedModeChange={setSetupMode} initialDirectConfig={providerConfig} saveDirectConfig={dependencies.saveConfig} saveMode={dependencies.saveMode} onDirectActivated={finishInitialSetup} testConnection={dependencies.testDirectConnection} cloudConnection={cloudConnection} cloudBusy={cloudBusy} onCloudConnect={connectCloud} onCloudDisconnect={disconnectCloud} />}
+      {!loading && !restoreError && state.status === 'source' && analysisCapabilities && <ChartCaptureSource key={contextRevision} language={language} capabilities={analysisCapabilities} inspect={dependencies.inspect} capture={dependencies.capture} captureMany={dependencies.captureMany} loadMultiTimeframes={loadMultiTimeframes} onCaptured={analyzeCaptured} onOpenCloudSettings={openCloudSettings} />}
       {state.status === 'preview' && state.image && <ImagePreview language={language} image={state.image} onZoom={setLightbox} onChange={captureAgain} onAnalyze={retryAnalysis} />}
       {state.status === 'analyzing' && state.image && <><ImagePreview language={language} image={state.image} analyzing onZoom={setLightbox} onChange={captureAgain} onAnalyze={() => undefined} /><AnalysisProgress language={language} progress={state.progress} onCancel={controller.cancel} /></>}
       {state.status === 'failed' && <AnalysisError language={language} errorCode={state.errorCode} diagnostic={state.diagnostic} params={state.errorParams} pricingUrl={state.pricingUrl} onBack={retryAnalysis} />}

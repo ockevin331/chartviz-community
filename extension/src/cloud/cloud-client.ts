@@ -153,24 +153,24 @@ async function captureRequest(
     );
   }
   if (response.headers.get('content-type') !== 'image/png') {
-    throw new CloudConnectionError('service_unavailable');
+    throw new CloudConnectionError('invalid_image');
   }
   const contentLength = response.headers.get('content-length');
   if (contentLength !== null && /^\d+$/.test(contentLength)) {
     try {
       if (BigInt(contentLength) > BigInt(maxCaptureBytes)) {
-        throw new CloudConnectionError('service_unavailable');
+        throw new CloudConnectionError('invalid_image');
       }
     } catch (error) {
       if (error instanceof CloudConnectionError) throw error;
     }
   }
-  if (!response.body) throw new CloudConnectionError('service_unavailable');
+  if (!response.body) throw new CloudConnectionError('invalid_image');
   const bytes = await boundedCaptureBytes(response.body);
   const signature = new Uint8Array(bytes, 0, Math.min(bytes.byteLength, 8));
   const expectedSignature = [137, 80, 78, 71, 13, 10, 26, 10];
   if (signature.length !== expectedSignature.length || expectedSignature.some((byte, index) => signature[index] !== byte)) {
-    throw new CloudConnectionError('service_unavailable');
+    throw new CloudConnectionError('invalid_image');
   }
   return Object.freeze({ mediaType: 'image/png', bytes });
 }
@@ -194,7 +194,7 @@ async function boundedCaptureBytes(body: ReadableStream<Uint8Array>): Promise<Ar
         } catch {
           // Cancellation is best-effort after a rejected oversized or malformed chunk.
         }
-        throw new CloudConnectionError('service_unavailable');
+        throw new CloudConnectionError('invalid_image');
       }
       chunks.push(value);
       total += value.byteLength;
@@ -205,7 +205,7 @@ async function boundedCaptureBytes(body: ReadableStream<Uint8Array>): Promise<Ar
   } finally {
     reader.releaseLock();
   }
-  if (total < 1) throw new CloudConnectionError('service_unavailable');
+  if (total < 1) throw new CloudConnectionError('invalid_image');
   const combined = new Uint8Array(total);
   let offset = 0;
   chunks.forEach((chunk) => {

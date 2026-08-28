@@ -466,6 +466,7 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
           'task_not_found',
           'task_failed',
           'task_cancelled',
+          'invalid_image',
           'incompatible_report_schema',
           'incompatible_api_version',
         ].includes(error.code)) {

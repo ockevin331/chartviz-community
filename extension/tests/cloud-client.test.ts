@@ -385,10 +385,10 @@ describe('fixed-origin ChartViz Cloud client', () => {
     })],
     ['empty PNG response', pngResponse(new Uint8Array())],
     ['bad PNG signature', pngResponse(new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7]))],
-  ])('rejects a %s as an unavailable Cloud response', async (_name, response) => {
+  ])('classifies a deterministic %s as an invalid image', async (_name, response) => {
     await expect(createCloudClient(vi.fn().mockResolvedValue(response)).capture(
       `cv_live_${'b'.repeat(43)}`, 'c_20260828_capture', 'C01',
-    )).rejects.toMatchObject({ code: 'service_unavailable' });
+    )).rejects.toMatchObject({ code: 'invalid_image' });
   });
 
   it('rejects an oversized declared Content-Length before reading the body', async () => {
@@ -406,7 +406,7 @@ describe('fixed-origin ChartViz Cloud client', () => {
 
     await expect(createCloudClient(vi.fn().mockResolvedValue(response)).capture(
       `cv_live_${'l'.repeat(43)}`, 'c_20260828_capture', 'C01',
-    )).rejects.toMatchObject({ code: 'service_unavailable' });
+    )).rejects.toMatchObject({ code: 'invalid_image' });
 
     expect(getReader).not.toHaveBeenCalled();
     expect(arrayBuffer).not.toHaveBeenCalled();
@@ -421,7 +421,7 @@ describe('fixed-origin ChartViz Cloud client', () => {
 
     await expect(createCloudClient(vi.fn().mockResolvedValue(streamed.response)).capture(
       `cv_live_${'a'.repeat(43)}`, 'c_20260828_capture', 'C01',
-    )).rejects.toMatchObject({ code: 'service_unavailable' });
+    )).rejects.toMatchObject({ code: 'invalid_image' });
 
     expect(streamed.cancel).toHaveBeenCalledTimes(1);
   });
@@ -447,6 +447,13 @@ describe('fixed-origin ChartViz Cloud client', () => {
     await expect(createCloudClient(fetcher).capture(
       `cv_live_${'s'.repeat(43)}`, 'c_20260828_capture', 'C01',
     )).rejects.toMatchObject({ code: 'service_unavailable' });
+  });
+
+  it('preserves service unavailable for an HTTP 5xx capture response', async () => {
+    await expect(createCloudClient(vi.fn().mockResolvedValue(jsonResponse({
+      code: 'service_unavailable', params: {},
+    }, 503))).capture(`cv_live_${'s'.repeat(43)}`, 'c_20260828_capture', 'C01'))
+      .rejects.toMatchObject({ code: 'service_unavailable' });
   });
 
   it('parses the stable JSON error envelope from a failed capture download', async () => {

@@ -8,6 +8,7 @@ import {
 import { AnalysisRuntimeFailure, type AnalysisCapture } from '../src/analysis/runtime/analysis-runtime';
 import {
   CloudConnectionError,
+  createCloudClient,
   type CloudClient,
   type DownloadedCapture,
 } from '../src/cloud/cloud-client';
@@ -575,6 +576,77 @@ describe('CloudAnalysisRuntime', () => {
     expect(test.client.capture).not.toHaveBeenCalled();
     expect(test.current()).toEqual(active);
     expect(test.storage.clear).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['wrong MIME', () => new Response(downloadedCapture('C01').bytes, {
+      status: 200, headers: { 'Content-Type': 'image/jpeg' },
+    })],
+    ['missing body', () => new Response(null, {
+      status: 200, headers: { 'Content-Type': 'image/png' },
+    })],
+    ['empty body', () => new Response(new Uint8Array(), {
+      status: 200, headers: { 'Content-Type': 'image/png' },
+    })],
+    ['declared oversize body', () => new Response(downloadedCapture('C01').bytes, {
+      status: 200,
+      headers: {
+        'Content-Type': 'image/png',
+        'Content-Length': String((10 * 1024 * 1024) + 1),
+      },
+    })],
+    ['actual oversize body', () => {
+      const bytes = new Uint8Array((10 * 1024 * 1024) + 1);
+      bytes.set(new Uint8Array(downloadedCapture('C01').bytes).subarray(0, 8));
+      return new Response(bytes, { status: 200, headers: { 'Content-Type': 'image/png' } });
+    }],
+    ['bad PNG signature', () => new Response(new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7]), {
+      status: 200, headers: { 'Content-Type': 'image/png' },
+    })],
+  ])('classifies a deterministic successful %s through the real client and clears its record', async (
+    _label,
+    response,
+  ) => {
+    const active = {
+      requestId: 'c_20260828_invalid_download', tokenFingerprint: fingerprint,
+      captures: [singleStoredCapture], outputLanguage: 'en' as const,
+    };
+    const realClient = createCloudClient(vi.fn(async () => response()));
+    const test = dependencies({
+      active,
+      tasks: [processing],
+      capture: realClient.capture,
+    });
+
+    await expect(test.runtime.restoreActiveAnalysis()).rejects.toMatchObject({
+      code: 'invalid_image',
+    });
+
+    expect(test.storage.clear).toHaveBeenCalledWith(active.requestId);
+    expect(test.current()).toBeNull();
+  });
+
+  it('cannot clear a newer record when the real client rejects an older invalid response', async () => {
+    const activeA = {
+      requestId: 'c_20260828_invalid_a', tokenFingerprint: fingerprint,
+      captures: [singleStoredCapture], outputLanguage: 'en' as const,
+    };
+    const activeB = { ...activeA, requestId: 'c_20260828_invalid_b' };
+    const test = dependencies({ active: activeA, tasks: [processing] });
+    const realClient = createCloudClient(vi.fn(async () => {
+      await test.storage.save(activeB);
+      return new Response(downloadedCapture('C01').bytes, {
+        status: 200, headers: { 'Content-Type': 'image/jpeg' },
+      });
+    }));
+    test.client.capture.mockImplementation(realClient.capture);
+
+    await expect(test.runtime.restoreActiveAnalysis()).rejects.toMatchObject({
+      code: 'invalid_image',
+    });
+
+    expect(test.storage.clear).toHaveBeenCalledWith(activeA.requestId);
+    expect(test.current()).toEqual(activeB);
   });
 
   it.each([
