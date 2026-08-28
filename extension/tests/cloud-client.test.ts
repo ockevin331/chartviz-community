@@ -37,6 +37,16 @@ const capture: AnalysisCapture = {
   },
 };
 
+function captureAt(timeframe: string, suffix: string): AnalysisCapture {
+  return {
+    image: {
+      ...capture.image,
+      dataUrl: `data:image/png;base64,${suffix}`,
+    },
+    context: { ...capture.context, timeframe },
+  };
+}
+
 const account = {
   emailMasked: 'k***n@example.com',
   plan: 'advance',
@@ -187,6 +197,86 @@ describe('fixed-origin ChartViz Cloud client', () => {
       }],
     });
     expect(JSON.stringify(metadata)).not.toContain(capture.image.dataUrl);
+  });
+
+  it('uploads three images in capture order with duration-normalized roles', async () => {
+    const fetcher = vi.fn().mockResolvedValue(jsonResponse({
+      requestId: 'c_20260828_multi', status: 'pending', progressEvents: [],
+      report: null, error: null,
+    }, 202));
+    const captures = [
+      captureAt('4h', 'AAAA'),
+      captureAt('1h', 'BBBB'),
+      captureAt('15m', 'CCCC'),
+    ];
+
+    await createCloudClient(fetcher).createTask(`cv_live_${'m'.repeat(43)}`, {
+      captures,
+      outputLanguage: 'en',
+    });
+
+    const form = (fetcher.mock.calls[0]?.[1] as RequestInit).body as FormData;
+    const metadata = JSON.parse(await (form.get('metadata') as Blob).text());
+    expect(form.getAll('images')).toHaveLength(3);
+    expect(await Promise.all(form.getAll('images').map(async (part) =>
+      Array.from(new Uint8Array(await (part as Blob).arrayBuffer()))
+    ))).toEqual([
+      [0, 0, 0],
+      [4, 16, 65],
+      [8, 32, 130],
+    ]);
+    expect(metadata.captures.map((item: Record<string, unknown>) => ({
+      captureId: item.captureId,
+      timeframe: item.timeframe,
+      role: item.role,
+    }))).toEqual([
+      { captureId: 'C01', timeframe: '4h', role: 'context' },
+      { captureId: 'C02', timeframe: '1h', role: 'setup' },
+      { captureId: 'C03', timeframe: '15m', role: 'trigger' },
+    ]);
+  });
+
+  it('normalizes two captures by canonical duration without reordering multipart images', async () => {
+    const fetcher = vi.fn().mockResolvedValue(jsonResponse({
+      requestId: 'c_20260828_two', status: 'pending', progressEvents: [],
+      report: null, error: null,
+    }, 202));
+
+    await createCloudClient(fetcher).createTask(`cv_live_${'n'.repeat(43)}`, {
+      captures: [captureAt('15m', 'AAAA'), captureAt('4h', 'BBBB')],
+      outputLanguage: 'zh-CN',
+    });
+
+    const form = (fetcher.mock.calls[0]?.[1] as RequestInit).body as FormData;
+    const metadata = JSON.parse(await (form.get('metadata') as Blob).text());
+    expect(metadata.captures.map((item: Record<string, unknown>) => ({
+      captureId: item.captureId, timeframe: item.timeframe, role: item.role,
+    }))).toEqual([
+      { captureId: 'C01', timeframe: '15m', role: 'setup_and_trigger' },
+      { captureId: 'C02', timeframe: '4h', role: 'context' },
+    ]);
+  });
+
+  it.each([
+    { captures: [], code: 'invalid_image' },
+    { captures: [captureAt('4h', 'AAAA'), captureAt('4h', 'BBBB')], code: 'unsupported_timeframe' },
+    { captures: [captureAt('45m', 'AAAA')], code: 'unsupported_timeframe' },
+    { captures: [{ ...capture, context: { ...capture.context, timeframe: '  ' } }], code: 'unsupported_timeframe' },
+    {
+      captures: [
+        captureAt('1d', 'AAAA'), captureAt('4h', 'BBBB'),
+        captureAt('1h', 'CCCC'), captureAt('15m', 'DDDD'),
+      ],
+      code: 'invalid_image',
+    },
+  ])('rejects invalid capture sets locally before a request', async ({ captures, code }) => {
+    const fetcher = vi.fn();
+
+    await expect(createCloudClient(fetcher).createTask(`cv_live_${'v'.repeat(43)}`, {
+      captures,
+      outputLanguage: 'en',
+    })).rejects.toMatchObject({ code });
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it('reads and cancels the exact scoped task path', async () => {

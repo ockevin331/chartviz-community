@@ -285,16 +285,16 @@ describe('direct Community panel workflow', () => {
   });
 
   it('restores an active Cloud task without inspecting or capturing again', async () => {
-    const restoredCapture = {
-      image: processedImage,
+    const restoredCaptures = (['4h', '1h', '15m'] as const).map((timeframe, index) => ({
+      image: { ...processedImage, dataUrl: `${processedImage.dataUrl}-${index}` },
       context: {
-        instrument: 'BTCUSD', timeframe: '15m', site: 'tradingview',
+        instrument: 'BTCUSD', timeframe, site: 'tradingview',
         exchange: 'BITSTAMP', pageType: 'advanced-chart' as const,
       },
-    };
+    }));
     const runtime = fakeCloudRuntime();
     runtime.restoreActiveAnalysis = vi.fn(async () => ({
-      captures: [restoredCapture], outputLanguage: 'zh-CN' as const,
+      captures: restoredCaptures, outputLanguage: 'zh-CN' as const,
     }));
     const inspectPage = vi.fn(inspect);
     const captureChart = vi.fn(capture);
@@ -328,7 +328,7 @@ describe('direct Community panel workflow', () => {
 
     await waitFor(() => expect(runtime.analyze).toHaveBeenCalledTimes(1));
     expect(runtime.analyze).toHaveBeenCalledWith(expect.objectContaining({
-      captures: [restoredCapture], outputLanguage: 'zh-CN',
+      captures: restoredCaptures, outputLanguage: 'zh-CN',
     }));
     expect(inspectPage).not.toHaveBeenCalled();
     expect(captureChart).not.toHaveBeenCalled();

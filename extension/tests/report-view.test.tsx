@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import fixture from '../contracts/extension-cloud/v1/fixtures/single-completed-task.json';
@@ -78,6 +78,58 @@ describe('ReportView presentation-1.0 visible structure', () => {
     }
     expect(postMessage).toHaveBeenCalledWith({ source: 'chartviz', type: 'image-lightbox-open' }, '*');
     expect(postMessage).toHaveBeenCalledWith({ source: 'chartviz', type: 'image-lightbox-close' }, '*');
+  });
+
+  it('opens each capture-specific result image with its exact source data URL', async () => {
+    const user = userEvent.setup();
+    const presentation = parseReportPresentationModel({
+      ...structuredClone(validPresentationBundle.report),
+      context: {
+        ...structuredClone(validPresentationBundle.report.context),
+        captures: [
+          { ...validPresentationBundle.report.context.captures[0], captureId: 'C01', timeframe: '4h', role: 'context' },
+          { ...validPresentationBundle.report.context.captures[0], captureId: 'C02', timeframe: '1h', role: 'setup' },
+          { ...validPresentationBundle.report.context.captures[0], captureId: 'C03', timeframe: '15m', role: 'trigger' },
+        ],
+      },
+      tradeSignals: validPresentationBundle.report.tradeSignals.map((signal) => ({
+        ...signal, captureId: 'C03',
+      })),
+      patterns: validPresentationBundle.report.patterns.map((pattern) => ({
+        ...pattern, captureId: 'C02',
+      })),
+      timeframeViews: [
+        { ...validPresentationBundle.report.timeframeViews[0], captureId: 'C01', timeframe: '4h', role: 'context' },
+        { ...validPresentationBundle.report.timeframeViews[0], captureId: 'C02', timeframe: '1h', role: 'setup' },
+        { ...validPresentationBundle.report.timeframeViews[0], captureId: 'C03', timeframe: '15m', role: 'trigger' },
+      ],
+    });
+    const original = { ...processedImage, dataUrl: 'data:image/png;base64,C01SOURCE' };
+    const annotations = {
+      levels: {
+        C01: { ...presentationAnnotatedImages.levels.C01!, dataUrl: 'data:image/png;base64,C01LEVELS' },
+      },
+      signals: {
+        S01: { ...presentationAnnotatedImages.signals.S01!, dataUrl: 'data:image/png;base64,C03SIGNAL' },
+      },
+      patterns: {
+        P01: { ...presentationAnnotatedImages.patterns.P01!, dataUrl: 'data:image/png;base64,C02PATTERN' },
+      },
+    };
+    render(<ReportView language="en" presentation={presentation} original={original} annotations={annotations} />);
+
+    for (const [title, dataUrl] of [
+      ['Original screenshot', original.dataUrl],
+      ['Support and resistance', annotations.levels.C01.dataUrl],
+      ['S01 · LONG', annotations.signals.S01.dataUrl],
+      ['Rising channel', annotations.patterns.P01.dataUrl],
+    ] as const) {
+      await user.click(screen.getByRole('button', { name: `Zoom: ${title}` }));
+      const dialog = screen.getByRole('dialog', { name: title });
+      expect(within(dialog).getByRole('img').getAttribute('src')).toBe(dataUrl);
+      await user.click(within(dialog).getByRole('button', { name: 'Close' }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+    }
   });
 
   it('copies the same V3-visible modules without wrapper or hidden schema fields', async () => {

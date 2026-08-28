@@ -134,27 +134,69 @@ function imageBlob(capture: AnalysisCapture): Blob {
   }
 }
 
+const timeframeDurations = Object.freeze({
+  '1m': 1,
+  '3m': 3,
+  '5m': 5,
+  '15m': 15,
+  '30m': 30,
+  '1h': 60,
+  '2h': 120,
+  '4h': 240,
+  '6h': 360,
+  '8h': 480,
+  '12h': 720,
+  '1d': 1440,
+  '3d': 4320,
+  '1w': 10080,
+  '1M': 43200,
+} as const);
+
+type NormalizedCaptureRole = 'context' | 'setup' | 'trigger' | 'setup_and_trigger' | null;
+
+function normalizedRoles(timeframes: readonly string[]): readonly NormalizedCaptureRole[] {
+  let rolesByDuration: readonly NormalizedCaptureRole[];
+  if (timeframes.length === 1) rolesByDuration = [null];
+  else if (timeframes.length === 2) rolesByDuration = ['context', 'setup_and_trigger'];
+  else rolesByDuration = ['context', 'setup', 'trigger'];
+  const orderedIndices = timeframes
+    .map((_, index) => index)
+    .sort((left, right) => (
+      timeframeDurations[timeframes[right] as keyof typeof timeframeDurations]
+      - timeframeDurations[timeframes[left] as keyof typeof timeframeDurations]
+    ));
+  const result: NormalizedCaptureRole[] = Array(timeframes.length).fill(null);
+  orderedIndices.forEach((captureIndex, roleIndex) => {
+    result[captureIndex] = rolesByDuration[roleIndex] ?? null;
+  });
+  return result;
+}
+
 function taskForm(input: CloudTaskCreateInput): FormData {
-  if (input.captures.length !== 1) {
-    throw new CloudConnectionError('multi_timeframe_requires_advance');
+  if (input.captures.length < 1 || input.captures.length > 3) {
+    throw new CloudConnectionError('invalid_image');
   }
-  const capture = input.captures[0];
-  if (!capture) throw new CloudConnectionError('invalid_image');
-  const timeframe = capture.context.timeframe?.trim();
-  if (!timeframe) throw new CloudConnectionError('unsupported_timeframe');
+  const timeframes = input.captures.map((capture) => capture.context.timeframe?.trim() ?? '');
+  if (timeframes.some((timeframe) => !(timeframe in timeframeDurations))) {
+    throw new CloudConnectionError('unsupported_timeframe');
+  }
+  if (new Set(timeframes).size !== timeframes.length) {
+    throw new CloudConnectionError('unsupported_timeframe');
+  }
+  const roles = normalizedRoles(timeframes);
   const metadata = {
     outputLanguage: input.outputLanguage,
-    captures: [{
-      captureId: 'C01',
-      timeframe,
-      role: null,
+    captures: input.captures.map((capture, index) => ({
+      captureId: `C${String(index + 1).padStart(2, '0')}`,
+      timeframe: timeframes[index]!,
+      role: roles[index]!,
       instrument: capture.context.instrument?.trim() || null,
       site: capture.context.site?.trim() || null,
       venue: capture.context.exchange?.trim() || null,
       pageType: capture.context.pageType ?? null,
       width: capture.image.width,
       height: capture.image.height,
-    }],
+    })),
   };
   const form = new FormData();
   form.append(
@@ -162,11 +204,10 @@ function taskForm(input: CloudTaskCreateInput): FormData {
     new Blob([JSON.stringify(metadata)], { type: 'application/json' }),
     'metadata.json',
   );
-  form.append(
-    'images',
-    imageBlob(capture),
-    capture.image.mediaType === 'image/png' ? 'chart.png' : 'chart.jpg',
-  );
+  input.captures.forEach((capture, index) => {
+    const extension = capture.image.mediaType === 'image/png' ? 'png' : 'jpg';
+    form.append('images', imageBlob(capture), `chart-C${String(index + 1).padStart(2, '0')}.${extension}`);
+  });
   return form;
 }
 

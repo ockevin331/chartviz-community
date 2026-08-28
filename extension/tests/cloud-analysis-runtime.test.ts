@@ -21,6 +21,60 @@ const capture: AnalysisCapture = {
   },
 };
 
+const captures: readonly AnalysisCapture[] = [
+  { ...capture, image: { ...capture.image, dataUrl: 'data:image/png;base64,AAAA' }, context: { ...capture.context, timeframe: '4h' } },
+  { ...capture, image: { ...capture.image, dataUrl: 'data:image/png;base64,BBBB' }, context: { ...capture.context, timeframe: '1h' } },
+  { ...capture, image: { ...capture.image, dataUrl: 'data:image/png;base64,CCCC' }, context: { ...capture.context, timeframe: '15m' } },
+];
+
+const multiCaptureMetadata = [
+  { captureId: 'C01', timeframe: '4h', role: 'context' as const },
+  { captureId: 'C02', timeframe: '1h', role: 'setup' as const },
+  { captureId: 'C03', timeframe: '15m', role: 'trigger' as const },
+];
+
+function multiCompletedTask() {
+  const value = structuredClone(fixture);
+  return parseExtensionAnalysisTask({
+    ...value,
+    report: {
+      ...value.report,
+      context: {
+        ...value.report.context,
+        captures: multiCaptureMetadata.map((item) => ({
+          ...value.report.context.captures[0]!,
+          ...item,
+        })),
+      },
+      timeframeViews: multiCaptureMetadata.map((item) => ({
+        ...value.report.timeframeViews[0]!,
+        ...item,
+      })),
+    },
+  });
+}
+
+function multiPresentationBundle() {
+  const value = structuredClone(validPresentationBundle);
+  return parsePresentationBundle({
+    ...value,
+    report: {
+      ...value.report,
+      context: {
+        ...value.report.context,
+        captures: multiCaptureMetadata.map((item) => ({
+          ...value.report.context.captures[0]!,
+          ...item,
+        })),
+      },
+      timeframeViews: multiCaptureMetadata.map((item) => ({
+        ...value.report.timeframeViews[0]!,
+        ...item,
+      })),
+    },
+  });
+}
+
 const completed = parseExtensionAnalysisTask(fixture);
 const pending = parseExtensionAnalysisTask({
   requestId: 'c_20260828_active', status: 'pending',
@@ -40,6 +94,7 @@ function dependencies(options: {
   active?: StoredCloudActiveTask | null;
   tasks?: typeof completed[];
   cancelTask?: CloudClient['cancelTask'];
+  presentation?: ReturnType<typeof parsePresentationBundle>;
 } = {}) {
   let active = options.active ?? null;
   const tasks = [...(options.tasks ?? [processing, completed])];
@@ -56,7 +111,8 @@ function dependencies(options: {
     clear: vi.fn(async () => { active = null; }),
   };
   const sleep = vi.fn(async (_delay: number, _signal: AbortSignal): Promise<void> => undefined);
-  const adaptPresentation = vi.fn(() => parsePresentationBundle(structuredClone(validPresentationBundle)));
+  const adaptPresentation = vi.fn(() => options.presentation
+    ?? parsePresentationBundle(structuredClone(validPresentationBundle)));
   const buildAnnotations = vi.fn(async () => presentationAnnotatedImages);
   const runtime = new CloudAnalysisRuntime({
     client,
@@ -78,7 +134,7 @@ describe('CloudAnalysisRuntime', () => {
       captures: [capture], outputLanguage: 'en', onProgress: progress,
     });
 
-    expect(test.runtime.capabilities()).toEqual({ multiTimeframe: false, maxTimeframes: 1 });
+    expect(test.runtime.capabilities()).toEqual({ multiTimeframe: true, maxTimeframes: 3 });
     expect(test.client.createTask).toHaveBeenCalledTimes(1);
     expect(test.storage.save).toHaveBeenCalledBefore(test.client.task);
     expect(test.sleep.mock.calls.map((call) => call[0])).toEqual([1000, 2000]);
@@ -96,27 +152,96 @@ describe('CloudAnalysisRuntime', () => {
     expect(test.storage.clear).toHaveBeenCalledTimes(1);
   });
 
-  it('rejects multiple captures before loading credentials or uploading', async () => {
+  it('persists and annotates three exact source images in report capture order', async () => {
+    const completedMulti = multiCompletedTask();
+    const presentation = multiPresentationBundle();
+    const test = dependencies({ tasks: [completedMulti], presentation });
+
+    await test.runtime.analyze({ captures, outputLanguage: 'en' });
+
+    expect(test.client.createTask).toHaveBeenCalledWith(token, {
+      captures,
+      outputLanguage: 'en',
+    });
+    expect(test.storage.save).toHaveBeenCalledWith({
+      requestId: pending.requestId,
+      captures,
+      outputLanguage: 'en',
+    });
+    expect(test.storage.save).toHaveBeenCalledBefore(test.client.task);
+    expect(test.buildAnnotations).toHaveBeenCalledWith([
+      { captureId: 'C01', image: captures[0]!.image },
+      { captureId: 'C02', image: captures[1]!.image },
+      { captureId: 'C03', image: captures[2]!.image },
+    ], presentation.drawings);
+  });
+
+  it.each([
+    { invalidCaptures: [] },
+    { invalidCaptures: [capture, capture, capture, capture] },
+  ])('rejects capture counts outside one through three before loading credentials', async ({ invalidCaptures }) => {
     const test = dependencies();
 
     await expect(test.runtime.analyze({
-      captures: [capture, capture], outputLanguage: 'en',
-    })).rejects.toMatchObject({ code: 'multi_timeframe_requires_cloud' });
+      captures: invalidCaptures, outputLanguage: 'en',
+    })).rejects.toMatchObject({ code: 'invalid_image' });
     expect(test.client.createTask).not.toHaveBeenCalled();
   });
 
   it('restores locally without a network call and resumes without duplicate creation', async () => {
-    const active = { requestId: 'c_20260828_active', capture, outputLanguage: 'zh-CN' as const };
-    const test = dependencies({ active, tasks: [completed] });
+    const active = { requestId: 'c_20260828_active', captures, outputLanguage: 'zh-CN' as const };
+    const test = dependencies({
+      active,
+      tasks: [multiCompletedTask()],
+      presentation: multiPresentationBundle(),
+    });
 
     await expect(test.runtime.restoreActiveAnalysis()).resolves.toEqual({
-      captures: [capture], outputLanguage: 'zh-CN',
+      captures, outputLanguage: 'zh-CN',
     });
     expect(test.client.task).not.toHaveBeenCalled();
+    expect(test.storage.clear).not.toHaveBeenCalled();
 
-    await test.runtime.analyze({ captures: [capture], outputLanguage: 'zh-CN' });
+    await test.runtime.analyze({ captures, outputLanguage: 'zh-CN' });
     expect(test.client.createTask).not.toHaveBeenCalled();
     expect(test.client.task).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects and clears a completed report whose capture count differs from stored sources', async () => {
+    const test = dependencies({ tasks: [completed] });
+
+    await expect(test.runtime.analyze({ captures, outputLanguage: 'en' }))
+      .rejects.toMatchObject({ code: 'incompatible_report_schema' });
+
+    expect(test.adaptPresentation).not.toHaveBeenCalled();
+    expect(test.buildAnnotations).not.toHaveBeenCalled();
+    expect(test.storage.clear).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects and clears a completed report whose timeframe sequence differs from stored sources', async () => {
+    const test = dependencies({
+      tasks: [multiCompletedTask()],
+      presentation: multiPresentationBundle(),
+    });
+    const wrongOrder = [captures[0]!, captures[2]!, captures[1]!];
+
+    await expect(test.runtime.analyze({ captures: wrongOrder, outputLanguage: 'en' }))
+      .rejects.toMatchObject({ code: 'incompatible_report_schema' });
+
+    expect(test.adaptPresentation).not.toHaveBeenCalled();
+    expect(test.buildAnnotations).not.toHaveBeenCalled();
+    expect(test.storage.clear).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears saved captures when polling reports task_not_found', async () => {
+    const test = dependencies({ tasks: [] });
+    test.client.task.mockRejectedValue(new CloudConnectionError('task_not_found'));
+
+    await expect(test.runtime.analyze({ captures: [capture], outputLanguage: 'en' }))
+      .rejects.toMatchObject({ code: 'task_not_found' });
+
+    expect(test.storage.save).toHaveBeenCalledTimes(1);
+    expect(test.storage.clear).toHaveBeenCalledTimes(1);
   });
 
   it('stops local polling and sends one idempotent cancellation request', async () => {
@@ -134,6 +259,7 @@ describe('CloudAnalysisRuntime', () => {
 
     await expect(operation).rejects.toMatchObject({ code: 'cancelled' });
     expect(test.client.cancelTask).toHaveBeenCalledTimes(1);
+    expect(test.storage.clear).toHaveBeenCalledTimes(1);
   });
 
   it('returns completion when completion wins the cancel race', async () => {

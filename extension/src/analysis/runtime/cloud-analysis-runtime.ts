@@ -74,8 +74,8 @@ const defaultDependencies: CloudAnalysisRuntimeDependencies = {
 };
 
 const cloudCapabilities = Object.freeze({
-  multiTimeframe: false,
-  maxTimeframes: 1,
+  multiTimeframe: true,
+  maxTimeframes: 3,
 } as const);
 
 function cloudFailure(error: CloudConnectionError): AnalysisRuntimeFailure {
@@ -119,7 +119,7 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
   }> | null> {
     const active = await this.dependencies.activeTask.load();
     return active
-      ? { captures: [active.capture], outputLanguage: active.outputLanguage }
+      ? { captures: active.captures, outputLanguage: active.outputLanguage }
       : null;
   }
 
@@ -147,9 +147,18 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
 
   private async completedOutcome(
     task: ExtensionAnalysisTask,
-    capture: AnalysisCapture,
+    captures: readonly AnalysisCapture[],
   ): Promise<AnalysisRuntimeOutcome> {
     if (!task.report) {
+      await this.dependencies.activeTask.clear();
+      throw new AnalysisRuntimeFailure('incompatible_report_schema');
+    }
+    const reportCaptures = task.report.context.captures;
+    const sourceTimeframes = captures.map(({ context }) => context.timeframe);
+    if (
+      reportCaptures.length !== captures.length
+      || reportCaptures.some((metadata, index) => metadata.timeframe !== sourceTimeframes[index])
+    ) {
       await this.dependencies.activeTask.clear();
       throw new AnalysisRuntimeFailure('incompatible_report_schema');
     }
@@ -160,11 +169,20 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
       await this.dependencies.activeTask.clear();
       throw new AnalysisRuntimeFailure('incompatible_report_schema');
     }
+    if (
+      presentation.report.context.captures.length !== captures.length
+      || presentation.report.context.captures.some(
+        (metadata, index) => metadata.timeframe !== sourceTimeframes[index],
+      )
+    ) {
+      await this.dependencies.activeTask.clear();
+      throw new AnalysisRuntimeFailure('incompatible_report_schema');
+    }
     let annotations: PresentationAnnotatedImages;
     try {
       const sources = presentation.report.context.captures.map((metadata, index) => ({
         captureId: metadata.captureId,
-        image: index === 0 ? capture.image : capture.image,
+        image: captures[index]!.image,
       }));
       annotations = await this.dependencies.buildAnnotations(sources, presentation.drawings);
     } catch {
@@ -177,9 +195,9 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
 
   private async terminalOutcome(
     task: ExtensionAnalysisTask,
-    capture: AnalysisCapture,
+    captures: readonly AnalysisCapture[],
   ): Promise<AnalysisRuntimeOutcome | null> {
-    if (task.status === 'completed') return this.completedOutcome(task, capture);
+    if (task.status === 'completed') return this.completedOutcome(task, captures);
     if (task.status === 'failed') {
       await this.dependencies.activeTask.clear();
       throw taskFailure(task);
@@ -192,11 +210,9 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
   }
 
   async analyze(input: AnalysisRuntimeInput): Promise<AnalysisRuntimeOutcome> {
-    if (input.captures.length !== 1) {
-      throw new AnalysisRuntimeFailure('multi_timeframe_requires_cloud');
+    if (input.captures.length < 1 || input.captures.length > 3) {
+      throw new AnalysisRuntimeFailure('invalid_image');
     }
-    const inputCapture = input.captures[0];
-    if (!inputCapture) throw new AnalysisRuntimeFailure('invalid_image');
     const controller = new AbortController();
     const seenProgress = new Set<ProgressMessage>();
     this.pollingController = controller;
@@ -204,7 +220,7 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
     this.cancelResponse = null;
     this.activeRequestId = null;
     this.activeToken = null;
-    let capture = inputCapture;
+    let captures = input.captures;
 
     try {
       const connection = await this.dependencies.connection.load();
@@ -213,7 +229,7 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
       const stored = await this.dependencies.activeTask.load();
       let task: ExtensionAnalysisTask;
       if (stored) {
-        capture = stored.capture;
+        captures = stored.captures;
         this.activeRequestId = stored.requestId;
         task = await this.dependencies.client.task(
           connection.token,
@@ -222,19 +238,19 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
         );
       } else {
         task = await this.dependencies.client.createTask(connection.token, {
-          captures: [inputCapture],
+          captures,
           outputLanguage: input.outputLanguage,
         });
         this.activeRequestId = task.requestId;
         await this.dependencies.activeTask.save({
           requestId: task.requestId,
-          capture: inputCapture,
+          captures,
           outputLanguage: input.outputLanguage,
         });
         if (this.cancelRequested) this.startServerCancel();
       }
       this.emitProgress(task, seenProgress, input.onProgress);
-      const immediate = await this.terminalOutcome(task, capture);
+      const immediate = await this.terminalOutcome(task, captures);
       if (immediate) return immediate;
 
       let attempt = 0;
@@ -248,22 +264,25 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
           controller.signal,
         );
         this.emitProgress(task, seenProgress, input.onProgress);
-        const outcome = await this.terminalOutcome(task, capture);
+        const outcome = await this.terminalOutcome(task, captures);
         if (outcome) return outcome;
       }
     } catch (error) {
       if (controller.signal.aborted || this.cancelRequested) {
         const terminal = await (this.cancelResponse ?? this.startServerCancel());
         if (terminal?.status === 'completed') {
-          return this.completedOutcome(terminal, capture);
+          return this.completedOutcome(terminal, captures);
         }
-        if (terminal?.status === 'cancelled') {
-          await this.dependencies.activeTask.clear();
-        }
+        await this.dependencies.activeTask.clear();
         throw new AnalysisRuntimeFailure('cancelled');
       }
       if (error instanceof AnalysisRuntimeFailure) throw error;
-      if (error instanceof CloudConnectionError) throw cloudFailure(error);
+      if (error instanceof CloudConnectionError) {
+        if (['task_not_found', 'task_failed', 'task_cancelled'].includes(error.code)) {
+          await this.dependencies.activeTask.clear();
+        }
+        throw cloudFailure(error);
+      }
       throw new AnalysisRuntimeFailure('unknown');
     } finally {
       if (this.pollingController === controller) this.pollingController = null;
