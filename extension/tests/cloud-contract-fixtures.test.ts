@@ -120,6 +120,31 @@ describe('Extension Cloud contract bundle', () => {
     expect(operation.get.security).toEqual([{ CloudToken: [] }]);
   });
 
+  it('publishes the authenticated binary task capture download operation', () => {
+    const document = loadJson('openapi.json') as {
+      paths: Record<string, Record<string, {
+        operationId: string;
+        security: Array<Record<string, unknown[]>>;
+        responses: Record<string, {
+          content: Record<string, { schema: unknown }>;
+        }>;
+      }>>;
+    };
+    const operation = document.paths['/api/v1/extension/analysis-tasks/{task_id}/captures/{capture_id}'];
+    if (!operation?.get) throw new Error('task capture GET operation missing');
+    expect(operation.get.operationId).toBe('getExtensionAnalysisCapture');
+    expect(operation.get.security).toEqual([{ CloudToken: [] }]);
+    expect(operation.get.responses['200']?.content['image/png']?.schema).toEqual({
+      type: 'string',
+      format: 'binary',
+    });
+    for (const status of ['401', '403', '404', '503']) {
+      expect(operation.get.responses[status]?.content['application/json']?.schema).toEqual({
+        $ref: '#/components/schemas/ExtensionApiError',
+      });
+    }
+  });
+
   it('strictly parses the website-controlled three-entry capture settings', async () => {
     const schemaModule = await import('../src/cloud/cloud-account-schema') as Record<string, unknown>;
     const parser = schemaModule.parseExtensionCaptureSettings;
