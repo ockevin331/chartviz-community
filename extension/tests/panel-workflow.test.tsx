@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../entrypoints/panel/App';
@@ -8,6 +8,7 @@ import {
   type AnalysisRuntime,
   type AnalysisRuntimeInput,
   type AnalysisRuntimeOutcome,
+  type RestoredActiveAnalysis,
 } from '../src/analysis/runtime/analysis-runtime';
 import { ChartAvailabilityError } from '../src/capture/active-chart';
 import { unavailableCloudGateway } from '../src/cloud/cloud-gateway';
@@ -55,6 +56,34 @@ const disconnectedCloudManager: CloudConnectionManager = {
   connect: async () => ({ status: 'disconnected', account: null, errorCode: null }),
   disconnect: async () => ({ status: 'disconnected', account: null, errorCode: null }),
 };
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
+
+function connectedCloudManager(): CloudConnectionManager {
+  return {
+    load: vi.fn(async () => ({
+      status: 'connected' as const,
+      errorCode: null,
+      account: {
+        emailMasked: 'a***z@example.com', plan: 'pro' as const,
+        currentPeriodEnd: '2026-09-28T00:00:00+00:00',
+        quota: { limit: 50, used: 1, remaining: 49, unlimited: false },
+        selectedModel: { id: 'openai/gpt-5.4', name: 'GPT-5.4', quotaCost: 2 },
+        entitlements: { multiTimeframe: false, maxCaptures: 1 },
+      },
+    })),
+    connect: disconnectedCloudManager.connect,
+    disconnect: disconnectedCloudManager.disconnect,
+  };
+}
 
 function fakeRuntime(
   analyzeImplementation: (input: AnalysisRuntimeInput) => Promise<AnalysisRuntimeOutcome>
@@ -500,6 +529,160 @@ describe('direct Community panel workflow', () => {
 
     expect(await screen.findByRole('heading', { name: 'Detected chart' })).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
+    expect(runtime.analyze).not.toHaveBeenCalled();
+  });
+
+  it('keeps refreshed context when an older startup restoration resolves', async () => {
+    const user = userEvent.setup();
+    const restoration = deferred<RestoredActiveAnalysis | null>();
+    const runtime = fakeCloudRuntime();
+    runtime.restoreActiveAnalysis = vi.fn(() => restoration.promise);
+    const refreshedContext = {
+      ...chartContext,
+      symbol: 'ETHUSD',
+      url: 'https://www.tradingview.com/chart/new/?symbol=BITSTAMP%3AETHUSD',
+    };
+
+    render(<App dependencies={{
+      loadConfig: async () => null,
+      loadMode: async () => 'cloud',
+      saveMode: async () => undefined,
+      cloudGateway: {
+        availability: () => ({ available: true }),
+        runtime: () => runtime,
+      },
+      cloudConnectionManager: connectedCloudManager(),
+      inspect: vi.fn(async () => refreshedContext),
+      capture,
+    }} />);
+
+    await waitFor(() => expect(runtime.restoreActiveAnalysis).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: 'Refresh' }));
+    await user.click(screen.getByRole('button', { name: 'Refresh' }));
+
+    expect(await screen.findByText('ETHUSD')).toBeTruthy();
+    expect(runtime.cancel).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      restoration.resolve({ captures: outcome.captures, outputLanguage: 'en' });
+      await restoration.promise;
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('ETHUSD')).toBeTruthy();
+    expect(runtime.analyze).not.toHaveBeenCalled();
+    expect(screen.queryByText('Higher lows remain visible.')).toBeNull();
+  });
+
+  it('keeps context-change state when an older startup restoration resolves', async () => {
+    const restoration = deferred<RestoredActiveAnalysis | null>();
+    const runtime = fakeCloudRuntime();
+    runtime.restoreActiveAnalysis = vi.fn(() => restoration.promise);
+    const changedContext = {
+      ...chartContext,
+      symbol: 'SOLUSD',
+      url: 'https://www.tradingview.com/chart/new/?symbol=COINBASE%3ASOLUSD',
+    };
+
+    render(<App dependencies={{
+      loadConfig: async () => null,
+      loadMode: async () => 'cloud',
+      saveMode: async () => undefined,
+      cloudGateway: {
+        availability: () => ({ available: true }),
+        runtime: () => runtime,
+      },
+      cloudConnectionManager: connectedCloudManager(),
+      inspect: vi.fn(async () => changedContext),
+      capture,
+    }} />);
+
+    await waitFor(() => expect(runtime.restoreActiveAnalysis).toHaveBeenCalledTimes(1));
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', {
+        source: window.parent,
+        data: { source: 'chartviz-page', type: 'context-changed' },
+      }));
+    });
+
+    expect(await screen.findByText('SOLUSD')).toBeTruthy();
+    expect(runtime.cancel).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      restoration.resolve({ captures: outcome.captures, outputLanguage: 'en' });
+      await restoration.promise;
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('SOLUSD')).toBeTruthy();
+    expect(runtime.analyze).not.toHaveBeenCalled();
+    expect(screen.queryByText('Higher lows remain visible.')).toBeNull();
+  });
+
+  it('does not surface a stale restore failure after refresh', async () => {
+    const user = userEvent.setup();
+    const restoration = deferred<RestoredActiveAnalysis | null>();
+    const runtime = fakeCloudRuntime();
+    runtime.restoreActiveAnalysis = vi.fn(() => restoration.promise);
+
+    render(<App dependencies={{
+      loadConfig: async () => null,
+      loadMode: async () => 'cloud',
+      saveMode: async () => undefined,
+      cloudGateway: {
+        availability: () => ({ available: true }),
+        runtime: () => runtime,
+      },
+      cloudConnectionManager: connectedCloudManager(),
+      inspect,
+      capture,
+    }} />);
+
+    await waitFor(() => expect(runtime.restoreActiveAnalysis).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: 'Refresh' }));
+    expect(await screen.findByText('BTCUSD')).toBeTruthy();
+
+    await act(async () => {
+      restoration.reject(new AnalysisRuntimeFailure('service_unavailable'));
+      try {
+        await restoration.promise;
+      } catch {
+        // The App owns and sanitizes the stale restoration rejection.
+      }
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByText('BTCUSD')).toBeTruthy();
+    expect(runtime.analyze).not.toHaveBeenCalled();
+  });
+
+  it('cancels a pending startup restoration when the panel unmounts', async () => {
+    const restoration = deferred<RestoredActiveAnalysis | null>();
+    const runtime = fakeCloudRuntime();
+    runtime.restoreActiveAnalysis = vi.fn(() => restoration.promise);
+    const panel = render(<App dependencies={{
+      loadConfig: async () => null,
+      loadMode: async () => 'cloud',
+      saveMode: async () => undefined,
+      cloudGateway: {
+        availability: () => ({ available: true }),
+        runtime: () => runtime,
+      },
+      cloudConnectionManager: connectedCloudManager(),
+      inspect,
+      capture,
+    }} />);
+
+    await waitFor(() => expect(runtime.restoreActiveAnalysis).toHaveBeenCalledTimes(1));
+    panel.unmount();
+
+    expect(runtime.cancel).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      restoration.resolve({ captures: outcome.captures, outputLanguage: 'en' });
+      await restoration.promise;
+      await Promise.resolve();
+    });
     expect(runtime.analyze).not.toHaveBeenCalled();
   });
 

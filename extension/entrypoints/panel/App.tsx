@@ -99,6 +99,13 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     controller.configure(runtime);
   }, [controller.configure]);
 
+  const cancelRestoration = useCallback(() => {
+    restorationAttempt.current += 1;
+    const runtime = restorationRuntime.current;
+    restorationRuntime.current = null;
+    runtime?.cancel();
+  }, []);
+
   const restoreCloudRuntime = useCallback(async (
     runtime: AnalysisRuntime,
     attempt: number,
@@ -106,6 +113,7 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     try {
       const restored = await runtime.restoreActiveAnalysis?.();
       if (restorationAttempt.current !== attempt) return;
+      if (restorationRuntime.current === runtime) restorationRuntime.current = null;
       setRestoreError(null);
       const first = restored?.captures[0];
       if (!restored || !first) return;
@@ -114,16 +122,18 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
       void controller.analyze(first.context, restored.outputLanguage);
     } catch (error) {
       if (restorationAttempt.current !== attempt) return;
-      setRestoreError(
-        error instanceof AnalysisRuntimeFailure && error.code === 'service_unavailable'
-          ? new AnalysisRuntimeFailure('service_unavailable')
-          : null,
-      );
+      if (error instanceof AnalysisRuntimeFailure && error.code === 'service_unavailable') {
+        setRestoreError(new AnalysisRuntimeFailure('service_unavailable'));
+      } else {
+        if (restorationRuntime.current === runtime) restorationRuntime.current = null;
+        setRestoreError(null);
+      }
     }
   }, [controller.restoreCaptures, controller.analyze]);
 
   useEffect(() => {
     let current = true;
+    let startupAttempt: number | null = null;
     void (async () => {
       try {
         void dependencies.cleanupLegacyCloudAnalysisStorage().catch(() => undefined);
@@ -149,16 +159,23 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
           activateRuntime(runtime);
           restorationRuntime.current = runtime;
           const attempt = ++restorationAttempt.current;
+          startupAttempt = attempt;
           await restoreCloudRuntime(runtime, attempt);
         }
       }
     })().catch(() => {
       // Startup restore failures stay local and leave the configured source state available.
-    }).finally(() => { if (current) setLoading(false); });
+    }).finally(() => {
+      if (
+        current
+        && (startupAttempt === null || restorationAttempt.current === startupAttempt)
+      ) {
+        setLoading(false);
+      }
+    });
     return () => {
       current = false;
-      restorationRuntime.current = null;
-      restorationAttempt.current += 1;
+      cancelRestoration();
     };
   }, [
     dependencies.loadConfig,
@@ -168,6 +185,7 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     dependencies.cloudConnectionManager,
     dependencies.cleanupLegacyCloudAnalysisStorage,
     activateRuntime,
+    cancelRestoration,
     restoreCloudRuntime,
   ]);
 
@@ -183,10 +201,13 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
   }, [restoreCloudRuntime]);
 
   const refreshAll = useCallback(() => {
+    cancelRestoration();
+    setRestoreError(null);
+    setLoading(false);
     lastContext.current = null;
     setContextRevision((revision) => revision + 1);
     controller.refresh();
-  }, [controller.refresh]);
+  }, [cancelRestoration, controller.refresh]);
 
   useEffect(() => {
     function handlePageMessage(event: MessageEvent) {
