@@ -38,9 +38,11 @@
           "captureId": "C01",
           "height": 720,
           "instrument": "BTC/USDT",
+          "pageType": "advanced-chart",
           "role": null,
           "site": "tradingview",
           "timeframe": "15m",
+          "venue": "TradingView",
           "width": 1280
         }
       ],

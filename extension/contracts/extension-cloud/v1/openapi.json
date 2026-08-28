@@ -326,6 +326,25 @@
             "default": null,
             "title": "Instrument"
           },
+          "pageType": {
+            "anyOf": [
+              {
+                "enum": [
+                  "advanced-chart",
+                  "spot-trade",
+                  "futures-trade",
+                  "stock-trade",
+                  "web3-token"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Pagetype"
+          },
           "role": {
             "anyOf": [
               {
@@ -361,6 +380,19 @@
             "minLength": 1,
             "title": "Timeframe",
             "type": "string"
+          },
+          "venue": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Venue"
           },
           "width": {
             "maximum": 10000,

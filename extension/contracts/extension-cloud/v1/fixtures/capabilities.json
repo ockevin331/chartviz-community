@@ -4,13 +4,13 @@
   "features": {
     "advancedAnnotations": true,
     "cloudManagedModels": true,
-    "multiTimeframe": true,
+    "multiTimeframe": false,
     "taskCancellation": true,
     "taskResume": true
   },
   "limits": {
-    "maxImages": 3,
-    "maxTimeframes": 3
+    "maxImages": 1,
+    "maxTimeframes": 1
   },
   "reportSchemaVersion": "extension-report-1.0"
 }

@@ -38,27 +38,33 @@
           "captureId": "C01",
           "height": 720,
           "instrument": "BTC/USDT",
+          "pageType": "advanced-chart",
           "role": "context",
           "site": "tradingview",
           "timeframe": "4h",
+          "venue": "TradingView",
           "width": 1280
         },
         {
           "captureId": "C02",
           "height": 720,
           "instrument": "BTC/USDT",
+          "pageType": "advanced-chart",
           "role": "setup",
           "site": "tradingview",
           "timeframe": "1h",
+          "venue": "TradingView",
           "width": 1280
         },
         {
           "captureId": "C03",
           "height": 720,
           "instrument": "BTC/USDT",
+          "pageType": "advanced-chart",
           "role": "trigger",
           "site": "tradingview",
           "timeframe": "15m",
+          "venue": "TradingView",
           "width": 1280
         }
       ],

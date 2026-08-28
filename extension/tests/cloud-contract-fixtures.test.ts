@@ -79,6 +79,17 @@ describe('Extension Cloud contract bundle', () => {
     ]);
   });
 
+  it('advertises only the C2 single-timeframe cloud loop', () => {
+    const capabilities = loadJson('fixtures/capabilities.json') as {
+      limits: { maxImages: number; maxTimeframes: number };
+      features: { multiTimeframe: boolean; taskCancellation: boolean; taskResume: boolean };
+    };
+    expect(capabilities.limits).toEqual({ maxImages: 1, maxTimeframes: 1 });
+    expect(capabilities.features.multiTimeframe).toBe(false);
+    expect(capabilities.features.taskCancellation).toBe(true);
+    expect(capabilities.features.taskResume).toBe(true);
+  });
+
   it('rejects private fields that are not in the public report contract', () => {
     const task = structuredClone(loadJson('fixtures/single-completed-task.json')) as {
       report: Record<string, unknown>;

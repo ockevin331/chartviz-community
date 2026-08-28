@@ -204,6 +204,11 @@ export interface components {
              */
             instrument: string | null;
             /**
+             * Pagetype
+             * @default null
+             */
+            pageType: ("advanced-chart" | "spot-trade" | "futures-trade" | "stock-trade" | "web3-token") | null;
+            /**
              * Role
              * @default null
              */
@@ -215,6 +220,11 @@ export interface components {
             site: string | null;
             /** Timeframe */
             timeframe: string;
+            /**
+             * Venue
+             * @default null
+             */
+            venue: string | null;
             /** Width */
             width: number;
         };
