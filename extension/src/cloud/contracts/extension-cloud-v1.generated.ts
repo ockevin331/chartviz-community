@@ -84,6 +84,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/extension/capture-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getExtensionCaptureSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -212,7 +228,7 @@ export interface components {
              * Role
              * @default null
              */
-            role: ("context" | "setup" | "trigger") | null;
+            role: ("context" | "setup" | "trigger" | "setup_and_trigger") | null;
             /**
              * Site
              * @default null
@@ -227,6 +243,21 @@ export interface components {
             venue: string | null;
             /** Width */
             width: number;
+        };
+        /** ExtensionCaptureSetting */
+        ExtensionCaptureSetting: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "context" | "setup" | "trigger";
+            /** Timeframe */
+            timeframe: string;
+        };
+        /** ExtensionCaptureSettings */
+        ExtensionCaptureSettings: {
+            /** Timeframes */
+            timeframes: components["schemas"]["ExtensionCaptureSetting"][];
         };
         /** ExtensionConclusion */
         ExtensionConclusion: {
@@ -522,7 +553,7 @@ export interface components {
              * Role
              * @default null
              */
-            role: ("context" | "setup" | "trigger") | null;
+            role: ("context" | "setup" | "trigger" | "setup_and_trigger") | null;
             /**
              * Structure
              * @enum {string}
@@ -808,6 +839,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExtensionCapabilities"];
+                };
+            };
+        };
+    };
+    getExtensionCaptureSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionCaptureSettings"];
+                };
+            };
+            /** @description Request failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionApiError"];
+                };
+            };
+            /** @description Request failed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionApiError"];
                 };
             };
         };

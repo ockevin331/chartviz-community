@@ -11,7 +11,7 @@ function fixture(name = 'single-completed-task.json'): Record<string, any> {
   return JSON.parse(readFileSync(path.join(fixtures, name), 'utf8')) as Record<string, any>;
 }
 
-describe('strict C2 extension task parser', () => {
+describe('strict C4 extension task parser', () => {
   it('accepts the vendored single-capture completed task', () => {
     expect(parseExtensionAnalysisTask(fixture()).status).toBe('completed');
   });
@@ -46,7 +46,20 @@ describe('strict C2 extension task parser', () => {
     expect(() => parseExtensionAnalysisTask(value)).toThrow();
   });
 
-  it('rejects a multi-capture result in the C2 parser', () => {
-    expect(() => parseExtensionAnalysisTask(fixture('multi-completed-task.json'))).toThrow();
+  it.each([
+    [
+      'two-completed-task.json',
+      [['C01', 'context'], ['C02', 'setup_and_trigger']],
+    ],
+    [
+      'multi-completed-task.json',
+      [['C01', 'context'], ['C02', 'setup'], ['C03', 'trigger']],
+    ],
+  ])('accepts source-aware captures from %s', (name, expected) => {
+    const task = parseExtensionAnalysisTask(fixture(name));
+    expect(task.report?.context.captures.map((capture) => [
+      capture.captureId,
+      capture.role,
+    ])).toEqual(expected);
   });
 });

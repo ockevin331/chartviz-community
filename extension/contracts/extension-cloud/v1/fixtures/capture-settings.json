@@ -1,0 +1,16 @@
+{
+  "timeframes": [
+    {
+      "role": "context",
+      "timeframe": "4h"
+    },
+    {
+      "role": "setup",
+      "timeframe": "1h"
+    },
+    {
+      "role": "trigger",
+      "timeframe": "15m"
+    }
+  ]
+}

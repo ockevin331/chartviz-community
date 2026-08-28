@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import type { ExtensionAccount, ExtensionCapabilities } from './contracts/extension-cloud-v1';
+import type {
+  ExtensionAccount,
+  ExtensionCapabilities,
+  ExtensionCaptureSettings,
+} from './contracts/extension-cloud-v1';
 
 const quotaSchema = z.object({
   limit: z.number().int().nonnegative().nullable(),
@@ -43,10 +47,21 @@ export const extensionCapabilitiesSchema = z.object({
   }).strict(),
 }).strict();
 
+export const extensionCaptureSettingsSchema = z.object({
+  timeframes: z.array(z.object({
+    role: z.enum(['context', 'setup', 'trigger']),
+    timeframe: z.string().min(1).max(8),
+  }).strict()).length(3),
+}).strict();
+
 export function parseExtensionAccount(value: unknown): ExtensionAccount {
   return extensionAccountSchema.parse(value) as ExtensionAccount;
 }
 
 export function parseExtensionCapabilities(value: unknown): ExtensionCapabilities {
   return extensionCapabilitiesSchema.parse(value) as ExtensionCapabilities;
+}
+
+export function parseExtensionCaptureSettings(value: unknown): ExtensionCaptureSettings {
+  return extensionCaptureSettingsSchema.parse(value) as ExtensionCaptureSettings;
 }

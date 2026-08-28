@@ -351,7 +351,8 @@
                 "enum": [
                   "context",
                   "setup",
-                  "trigger"
+                  "trigger",
+                  "setup_and_trigger"
                 ],
                 "type": "string"
               },
@@ -408,6 +409,51 @@
           "height"
         ],
         "title": "ExtensionCaptureMetadata",
+        "type": "object"
+      },
+      "ExtensionCaptureSetting": {
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "enum": [
+              "context",
+              "setup",
+              "trigger"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "timeframe": {
+            "maxLength": 8,
+            "minLength": 1,
+            "title": "Timeframe",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "timeframe"
+        ],
+        "title": "ExtensionCaptureSetting",
+        "type": "object"
+      },
+      "ExtensionCaptureSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "timeframes": {
+            "items": {
+              "$ref": "#/components/schemas/ExtensionCaptureSetting"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Timeframes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "timeframes"
+        ],
+        "title": "ExtensionCaptureSettings",
         "type": "object"
       },
       "ExtensionConclusion": {
@@ -1242,7 +1288,8 @@
                 "enum": [
                   "context",
                   "setup",
-                  "trigger"
+                  "trigger",
+                  "setup_and_trigger"
                 ],
                 "type": "string"
               },
@@ -1755,6 +1802,48 @@
             "description": "Successful response"
           }
         }
+      }
+    },
+    "/api/v1/extension/capture-settings": {
+      "get": {
+        "operationId": "getExtensionCaptureSettings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionCaptureSettings"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionApiError"
+                }
+              }
+            },
+            "description": "Request failed"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionApiError"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [
+          {
+            "CloudToken": []
+          }
+        ]
       }
     }
   }

@@ -5,10 +5,14 @@ import type { ExtensionAnalysisTask } from './contracts/extension-cloud-v1';
 export const outputLanguageSchema = z.enum(['en', 'zh-CN']);
 
 const nullableShortString = z.string().min(1).max(120).nullable();
+const captureIdSchema = z.string().regex(/^C0[1-3]$/);
+const captureRoleSchema = z.enum([
+  'context', 'setup', 'trigger', 'setup_and_trigger',
+]).nullable();
 const captureMetadataSchema = z.object({
-  captureId: z.literal('C01'),
+  captureId: captureIdSchema,
   timeframe: z.string().min(1).max(8),
-  role: z.enum(['context', 'setup', 'trigger']).nullable(),
+  role: captureRoleSchema,
   instrument: nullableShortString,
   site: z.string().min(1).max(80).nullable(),
   venue: nullableShortString,
@@ -65,7 +69,7 @@ const marketExplanationSchema = z.object({
 
 const levelSchema = z.object({
   id: z.string().regex(/^L\d{2}$/),
-  captureId: z.literal('C01'),
+  captureId: captureIdSchema,
   type: z.enum(['support', 'resistance']),
   tier: z.enum(['nearest', 'secondary', 'major']),
   status: z.enum(['holding', 'testing', 'broken', 'flip_candidate']),
@@ -104,7 +108,7 @@ const signalPointSchema = z.object({
 
 const tradeSignalSchema = z.object({
   id: z.string().regex(/^S\d{2}$/),
-  captureId: z.literal('C01'),
+  captureId: captureIdSchema,
   direction: z.enum(['long', 'short']),
   signalType: z.string().min(1),
   signalTime: z.string().min(1),
@@ -120,7 +124,7 @@ const tradeSignalSchema = z.object({
 
 const patternSchema = z.object({
   id: z.string().regex(/^P\d{2}$/),
-  captureId: z.literal('C01'),
+  captureId: captureIdSchema,
   name: z.string().min(1),
   status: z.enum(['forming', 'confirmed', 'invalidated']),
   bias: z.enum(['bullish', 'bearish', 'neutral']),
@@ -132,9 +136,9 @@ const patternSchema = z.object({
 }).strict();
 
 const timeframeViewSchema = z.object({
-  captureId: z.literal('C01'),
+  captureId: captureIdSchema,
   timeframe: z.string().min(1).max(8),
-  role: z.enum(['context', 'setup', 'trigger']).nullable(),
+  role: captureRoleSchema,
   trend: z.enum(['bullish', 'bearish', 'sideways', 'unclear']),
   structure: z.enum(['hh-hl', 'lh-ll', 'range', 'transition', 'unclear']),
   conclusion: z.string().min(1),
@@ -151,7 +155,7 @@ const drawingPointSchema = z.object({
 
 const drawingSchema = z.object({
   id: z.string().regex(/^D\d{2}$/),
-  captureId: z.literal('C01'),
+  captureId: captureIdSchema,
   layer: z.enum(['levels', 'pattern', 'signal']),
   refId: z.string().regex(/^(L|P|S)\d{2}$/),
   tool: z.enum([
@@ -167,7 +171,7 @@ const reportSchema = z.object({
     instrument: nullableShortString,
     venue: nullableShortString,
     outputLanguage: outputLanguageSchema,
-    captures: z.array(captureMetadataSchema).length(1),
+    captures: z.array(captureMetadataSchema).min(1).max(3),
   }).strict(),
   conclusion: conclusionSchema,
   marketExplanation: marketExplanationSchema,
@@ -175,10 +179,59 @@ const reportSchema = z.object({
   tradePlan: tradePlanSchema,
   tradeSignals: z.array(tradeSignalSchema).max(6).default([]),
   patterns: z.array(patternSchema).max(3).default([]),
-  timeframeViews: z.array(timeframeViewSchema).length(1),
+  timeframeViews: z.array(timeframeViewSchema).min(1).max(3),
   drawings: z.array(drawingSchema).max(32).default([]),
   riskNotice: z.string().min(1),
 }).strict().superRefine((report, context) => {
+  const captureIds = new Set(report.context.captures.map((capture) => capture.captureId));
+  if (captureIds.size !== report.context.captures.length) {
+    context.addIssue({
+      code: 'custom',
+      path: ['context', 'captures'],
+      message: 'duplicate_capture_id',
+    });
+  }
+  const captureRoles = report.context.captures
+    .map((capture) => capture.role)
+    .filter((role): role is NonNullable<typeof role> => role !== null);
+  if (new Set(captureRoles).size !== captureRoles.length) {
+    context.addIssue({
+      code: 'custom',
+      path: ['context', 'captures'],
+      message: 'duplicate_capture_role',
+    });
+  }
+  const sourcedCollections = [
+    ['levels', report.levels],
+    ['tradeSignals', report.tradeSignals],
+    ['patterns', report.patterns],
+    ['timeframeViews', report.timeframeViews],
+    ['drawings', report.drawings],
+  ] as const;
+  for (const [collectionName, items] of sourcedCollections) {
+    items.forEach((item, index) => {
+      if (!captureIds.has(item.captureId)) {
+        context.addIssue({
+          code: 'custom',
+          path: [collectionName, index, 'captureId'],
+          message: 'unknown_capture_id',
+        });
+      }
+    });
+  }
+  const timeframeViewCaptureIds = new Set(
+    report.timeframeViews.map((view) => view.captureId),
+  );
+  if (
+    timeframeViewCaptureIds.size !== captureIds.size
+    || [...captureIds].some((captureId) => !timeframeViewCaptureIds.has(captureId))
+  ) {
+    context.addIssue({
+      code: 'custom',
+      path: ['timeframeViews'],
+      message: 'timeframe_view_capture_mismatch',
+    });
+  }
   const references = new Map<string, { layer: string; captureId: string }>();
   for (const level of report.levels) {
     references.set(level.id, { layer: 'levels', captureId: level.captureId });

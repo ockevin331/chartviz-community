@@ -1,12 +1,14 @@
 {
   "contractVersion": "extension-report-1.0",
   "files": {
-    "extension-report-1.0.schema.json": "7464c8ca6801c10cced1c809fb79de77464d882ad74b8fa6f8b7c0d59028928c",
+    "extension-report-1.0.schema.json": "aa002c37b6c8edd570f855a53a690f834bff6d46302ab145452d29d50e33ee0f",
     "fixtures/account.json": "1ec213e6709d884c895bfbb61dc02d4e1272196dfef459de9e0c7644eb2ac46f",
-    "fixtures/capabilities.json": "bcab8664eb9dfba56bf01101accf067b050387f69752d9269fa811532c18ff20",
+    "fixtures/capabilities.json": "b1a4fd15516faba89c181e48608c7c3c96d98522a5ff550263fe227a9e3f299a",
+    "fixtures/capture-settings.json": "9f8c5c3986464c3652b89c6792513ebc4314bc18fb0f98a65360553a9defba2e",
     "fixtures/multi-completed-task.json": "c0ed465308f7a1aba5b7bde1812a2311f35cb457e0a8c2386b16e48ab1c4aeb2",
     "fixtures/quota-error.json": "d83516b8ee666559afa2a7dd15c1eba51ea0601c0965ad2c06d0f1dc549e9c91",
     "fixtures/single-completed-task.json": "06a8617ba3b7947bd762964eb09908cf139e91082fc2751b0799bd5a90d50a80",
-    "openapi.json": "00bda5e9122dae6bbc13435e2875d8bd37497d81a41903beb8a4c47b71fee1b5"
+    "fixtures/two-completed-task.json": "bcc06a3dc28e9abe30796141251f5b110ec6632eb24fe13054bc67436c17a8c1",
+    "openapi.json": "3b739db4f14791ac1d5714bcddee11edeb34b50ad08bb6801d2d60fe58b5cb02"
   }
 }
