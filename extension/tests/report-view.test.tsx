@@ -91,7 +91,7 @@ describe('ReportView presentation-1.0 visible structure', () => {
     expect(postMessage).toHaveBeenCalledWith({ source: 'chartviz', type: 'image-lightbox-close' }, '*');
   });
 
-  it('renders every original and levels image in report capture order with exact lightbox sources', async () => {
+  it('renders restored originals, levels, signals, and patterns with exact inline and lightbox sources', async () => {
     const user = userEvent.setup();
     const presentation = parseReportPresentationModel({
       ...structuredClone(validPresentationBundle.report),
@@ -146,6 +146,20 @@ describe('ReportView presentation-1.0 visible structure', () => {
     expect(Array.from(container.querySelectorAll('[data-levels-capture-id]')).map((node) => (
       node.getAttribute('data-levels-capture-id')
     ))).toEqual(['C01', 'C02', 'C03']);
+    expect(Array.from(container.querySelectorAll('[data-original-capture-id] img')).map((node) => (
+      node.getAttribute('src')
+    ))).toEqual(captures.map(({ image }) => image.dataUrl));
+    expect(Array.from(container.querySelectorAll('[data-levels-capture-id] img')).map((node) => (
+      node.getAttribute('src')
+    ))).toEqual([
+      annotations.levels.C01.dataUrl,
+      annotations.levels.C02.dataUrl,
+      annotations.levels.C03.dataUrl,
+    ]);
+    expect(container.querySelector('[data-signal-id="S01"] img')?.getAttribute('src'))
+      .toBe(annotations.signals.S01.dataUrl);
+    expect(container.querySelector('[data-pattern-id="P01"] img')?.getAttribute('src'))
+      .toBe(annotations.patterns.P01.dataUrl);
 
     for (const [title, dataUrl] of [
       ['Original screenshot · 4h', captures[0]!.image.dataUrl],

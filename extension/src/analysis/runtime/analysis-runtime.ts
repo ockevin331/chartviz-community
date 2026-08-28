@@ -40,6 +40,11 @@ export type AnalysisRuntimeOutcome = Readonly<{
   annotations: PresentationAnnotatedImages;
 }>;
 
+export type RestoredActiveAnalysis = Readonly<{
+  captures: readonly AnalysisCapture[];
+  outputLanguage: OutputLanguage;
+}>;
+
 export type AnalysisRuntimeErrorCode = AnalysisErrorCode
   | 'multi_timeframe_requires_cloud'
   | 'authentication_required'
@@ -93,8 +98,5 @@ export interface AnalysisRuntime {
   capabilities(): AnalysisCapabilities;
   analyze(input: AnalysisRuntimeInput): Promise<AnalysisRuntimeOutcome>;
   cancel(): void;
-  restoreActiveAnalysis?(): Promise<Readonly<{
-    captures: readonly AnalysisCapture[];
-    outputLanguage: OutputLanguage;
-  }> | null>;
+  restoreActiveAnalysis?(): Promise<RestoredActiveAnalysis | null>;
 }

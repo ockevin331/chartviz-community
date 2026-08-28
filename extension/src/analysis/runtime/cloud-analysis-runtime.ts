@@ -7,7 +7,12 @@ import {
   CloudConnectionError,
   createCloudClient,
   type CloudClient,
+  type DownloadedCapture,
 } from '../../cloud/cloud-client';
+import {
+  describeCloudCaptures,
+  type StoredCaptureDescriptor,
+} from '../../cloud/cloud-capture-descriptors';
 import type { ExtensionAnalysisTask } from '../../cloud/contracts/extension-cloud-v1';
 import type { ExtensionReport } from '../../cloud/contracts/extension-cloud-v1';
 import { adaptCloudPresentation } from '../../presentation/cloud-presentation-adapter';
@@ -34,6 +39,7 @@ import {
   type AnalysisRuntimeInput,
   type AnalysisRuntimeOutcome,
   type ProgressMessage,
+  type RestoredActiveAnalysis,
 } from './analysis-runtime';
 
 type ActiveTaskStorage = Readonly<{
@@ -51,7 +57,7 @@ type CloudAnalysisOperation = {
 };
 
 export type CloudAnalysisRuntimeDependencies = Readonly<{
-  client: Pick<CloudClient, 'createTask' | 'task' | 'cancelTask'>;
+  client: Pick<CloudClient, 'createTask' | 'task' | 'cancelTask' | 'capture'>;
   connection: Readonly<{ load(): Promise<StoredCloudConnection | null> }>;
   activeTask: ActiveTaskStorage;
   cleanupPending: CloudCleanupPendingStorage;
@@ -120,6 +126,126 @@ function taskFailure(task: ExtensionAnalysisTask): AnalysisRuntimeFailure {
   });
 }
 
+const pngSignature = [137, 80, 78, 71, 13, 10, 26, 10] as const;
+
+function descriptorsEqual(
+  left: StoredCaptureDescriptor,
+  right: StoredCaptureDescriptor,
+): boolean {
+  return left.captureId === right.captureId
+    && left.timeframe === right.timeframe
+    && left.role === right.role
+    && left.instrument === right.instrument
+    && left.site === right.site
+    && left.exchange === right.exchange
+    && left.pageType === right.pageType
+    && left.width === right.width
+    && left.height === right.height;
+}
+
+function capturesMatchDescriptors(
+  captures: readonly AnalysisCapture[],
+  descriptors: readonly StoredCaptureDescriptor[],
+): boolean {
+  try {
+    const supplied = describeCloudCaptures(captures);
+    return supplied.length === descriptors.length
+      && supplied.every((descriptor, index) => (
+        descriptorsEqual(descriptor, descriptors[index]!)
+      ));
+  } catch {
+    return false;
+  }
+}
+
+function taskMatchesDescriptors(
+  task: ExtensionAnalysisTask,
+  descriptors: readonly StoredCaptureDescriptor[],
+): boolean {
+  if (!task.report) return task.status !== 'completed';
+  return captureMetadataMatchesDescriptors(task.report.context.captures, descriptors);
+}
+
+function captureMetadataMatchesDescriptors(
+  metadata: readonly Readonly<{
+    captureId: string;
+    timeframe: string;
+    width: number;
+    height: number;
+  }>[],
+  descriptors: readonly StoredCaptureDescriptor[],
+): boolean {
+  return metadata.length === descriptors.length
+    && metadata.every((capture, index) => {
+      const descriptor = descriptors[index]!;
+      return capture.captureId === descriptor.captureId
+        && capture.timeframe === descriptor.timeframe
+        && capture.width === descriptor.width
+        && capture.height === descriptor.height;
+    });
+}
+
+function captureIdentityMatchesDescriptors(
+  metadata: readonly Readonly<{ captureId: string; timeframe: string | null }>[],
+  descriptors: readonly StoredCaptureDescriptor[],
+): boolean {
+  return metadata.length === descriptors.length
+    && metadata.every((capture, index) => {
+      const descriptor = descriptors[index]!;
+      return capture.captureId === descriptor.captureId
+        && capture.timeframe === descriptor.timeframe;
+    });
+}
+
+function pngDataUrl(bytes: Uint8Array): string {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return `data:image/png;base64,${btoa(binary)}`;
+}
+
+function hydrateCapture(
+  descriptor: StoredCaptureDescriptor,
+  downloaded: DownloadedCapture,
+): AnalysisCapture {
+  const bytes = new Uint8Array(downloaded.bytes);
+  const header = bytes.length >= 33 ? new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength) : null;
+  const validHeader = downloaded.mediaType === 'image/png'
+    && header !== null
+    && pngSignature.every((byte, index) => bytes[index] === byte)
+    && header.getUint32(8) === 13
+    && bytes[12] === 73
+    && bytes[13] === 72
+    && bytes[14] === 68
+    && bytes[15] === 82
+    && header.getUint32(16) === descriptor.width
+    && header.getUint32(20) === descriptor.height;
+  if (!validHeader) throw new AnalysisRuntimeFailure('invalid_image');
+  let dataUrl: string;
+  try {
+    dataUrl = pngDataUrl(bytes);
+  } catch {
+    throw new AnalysisRuntimeFailure('invalid_image');
+  }
+  return Object.freeze({
+    image: Object.freeze({
+      mediaType: 'image/png' as const,
+      dataUrl,
+      width: descriptor.width,
+      height: descriptor.height,
+    }),
+    context: Object.freeze({
+      instrument: descriptor.instrument,
+      timeframe: descriptor.timeframe,
+      site: descriptor.site,
+      exchange: descriptor.exchange,
+      pageType: descriptor.pageType,
+    }),
+  });
+}
+
 export class CloudAnalysisRuntime implements AnalysisRuntime {
   readonly mode = 'cloud' as const;
   private readonly dependencies: CloudAnalysisRuntimeDependencies;
@@ -133,21 +259,105 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
     return cloudCapabilities;
   }
 
-  async restoreActiveAnalysis(): Promise<Readonly<{
-    captures: readonly AnalysisCapture[];
-    outputLanguage: 'en' | 'zh-CN';
-  }> | null> {
-    const connection = await this.dependencies.connection.load();
-    if (!connection) return null;
-    const tokenFingerprint = await this.dependencies.fingerprintGrant(connection.token);
-    const active = await this.dependencies.activeTask.load();
-    if (active && active.tokenFingerprint !== tokenFingerprint) {
-      await this.dependencies.activeTask.clear(active.requestId);
-      return null;
+  async restoreActiveAnalysis(): Promise<RestoredActiveAnalysis | null> {
+    const operation: CloudAnalysisOperation = {
+      controller: new AbortController(),
+      requestId: null,
+      token: null,
+      cancelRequested: false,
+      cancelResponse: null,
+    };
+    this.activeOperation = operation;
+    try {
+      const connection = await this.dependencies.connection.load();
+      this.requireCurrent(operation);
+      if (!connection) return null;
+      operation.token = connection.token;
+      const tokenFingerprint = await this.dependencies.fingerprintGrant(connection.token);
+      this.requireCurrent(operation);
+      const active = await this.dependencies.activeTask.load();
+      this.requireCurrent(operation);
+      if (!active) return null;
+      operation.requestId = active.requestId;
+      if (active.tokenFingerprint !== tokenFingerprint) {
+        await this.clearActiveTask(operation);
+        this.requireCurrent(operation);
+        return null;
+      }
+      const task = await this.dependencies.client.task(
+        connection.token,
+        active.requestId,
+        operation.controller.signal,
+      );
+      this.requireCurrent(operation);
+      if (task.status === 'failed') {
+        await this.clearActiveTask(operation);
+        throw taskFailure(task);
+      }
+      if (task.status === 'cancelled') {
+        await this.clearActiveTask(operation);
+        throw new AnalysisRuntimeFailure('cancelled');
+      }
+      if (!taskMatchesDescriptors(task, active.captures)) {
+        await this.clearActiveTask(operation);
+        throw new AnalysisRuntimeFailure('incompatible_report_schema');
+      }
+      let captures: readonly AnalysisCapture[];
+      try {
+        captures = await Promise.all(active.captures.map(async (descriptor) => {
+          const downloaded = await this.dependencies.client.capture(
+            connection.token,
+            active.requestId,
+            descriptor.captureId,
+            operation.controller.signal,
+          );
+          return hydrateCapture(descriptor, downloaded);
+        }));
+      } catch (error) {
+        if (error instanceof AnalysisRuntimeFailure && error.code === 'invalid_image') {
+          await this.clearActiveTask(operation);
+        }
+        throw error;
+      }
+      this.requireCurrent(operation);
+      return Object.freeze({
+        captures: Object.freeze(captures),
+        outputLanguage: active.outputLanguage,
+      });
+    } catch (error) {
+      if (operation.controller.signal.aborted || operation.cancelRequested) {
+        try {
+          const terminal = await (operation.cancelResponse ?? this.startServerCancel(operation));
+          if (terminal?.status === 'failed' || terminal?.status === 'cancelled') {
+            await this.clearActiveTask(operation);
+          }
+        } catch (cancelError) {
+          if (
+            cancelError instanceof CloudConnectionError
+            && cancelError.code === 'task_not_found'
+          ) {
+            await this.clearActiveTask(operation);
+          }
+        }
+        throw new AnalysisRuntimeFailure('cancelled');
+      }
+      if (error instanceof AnalysisRuntimeFailure) throw error;
+      if (error instanceof CloudConnectionError) {
+        if ([
+          'task_not_found',
+          'task_failed',
+          'task_cancelled',
+          'incompatible_report_schema',
+          'incompatible_api_version',
+        ].includes(error.code)) {
+          await this.clearActiveTask(operation);
+        }
+        throw cloudFailure(error);
+      }
+      throw new AnalysisRuntimeFailure('unknown');
+    } finally {
+      if (this.activeOperation === operation) this.activeOperation = null;
     }
-    return active
-      ? { captures: active.captures, outputLanguage: active.outputLanguage }
-      : null;
   }
 
   private emitProgress(
@@ -244,12 +454,14 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
       await this.clearActiveTask(operation);
       throw new AnalysisRuntimeFailure('incompatible_report_schema');
     }
-    const reportCaptures = task.report.context.captures;
-    const sourceTimeframes = captures.map(({ context }) => context.timeframe);
-    if (
-      reportCaptures.length !== captures.length
-      || reportCaptures.some((metadata, index) => metadata.timeframe !== sourceTimeframes[index])
-    ) {
+    let sourceDescriptors: readonly StoredCaptureDescriptor[];
+    try {
+      sourceDescriptors = describeCloudCaptures(captures);
+    } catch {
+      await this.clearActiveTask(operation);
+      throw new AnalysisRuntimeFailure('invalid_image');
+    }
+    if (!taskMatchesDescriptors(task, sourceDescriptors)) {
       await this.clearActiveTask(operation);
       throw new AnalysisRuntimeFailure('incompatible_report_schema');
     }
@@ -260,12 +472,10 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
       await this.clearActiveTask(operation);
       throw new AnalysisRuntimeFailure('incompatible_report_schema');
     }
-    if (
-      presentation.report.context.captures.length !== captures.length
-      || presentation.report.context.captures.some(
-        (metadata, index) => metadata.timeframe !== sourceTimeframes[index],
-      )
-    ) {
+    if (!captureIdentityMatchesDescriptors(
+      presentation.report.context.captures,
+      sourceDescriptors,
+    )) {
       await this.clearActiveTask(operation);
       throw new AnalysisRuntimeFailure('incompatible_report_schema');
     }
@@ -332,8 +542,11 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
       }
       let task: ExtensionAnalysisTask;
       if (stored) {
-        captures = stored.captures;
         operation.requestId = stored.requestId;
+        if (!capturesMatchDescriptors(captures, stored.captures)) {
+          await this.clearActiveTask(operation);
+          throw new AnalysisRuntimeFailure('invalid_image');
+        }
         this.requireCurrent(operation);
         task = await this.dependencies.client.task(
           connection.token,
@@ -351,10 +564,11 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
         operation.requestId = task.requestId;
         this.requireCurrent(operation);
         try {
+          const descriptors = describeCloudCaptures(captures);
           await this.dependencies.activeTask.save({
             requestId: task.requestId,
             tokenFingerprint,
-            captures,
+            captures: descriptors,
             outputLanguage: input.outputLanguage,
           });
         } catch {

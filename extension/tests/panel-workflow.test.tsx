@@ -396,6 +396,42 @@ describe('direct Community panel workflow', () => {
     }
   });
 
+  it('contains legacy cleanup failure without blocking source configuration', async () => {
+    let rejectCleanup!: (reason?: unknown) => void;
+    const cleanupPromise = new Promise<void>((_resolve, reject) => { rejectCleanup = reject; });
+    const cleanupLegacyCloudAnalysisStorage = vi.fn(() => cleanupPromise);
+    const secret = 'legacy cleanup internal failure';
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+    process.on('unhandledRejection', onUnhandled);
+
+    try {
+      render(<App dependencies={{
+        loadConfig: async () => ({
+          provider: 'openrouter', apiKey: 'key', model: 'google/gemini-3.7-flash',
+          customModel: false,
+        }),
+        ...directModeDependencies,
+        cleanupLegacyCloudAnalysisStorage,
+        inspect,
+        capture,
+        createDirectRuntime: () => fakeRuntime(),
+      }} />);
+
+      expect(await screen.findByRole('heading', { name: 'Detected chart' })).toBeTruthy();
+      expect(cleanupLegacyCloudAnalysisStorage).toHaveBeenCalledTimes(1);
+      rejectCleanup(new Error(secret));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(unhandled).toEqual([]);
+      expect(document.body.textContent).not.toContain(secret);
+      expect(await screen.findByText('BTCUSD')).toBeTruthy();
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+      void cleanupPromise.catch(() => undefined);
+    }
+  });
+
   it('opens Direct setup when its mode is saved but the session key has expired', async () => {
     render(<App dependencies={{
       loadConfig: async () => null,

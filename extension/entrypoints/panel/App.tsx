@@ -17,6 +17,7 @@ import type { ProviderConfig } from '../../src/providers/provider-types';
 import { loadAnalysisMode, saveAnalysisMode } from '../../src/storage/analysis-mode-storage';
 import { loadProviderConfig, saveProviderConfig } from '../../src/storage/provider-session';
 import { loadCloudConnection, type StoredCloudConnection } from '../../src/storage/cloud-connection-storage';
+import { cleanupLegacyCloudAnalysisStorage } from '../../src/storage/legacy-cloud-analysis-cleanup';
 import { AnalysisError } from '../../src/ui/components/AnalysisError';
 import { AnalysisModeSettings } from '../../src/ui/components/AnalysisModeSettings';
 import { AnalysisProgress } from '../../src/ui/components/AnalysisProgress';
@@ -36,6 +37,7 @@ export type AppDependencies = {
   cloudConnectionManager: CloudConnectionManager;
   cloudClient: Pick<CloudClient, 'captureSettings'>;
   loadCloudConnection(): Promise<StoredCloudConnection | null>;
+  cleanupLegacyCloudAnalysisStorage(): Promise<void>;
   inspect(): Promise<ChartContext>;
   capture(signal: AbortSignal): Promise<CapturedChart>;
   captureMany(
@@ -55,6 +57,7 @@ const defaultDependencies: AppDependencies = {
   cloudConnectionManager: createCloudConnectionManager(),
   cloudClient: createCloudClient(),
   loadCloudConnection,
+  cleanupLegacyCloudAnalysisStorage,
   inspect: () => activeChartClient.inspect(),
   capture: (signal) => activeChartClient.capture(signal),
   captureMany: (timeframes, signal) => activeChartClient.captureMany(timeframes, signal),
@@ -92,6 +95,11 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
   useEffect(() => {
     let current = true;
     void (async () => {
+      try {
+        void dependencies.cleanupLegacyCloudAnalysisStorage().catch(() => undefined);
+      } catch {
+        // Legacy cleanup is best-effort and must not block source configuration.
+      }
       const [config, connection] = await Promise.all([
         dependencies.loadConfig(),
         dependencies.cloudConnectionManager.load(),
@@ -128,6 +136,7 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     dependencies.createDirectRuntime,
     dependencies.cloudGateway,
     dependencies.cloudConnectionManager,
+    dependencies.cleanupLegacyCloudAnalysisStorage,
     activateRuntime,
     controller.restoreCaptures,
     controller.analyze,

@@ -1,11 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
 import fixture from '../contracts/extension-cloud/v1/fixtures/single-completed-task.json';
 import twoFixture from '../contracts/extension-cloud/v1/fixtures/two-completed-task.json';
-import { CloudAnalysisRuntime } from '../src/analysis/runtime/cloud-analysis-runtime';
+import {
+  CloudAnalysisRuntime,
+  type CloudAnalysisRuntimeDependencies,
+} from '../src/analysis/runtime/cloud-analysis-runtime';
 import { AnalysisRuntimeFailure, type AnalysisCapture } from '../src/analysis/runtime/analysis-runtime';
-import { CloudConnectionError, type CloudClient } from '../src/cloud/cloud-client';
+import {
+  CloudConnectionError,
+  type CloudClient,
+  type DownloadedCapture,
+} from '../src/cloud/cloud-client';
+import type { StoredCaptureDescriptor } from '../src/cloud/cloud-capture-descriptors';
 import { parseExtensionAnalysisTask } from '../src/cloud/cloud-task-schema';
 import type { StoredCloudActiveTask } from '../src/storage/cloud-active-task-storage';
+import type { StoredCloudConnection } from '../src/storage/cloud-connection-storage';
 import { parsePresentationBundle } from '../src/presentation/report-presentation-model';
 import { adaptCloudPresentation } from '../src/presentation/cloud-presentation-adapter';
 import { presentationAnnotatedImages } from './community-ui-fixtures';
@@ -15,6 +24,14 @@ const token = `cv_live_${'x'.repeat(43)}`;
 const rotatedToken = `cv_live_${'y'.repeat(43)}`;
 const fingerprint = 'a'.repeat(64);
 const rotatedFingerprint = 'b'.repeat(64);
+const account: StoredCloudConnection['account'] = {
+  emailMasked: 'a***z@example.com',
+  plan: 'advance',
+  currentPeriodEnd: '2026-09-28T00:00:00+00:00',
+  quota: { limit: null, used: 3, remaining: null, unlimited: true },
+  selectedModel: { id: 'openai/gpt-5.4', name: 'GPT-5.4', quotaCost: 2 },
+  entitlements: { multiTimeframe: true, maxCaptures: 3 },
+};
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -39,6 +56,53 @@ const captures: readonly AnalysisCapture[] = [
   { ...capture, image: { ...capture.image, dataUrl: 'data:image/png;base64,BBBB' }, context: { ...capture.context, timeframe: '1h' } },
   { ...capture, image: { ...capture.image, dataUrl: 'data:image/png;base64,CCCC' }, context: { ...capture.context, timeframe: '15m' } },
 ];
+
+const storedCaptures: readonly StoredCaptureDescriptor[] = [
+  {
+    captureId: 'C01', timeframe: '4h', role: 'context', instrument: 'BTC/USDT',
+    site: 'tradingview', exchange: 'TradingView', pageType: 'advanced-chart',
+    width: 1280, height: 720,
+  },
+  {
+    captureId: 'C02', timeframe: '1h', role: 'setup', instrument: 'BTC/USDT',
+    site: 'tradingview', exchange: 'TradingView', pageType: 'advanced-chart',
+    width: 1280, height: 720,
+  },
+  {
+    captureId: 'C03', timeframe: '15m', role: 'trigger', instrument: 'BTC/USDT',
+    site: 'tradingview', exchange: 'TradingView', pageType: 'advanced-chart',
+    width: 1280, height: 720,
+  },
+];
+
+const singleStoredCapture: StoredCaptureDescriptor = {
+  captureId: 'C01', timeframe: '15m', role: null, instrument: 'BTC/USDT',
+  site: 'tradingview', exchange: 'TradingView', pageType: 'advanced-chart',
+  width: 1280, height: 720,
+};
+
+const captureDataUrls = [
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABQAAAALQCAYAAAAAAAAAAQ==',
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABQAAAALQCAYAAAAAAAAAAg==',
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABQAAAALQCAYAAAAAAAAAAw==',
+] as const;
+
+function pngBytes(width = 1280, height = 720, marker = 1): ArrayBuffer {
+  const bytes = new Uint8Array(34);
+  bytes.set([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(16, width);
+  view.setUint32(20, height);
+  bytes.set([8, 6, 0, 0, 0, 0, 0, 0, 0, marker], 24);
+  return bytes.buffer;
+}
+
+function downloadedCapture(captureId: 'C01' | 'C02' | 'C03'): DownloadedCapture {
+  return {
+    mediaType: 'image/png',
+    bytes: pngBytes(1280, 720, Number(captureId.slice(-1))),
+  };
+}
 
 const multiCaptureMetadata = [
   { captureId: 'C01', timeframe: '4h', role: 'context' as const },
@@ -111,6 +175,7 @@ function dependencies(options: {
   cancelTask?: CloudClient['cancelTask'];
   presentation?: ReturnType<typeof parsePresentationBundle>;
   adaptPresentation?: typeof adaptCloudPresentation;
+  capture?: CloudClient['capture'];
 } = {}) {
   let active = options.active ?? null;
   let cleanup = options.cleanup ?? null;
@@ -121,11 +186,16 @@ function dependencies(options: {
     cancelTask: vi.fn(options.cancelTask ?? (async () => ({
       ...pending, status: 'cancelled' as const,
     }))),
+    capture: vi.fn(options.capture ?? (async (_token, _requestId, captureId) => (
+      downloadedCapture(captureId)
+    ))),
   };
   const storage = {
     load: vi.fn(async () => active),
     save: vi.fn(async (value: StoredCloudActiveTask) => { active = value; }),
-    clear: vi.fn(async () => { active = null; }),
+    clear: vi.fn(async (expectedRequestId?: string) => {
+      if (expectedRequestId === undefined || active?.requestId === expectedRequestId) active = null;
+    }),
   };
   const cleanupStorage = {
     load: vi.fn(async () => cleanup),
@@ -139,9 +209,9 @@ function dependencies(options: {
   const adaptPresentation = vi.fn(options.adaptPresentation ?? (() => options.presentation
     ?? parsePresentationBundle(structuredClone(validPresentationBundle))));
   const buildAnnotations = vi.fn(async () => presentationAnnotatedImages);
-  const runtimeDependencies = {
+  const runtimeDependencies: CloudAnalysisRuntimeDependencies = {
     client,
-    connection: { load: vi.fn(async () => ({ token: connectionToken, account: {} as never })) },
+    connection: { load: vi.fn(async () => ({ token: connectionToken, account })) },
     activeTask: storage,
     cleanupPending: cleanupStorage,
     fingerprintGrant,
@@ -149,7 +219,7 @@ function dependencies(options: {
     adaptPresentation,
     buildAnnotations,
   };
-  const createRuntime = () => new CloudAnalysisRuntime(runtimeDependencies as never);
+  const createRuntime = () => new CloudAnalysisRuntime(runtimeDependencies);
   const runtime = createRuntime();
   return {
     runtime,
@@ -177,7 +247,14 @@ describe('CloudAnalysisRuntime', () => {
 
     expect(test.runtime.capabilities()).toEqual({ multiTimeframe: true, maxTimeframes: 3 });
     expect(test.client.createTask).toHaveBeenCalledTimes(1);
+    expect(test.client.capture).not.toHaveBeenCalled();
     expect(test.storage.save).toHaveBeenCalledBefore(test.client.task);
+    expect(test.storage.save).toHaveBeenCalledWith({
+      requestId: pending.requestId,
+      tokenFingerprint: fingerprint,
+      captures: [singleStoredCapture],
+      outputLanguage: 'en',
+    });
     expect(test.sleep.mock.calls.map((call) => call[0])).toEqual([1000, 2000]);
     expect(progress.mock.calls.map(([code]) => code)).toEqual([
       'preparing', 'reading_chart', 'reviewing_clues', 'checking_signals',
@@ -208,9 +285,10 @@ describe('CloudAnalysisRuntime', () => {
     expect(test.storage.save).toHaveBeenCalledWith({
       requestId: pending.requestId,
       tokenFingerprint: fingerprint,
-      captures,
+      captures: storedCaptures,
       outputLanguage: 'en',
     });
+    expect(test.client.capture).not.toHaveBeenCalled();
     expect(test.storage.save).toHaveBeenCalledBefore(test.client.task);
     expect(test.buildAnnotations).toHaveBeenCalledWith([
       { captureId: 'C01', image: captures[0]!.image },
@@ -250,61 +328,342 @@ describe('CloudAnalysisRuntime', () => {
     expect(test.client.createTask).not.toHaveBeenCalled();
   });
 
-  it('restores locally without a network call and resumes without duplicate creation', async () => {
+  it('polls once, downloads descriptors, and restores PNG captures only in memory', async () => {
+    const completedMulti = multiCompletedTask();
     const active = {
       requestId: 'c_20260828_active', tokenFingerprint: fingerprint,
-      captures, outputLanguage: 'zh-CN' as const,
+      captures: storedCaptures, outputLanguage: 'zh-CN' as const,
     };
     const test = dependencies({
       active,
-      tasks: [multiCompletedTask()],
+      tasks: [completedMulti, completedMulti],
       presentation: multiPresentationBundle(),
     });
 
-    await expect(test.runtime.restoreActiveAnalysis()).resolves.toEqual({
-      captures, outputLanguage: 'zh-CN',
+    const restored = await test.runtime.restoreActiveAnalysis();
+    expect(restored).toEqual({
+      captures: captures.map((source, index) => ({
+        ...source,
+        image: { ...source.image, dataUrl: captureDataUrls[index]! },
+      })),
+      outputLanguage: 'zh-CN',
     });
     expect(test.fingerprintGrant).toHaveBeenCalledWith(token);
-    expect(test.client.task).not.toHaveBeenCalled();
-    expect(test.storage.clear).not.toHaveBeenCalled();
-
-    const outcome = await test.runtime.analyze({ captures, outputLanguage: 'zh-CN' });
-    expect(outcome.captures).toEqual(captures);
-    expect(test.client.createTask).not.toHaveBeenCalled();
     expect(test.client.task).toHaveBeenCalledTimes(1);
+    expect(test.client.capture.mock.calls.map((call) => call.slice(1, 3))).toEqual([
+      [active.requestId, 'C01'],
+      [active.requestId, 'C02'],
+      [active.requestId, 'C03'],
+    ]);
+    expect(test.storage.clear).not.toHaveBeenCalled();
+    expect(test.current()).toEqual(active);
+
+    if (!restored) throw new Error('Expected restored captures.');
+    const outcome = await test.runtime.analyze({
+      captures: restored.captures,
+      outputLanguage: restored.outputLanguage,
+    });
+    expect(outcome.captures).toEqual(restored.captures);
+    expect(test.client.createTask).not.toHaveBeenCalled();
+    expect(test.client.task).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['pending', 'processing', 'cancel_requested'] as const)(
+    'hydrates an active %s task after one status poll',
+    async (status) => {
+      const active = {
+        requestId: 'c_20260828_active', tokenFingerprint: fingerprint,
+        captures: [singleStoredCapture], outputLanguage: 'en' as const,
+      };
+      const task = parseExtensionAnalysisTask({
+        ...pending,
+        status,
+        progressEvents: status === 'processing' ? processing.progressEvents : pending.progressEvents,
+      });
+      const test = dependencies({ active, tasks: [task] });
+
+      await expect(test.runtime.restoreActiveAnalysis()).resolves.toEqual({
+        captures: [{
+          image: {
+            mediaType: 'image/png', dataUrl: captureDataUrls[0], width: 1280, height: 720,
+          },
+          context: {
+            instrument: 'BTC/USDT', timeframe: '15m', site: 'tradingview',
+            exchange: 'TradingView', pageType: 'advanced-chart',
+          },
+        }],
+        outputLanguage: 'en',
+      });
+      expect(test.client.task).toHaveBeenCalledTimes(1);
+      expect(test.client.capture).toHaveBeenCalledTimes(1);
+      expect(test.storage.clear).not.toHaveBeenCalled();
+    },
+  );
+
+  it('limits capture hydration to three concurrent downloads and preserves descriptor order', async () => {
+    const active = {
+      requestId: 'c_20260828_active', tokenFingerprint: fingerprint,
+      captures: storedCaptures, outputLanguage: 'en' as const,
+    };
+    const downloads = {
+      C01: deferred<DownloadedCapture>(),
+      C02: deferred<DownloadedCapture>(),
+      C03: deferred<DownloadedCapture>(),
+    };
+    let concurrent = 0;
+    let maximumConcurrent = 0;
+    const test = dependencies({
+      active,
+      tasks: [multiCompletedTask()],
+      capture: async (_token, _requestId, captureId) => {
+        concurrent += 1;
+        maximumConcurrent = Math.max(maximumConcurrent, concurrent);
+        try {
+          return await downloads[captureId].promise;
+        } finally {
+          concurrent -= 1;
+        }
+      },
+    });
+
+    const restoration = test.runtime.restoreActiveAnalysis();
+    await vi.waitFor(() => expect(test.client.capture).toHaveBeenCalledTimes(3));
+    downloads.C03.resolve(downloadedCapture('C03'));
+    downloads.C01.resolve(downloadedCapture('C01'));
+    downloads.C02.resolve(downloadedCapture('C02'));
+
+    const restored = await restoration;
+    expect(maximumConcurrent).toBe(3);
+    expect(restored?.captures.map(({ context }) => context.timeframe)).toEqual(['4h', '1h', '15m']);
+    expect(restored?.captures.map(({ image }) => image.dataUrl)).toEqual(captureDataUrls);
+  });
+
+  it('discards a partial download set and preserves the active record on transient failure', async () => {
+    const active = {
+      requestId: 'c_20260828_active', tokenFingerprint: fingerprint,
+      captures: storedCaptures, outputLanguage: 'en' as const,
+    };
+    const test = dependencies({
+      active,
+      tasks: [processing],
+      capture: async (_token, _requestId, captureId) => {
+        if (captureId === 'C02') throw new CloudConnectionError('service_unavailable');
+        return downloadedCapture(captureId);
+      },
+    });
+
+    await expect(test.runtime.restoreActiveAnalysis())
+      .rejects.toMatchObject({ code: 'service_unavailable' });
+
+    expect(test.client.capture).toHaveBeenCalledTimes(3);
+    expect(test.current()).toEqual(active);
+    expect(test.storage.clear).not.toHaveBeenCalled();
+  });
+
+  it('preserves the active record when the restoration status poll is transiently unavailable', async () => {
+    const active = {
+      requestId: 'c_20260828_active', tokenFingerprint: fingerprint,
+      captures: [singleStoredCapture], outputLanguage: 'en' as const,
+    };
+    const test = dependencies({ active });
+    test.client.task.mockRejectedValue(new CloudConnectionError('service_unavailable'));
+
+    await expect(test.runtime.restoreActiveAnalysis())
+      .rejects.toMatchObject({ code: 'service_unavailable' });
+
+    expect(test.client.capture).not.toHaveBeenCalled();
+    expect(test.current()).toEqual(active);
+    expect(test.storage.clear).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['invalid PNG bytes', { mediaType: 'image/png' as const, bytes: new Uint8Array([1, 2, 3]).buffer }],
+    ['truncated PNG header', {
+      mediaType: 'image/png' as const, bytes: pngBytes().slice(0, 24),
+    }],
+    ['PNG dimensions differing from the descriptor', {
+      mediaType: 'image/png' as const, bytes: pngBytes(640, 360, 4),
+    }],
+  ])('clears only the matching active record for %s', async (_label, downloaded) => {
+    const active = {
+      requestId: 'c_20260828_active', tokenFingerprint: fingerprint,
+      captures: [singleStoredCapture], outputLanguage: 'en' as const,
+    };
+    const test = dependencies({ active, tasks: [processing], capture: async () => downloaded });
+
+    await expect(test.runtime.restoreActiveAnalysis()).rejects.toMatchObject({ code: 'invalid_image' });
+
+    expect(test.storage.clear).toHaveBeenCalledWith(active.requestId);
+    expect(test.current()).toBeNull();
+  });
+
+  it('clears the matching record when completed task metadata differs from stored timeframes', async () => {
+    const active = {
+      requestId: 'c_20260828_active', tokenFingerprint: fingerprint,
+      captures: storedCaptures, outputLanguage: 'en' as const,
+    };
+    const task = multiCompletedTask();
+    if (!task.report) throw new Error('Expected completed report.');
+    const mismatched = parseExtensionAnalysisTask({
+      ...task,
+      report: {
+        ...task.report,
+        context: {
+          ...task.report.context,
+          captures: task.report.context.captures.map((metadata, index) => (
+            index === 1 ? { ...metadata, timeframe: '30m' } : metadata
+          )),
+        },
+      },
+    });
+    const test = dependencies({ active, tasks: [mismatched] });
+
+    await expect(test.runtime.restoreActiveAnalysis())
+      .rejects.toMatchObject({ code: 'incompatible_report_schema' });
+
+    expect(test.storage.clear).toHaveBeenCalledWith(active.requestId);
+    expect(test.current()).toBeNull();
+  });
+
+  it('clears the matching record without downloading when the task is missing', async () => {
+    const active = {
+      requestId: 'c_20260828_missing', tokenFingerprint: fingerprint,
+      captures: [singleStoredCapture], outputLanguage: 'en' as const,
+    };
+    const test = dependencies({ active });
+    test.client.task.mockRejectedValue(new CloudConnectionError('task_not_found'));
+
+    await expect(test.runtime.restoreActiveAnalysis()).rejects.toMatchObject({ code: 'task_not_found' });
+
+    expect(test.client.capture).not.toHaveBeenCalled();
+    expect(test.storage.clear).toHaveBeenCalledWith(active.requestId);
+  });
+
+  it.each(['incompatible_report_schema', 'incompatible_api_version'] as const)(
+    'clears the matching record when restoration polling returns %s',
+    async (code) => {
+      const active = {
+        requestId: 'c_20260828_invalid', tokenFingerprint: fingerprint,
+        captures: [singleStoredCapture], outputLanguage: 'en' as const,
+      };
+      const test = dependencies({ active });
+      test.client.task.mockRejectedValue(new CloudConnectionError(code));
+
+      await expect(test.runtime.restoreActiveAnalysis()).rejects.toMatchObject({ code });
+
+      expect(test.client.capture).not.toHaveBeenCalled();
+      expect(test.storage.clear).toHaveBeenCalledWith(active.requestId);
+      expect(test.current()).toBeNull();
+    },
+  );
+
+  it.each(['failed', 'cancelled'] as const)(
+    'clears a terminal %s record without downloading captures',
+    async (status) => {
+      const active = {
+        requestId: 'c_20260828_terminal', tokenFingerprint: fingerprint,
+        captures: [singleStoredCapture], outputLanguage: 'en' as const,
+      };
+      const task = parseExtensionAnalysisTask({
+        ...pending,
+        requestId: active.requestId,
+        status,
+        error: status === 'failed'
+          ? { code: 'task_failed', params: {}, pricingUrl: null }
+          : null,
+      });
+      const test = dependencies({ active, tasks: [task] });
+
+      await expect(test.runtime.restoreActiveAnalysis()).rejects.toBeInstanceOf(AnalysisRuntimeFailure);
+
+      expect(test.client.capture).not.toHaveBeenCalled();
+      expect(test.storage.clear).toHaveBeenCalledWith(active.requestId);
+    },
+  );
+
+  it('rejects restored input that does not exactly match descriptors before polling', async () => {
+    const active = {
+      requestId: 'c_20260828_active', tokenFingerprint: fingerprint,
+      captures: storedCaptures, outputLanguage: 'en' as const,
+    };
+    const test = dependencies({ active, tasks: [multiCompletedTask()] });
+    const mismatchedCaptures = captures.map((source, index) => (
+      index === 1 ? { ...source, image: { ...source.image, width: 1279 } } : source
+    ));
+
+    await expect(test.runtime.analyze({ captures: mismatchedCaptures, outputLanguage: 'en' }))
+      .rejects.toMatchObject({ code: 'invalid_image' });
+
+    expect(test.client.task).not.toHaveBeenCalled();
+    expect(test.storage.clear).toHaveBeenCalledWith(active.requestId);
+  });
+
+  it('cannot clear a newer record when an older restoration receives invalid bytes', async () => {
+    const activeA = {
+      requestId: 'c_20260828_operation_a', tokenFingerprint: fingerprint,
+      captures: [singleStoredCapture], outputLanguage: 'en' as const,
+    };
+    const activeB = { ...activeA, requestId: 'c_20260828_operation_b' };
+    const test = dependencies({ active: activeA, tasks: [processing] });
+    test.client.capture.mockImplementation(async () => {
+      await test.storage.save(activeB);
+      return { mediaType: 'image/png', bytes: new Uint8Array([1, 2, 3]).buffer };
+    });
+
+    await expect(test.runtime.restoreActiveAnalysis()).rejects.toMatchObject({ code: 'invalid_image' });
+
+    expect(test.storage.clear).toHaveBeenCalledWith(activeA.requestId);
+    expect(test.current()).toEqual(activeB);
+  });
+
+  it('cancels capture restoration without clearing a cancel-requested active record', async () => {
+    const active = {
+      requestId: 'c_20260828_active', tokenFingerprint: fingerprint,
+      captures: [singleStoredCapture], outputLanguage: 'en' as const,
+    };
+    const test = dependencies({
+      active,
+      tasks: [pending],
+      cancelTask: async () => ({ ...pending, status: 'cancel_requested' as const }),
+      capture: async (_token, _requestId, _captureId, signal) => new Promise((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+      }),
+    });
+    const restoration = test.runtime.restoreActiveAnalysis();
+    await vi.waitFor(() => expect(test.client.capture).toHaveBeenCalledTimes(1));
+
+    test.runtime.cancel();
+
+    await expect(restoration).rejects.toMatchObject({ code: 'cancelled' });
+    expect(test.client.cancelTask).toHaveBeenCalledWith(token, active.requestId);
+    expect(test.storage.clear).not.toHaveBeenCalled();
+    expect(test.current()).toEqual(active);
   });
 
   it('clears an account A active record before returning any captures to account B', async () => {
-    const accountACapture = {
-      ...capture,
-      image: { ...capture.image, dataUrl: 'data:image/png;base64,ACCOUNT_A' },
-    };
     const active = {
       requestId: 'c_20260828_account_a', tokenFingerprint: fingerprint,
-      captures: [accountACapture], outputLanguage: 'en' as const,
+      captures: [singleStoredCapture], outputLanguage: 'en' as const,
     };
     const test = dependencies({ active, connectionToken: rotatedToken });
 
     const restored = await test.runtime.restoreActiveAnalysis();
 
     expect(restored).toBeNull();
-    expect(JSON.stringify(restored)).not.toContain(accountACapture.image.dataUrl);
+    expect(test.client.task).not.toHaveBeenCalled();
+    expect(test.client.capture).not.toHaveBeenCalled();
     expect(test.storage.clear).toHaveBeenCalledTimes(1);
     expect(test.current()).toBeNull();
   });
 
   it('clears account A sources and analyzes only account B input after token rotation', async () => {
-    const accountACapture = {
-      ...capture,
-      image: { ...capture.image, dataUrl: 'data:image/png;base64,ACCOUNT_A' },
-    };
     const accountBCapture = {
       ...capture,
       image: { ...capture.image, dataUrl: 'data:image/png;base64,ACCOUNT_B' },
     };
     const active = {
       requestId: 'c_20260828_account_a', tokenFingerprint: fingerprint,
-      captures: [accountACapture], outputLanguage: 'en' as const,
+      captures: [singleStoredCapture], outputLanguage: 'en' as const,
     };
     const test = dependencies({
       active,
@@ -356,6 +715,35 @@ describe('CloudAnalysisRuntime', () => {
     expect(test.storage.clear).toHaveBeenCalledTimes(1);
   });
 
+  it('rejects and clears a resumed report whose dimensions differ from stored sources', async () => {
+    const active = {
+      requestId: 'c_20260828_active', tokenFingerprint: fingerprint,
+      captures: storedCaptures, outputLanguage: 'en' as const,
+    };
+    const task = multiCompletedTask();
+    if (!task.report) throw new Error('Expected completed report.');
+    const mismatched = parseExtensionAnalysisTask({
+      ...task,
+      report: {
+        ...task.report,
+        context: {
+          ...task.report.context,
+          captures: task.report.context.captures.map((metadata, index) => (
+            index === 1 ? { ...metadata, width: metadata.width - 1 } : metadata
+          )),
+        },
+      },
+    });
+    const test = dependencies({ active, tasks: [mismatched] });
+
+    await expect(test.runtime.analyze({ captures, outputLanguage: 'en' }))
+      .rejects.toMatchObject({ code: 'incompatible_report_schema' });
+
+    expect(test.adaptPresentation).not.toHaveBeenCalled();
+    expect(test.buildAnnotations).not.toHaveBeenCalled();
+    expect(test.storage.clear).toHaveBeenCalledWith(active.requestId);
+  });
+
   it('clears saved captures when polling reports task_not_found', async () => {
     const test = dependencies({ tasks: [] });
     test.client.task.mockRejectedValue(new CloudConnectionError('task_not_found'));
@@ -373,7 +761,7 @@ describe('CloudAnalysisRuntime', () => {
   ] as const)('clears an unrestorable active task after %s', async (code) => {
     const active = {
       requestId: 'c_20260828_active', tokenFingerprint: fingerprint,
-      captures: [capture], outputLanguage: 'en' as const,
+      captures: [singleStoredCapture], outputLanguage: 'en' as const,
     };
     const test = dependencies({ active });
     test.client.task.mockRejectedValue(new CloudConnectionError(code));
@@ -419,7 +807,7 @@ describe('CloudAnalysisRuntime', () => {
     expect(test.storage.clear).not.toHaveBeenCalled();
     expect(test.current()).toEqual({
       requestId: pending.requestId, tokenFingerprint: fingerprint,
-      captures: [capture], outputLanguage: 'en',
+      captures: [singleStoredCapture], outputLanguage: 'en',
     });
   });
 
@@ -465,12 +853,14 @@ describe('CloudAnalysisRuntime', () => {
     const storage = {
       load: vi.fn(async () => active),
       save: vi.fn(async (value: StoredCloudActiveTask) => { active = value; }),
-      clear: vi.fn(async () => { active = null; }),
+      clear: vi.fn(async (expectedRequestId?: string) => {
+        if (expectedRequestId === undefined || active?.requestId === expectedRequestId) active = null;
+      }),
     };
     const connection = {
       load: vi.fn()
-        .mockResolvedValueOnce({ token, account: {} as never })
-        .mockResolvedValueOnce({ token: rotatedToken, account: {} as never }),
+        .mockResolvedValueOnce({ token, account })
+        .mockResolvedValueOnce({ token: rotatedToken, account }),
     };
     const client = {
       createTask: vi.fn(async (value: string) => value === token ? pendingA : pendingB),
@@ -479,6 +869,9 @@ describe('CloudAnalysisRuntime', () => {
         throw new CloudConnectionError('task_not_found');
       }),
       cancelTask: vi.fn(() => cancellationA.promise),
+      capture: vi.fn(async (_token: string, _requestId: string, captureId: 'C01' | 'C02' | 'C03') => (
+        downloadedCapture(captureId)
+      )),
     };
     const sleep = vi.fn()
       .mockImplementationOnce((_delay: number, signal: AbortSignal) =>
@@ -507,7 +900,7 @@ describe('CloudAnalysisRuntime', () => {
     await vi.waitFor(() => expect(active).toEqual({
       requestId: requestB,
       tokenFingerprint: rotatedFingerprint,
-      captures: [captureB],
+      captures: [singleStoredCapture],
       outputLanguage: 'en',
     }));
 
@@ -524,7 +917,7 @@ describe('CloudAnalysisRuntime', () => {
     expect(client.task).toHaveBeenCalledWith(rotatedToken, requestB, expect.any(AbortSignal));
     expect(storage.save).toHaveBeenLastCalledWith(expect.objectContaining({
       requestId: requestB,
-      captures: [captureB],
+      captures: [singleStoredCapture],
     }));
     expect(storage.clear).toHaveBeenCalledTimes(2);
     expect(buildAnnotations).toHaveBeenCalledWith(
