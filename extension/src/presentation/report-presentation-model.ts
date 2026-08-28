@@ -46,7 +46,7 @@ const indicatorSchema = z.object({
 const marketExplanationSchema = z.object({
   priceAction: evidenceExplanationSchema,
   volume: volumeExplanationSchema.nullable(),
-  indicators: z.array(indicatorSchema).max(4),
+  indicators: z.array(indicatorSchema).max(8),
 }).strict();
 
 const levelSchema = z.object({
