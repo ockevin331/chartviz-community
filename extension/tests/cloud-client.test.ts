@@ -5,6 +5,7 @@ import {
   createCloudClient,
 } from '../src/cloud/cloud-client';
 import type { AnalysisCapture } from '../src/analysis/runtime/analysis-runtime';
+import { describeCloudCaptures } from '../src/cloud/cloud-capture-descriptors';
 import taskFixture from '../contracts/extension-cloud/v1/fixtures/single-completed-task.json';
 
 const capabilities = {
@@ -69,6 +70,14 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+const pngBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0]);
+
+function pngResponse(bytes: Uint8Array = pngBytes, contentType = 'image/png'): Response {
+  const body = new Uint8Array(bytes.byteLength);
+  body.set(bytes);
+  return new Response(body.buffer, { status: 200, headers: { 'Content-Type': contentType } });
 }
 
 describe('fixed-origin ChartViz Cloud client', () => {
@@ -190,11 +199,9 @@ describe('fixed-origin ChartViz Cloud client', () => {
     const metadata = JSON.parse(await (form.get('metadata') as Blob).text());
     expect(metadata).toEqual({
       outputLanguage: 'en',
-      captures: [{
-        captureId: 'C01', timeframe: '15m', role: null,
-        instrument: 'BTC/USDT', site: 'binance', venue: 'Binance',
-        pageType: 'spot-trade', width: 1280, height: 720,
-      }],
+      captures: describeCloudCaptures([capture]).map(({ exchange, ...descriptor }) => ({
+        ...descriptor, venue: exchange,
+      })),
     });
     expect(JSON.stringify(metadata)).not.toContain(capture.image.dataUrl);
   });
@@ -310,5 +317,53 @@ describe('fixed-origin ChartViz Cloud client', () => {
     await expect(operation).rejects.toMatchObject({ code: 'incompatible_report_schema' });
     await expect(operation).rejects.not.toThrow(token);
     await expect(operation).rejects.not.toThrow(secretImage);
+  });
+
+  it('downloads an authenticated PNG capture using the fixed Cloud origin and abort signal', async () => {
+    const controller = new AbortController();
+    const fetcher = vi.fn().mockResolvedValue(pngResponse());
+    const token = `cv_live_${'d'.repeat(43)}`;
+
+    await expect(createCloudClient(fetcher).capture(
+      token, 'c_20260828_capture', 'C02', controller.signal,
+    )).resolves.toEqual({ mediaType: 'image/png', bytes: pngBytes.buffer });
+
+    expect(fetcher).toHaveBeenCalledWith(
+      `${CLOUD_API_BASE_URL}/v1/extension/analysis-tasks/c_20260828_capture/captures/C02`,
+      {
+        headers: { Accept: 'image/png', Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      },
+    );
+  });
+
+  it.each([
+    ['wrong content type', pngResponse(pngBytes, 'image/jpeg')],
+    ['empty PNG response', pngResponse(new Uint8Array())],
+    ['PNG response over 10 MiB', pngResponse(new Uint8Array(10 * 1024 * 1024 + 1))],
+    ['bad PNG signature', pngResponse(new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7]))],
+  ])('rejects a %s as an unavailable Cloud response', async (_name, response) => {
+    await expect(createCloudClient(vi.fn().mockResolvedValue(response)).capture(
+      `cv_live_${'b'.repeat(43)}`, 'c_20260828_capture', 'C01',
+    )).rejects.toMatchObject({ code: 'service_unavailable' });
+  });
+
+  it('parses the stable JSON error envelope from a failed capture download', async () => {
+    await expect(createCloudClient(vi.fn().mockResolvedValue(jsonResponse({
+      code: 'task_not_found', params: {},
+    }, 404))).capture(`cv_live_${'e'.repeat(43)}`, 'c_20260828_capture', 'C01'))
+      .rejects.toMatchObject({ code: 'task_not_found' });
+  });
+
+  it.each([
+    ['token', 'website-session', 'c_20260828_capture', 'C01'],
+    ['request ID', `cv_live_${'i'.repeat(43)}`, '', 'C01'],
+    ['capture ID', `cv_live_${'i'.repeat(43)}`, 'c_20260828_capture', 'C99'],
+  ])('rejects an invalid %s before downloading', async (_name, token, requestId, captureId) => {
+    const fetcher = vi.fn();
+
+    await expect(createCloudClient(fetcher).capture(token, requestId, captureId as 'C01')).rejects
+      .toMatchObject({ code: _name === 'token' ? 'invalid_token' : 'task_not_found' });
+    expect(fetcher).not.toHaveBeenCalled();
   });
 });

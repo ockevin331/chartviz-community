@@ -1,10 +1,17 @@
 import { z } from 'zod';
 import type { AnalysisCapture } from '../analysis/runtime/analysis-runtime';
 import type { OutputLanguage } from '../analysis/stages/shared-stage-types';
+import {
+  CloudConnectionError,
+  describeCloudCaptures,
+} from './cloud-capture-descriptors';
+export {
+  CloudConnectionError,
+  type CloudConnectionErrorCode,
+} from './cloud-capture-descriptors';
 import type {
   ExtensionAccount,
   ExtensionAnalysisTask,
-  ExtensionApiError,
   ExtensionCaptureSettings,
 } from './contracts/extension-cloud-v1';
 import {
@@ -33,25 +40,10 @@ const errorSchema = z.object({
   pricingUrl: z.string().optional(),
 });
 
-export type CloudConnectionErrorCode = ExtensionApiError['code'];
-
-export class CloudConnectionError extends Error {
-  readonly code: CloudConnectionErrorCode;
-  readonly params: ExtensionApiError['params'];
-  readonly pricingUrl: string | null;
-
-  constructor(
-    code: CloudConnectionErrorCode,
-    params: ExtensionApiError['params'] = {},
-    pricingUrl: string | null = null,
-  ) {
-    super(code);
-    this.name = 'CloudConnectionError';
-    this.code = code;
-    this.params = params;
-    this.pricingUrl = pricingUrl;
-  }
-}
+export type DownloadedCapture = Readonly<{
+  mediaType: 'image/png';
+  bytes: ArrayBuffer;
+}>;
 
 export type CloudClient = Readonly<{
   connect(token: string): Promise<ExtensionAccount>;
@@ -60,6 +52,12 @@ export type CloudClient = Readonly<{
   createTask(token: string, input: CloudTaskCreateInput): Promise<ExtensionAnalysisTask>;
   task(token: string, requestId: string, signal?: AbortSignal): Promise<ExtensionAnalysisTask>;
   cancelTask(token: string, requestId: string): Promise<ExtensionAnalysisTask>;
+  capture(
+    token: string,
+    requestId: string,
+    captureId: 'C01' | 'C02' | 'C03',
+    signal?: AbortSignal,
+  ): Promise<DownloadedCapture>;
 }>;
 
 export type CloudTaskCreateInput = Readonly<{
@@ -69,6 +67,18 @@ export type CloudTaskCreateInput = Readonly<{
 
 function validateToken(token: string): void {
   if (!cloudTokenPattern.test(token)) throw new CloudConnectionError('invalid_token');
+}
+
+function validateRequestId(requestId: string): void {
+  if (requestId.length < 1 || requestId.length > 80) {
+    throw new CloudConnectionError('task_not_found');
+  }
+}
+
+function validateCaptureId(captureId: string): asserts captureId is 'C01' | 'C02' | 'C03' {
+  if (captureId !== 'C01' && captureId !== 'C02' && captureId !== 'C03') {
+    throw new CloudConnectionError('task_not_found');
+  }
 }
 
 async function responseBody(response: Response): Promise<unknown> {
@@ -112,6 +122,55 @@ async function request(
   );
 }
 
+async function captureRequest(
+  fetcher: typeof fetch,
+  token: string,
+  requestId: string,
+  captureId: 'C01' | 'C02' | 'C03',
+  signal?: AbortSignal,
+): Promise<DownloadedCapture> {
+  let response: Response;
+  try {
+    response = await fetcher(
+      `${CLOUD_API_BASE_URL}/v1/extension/analysis-tasks/${encodeURIComponent(requestId)}/captures/${captureId}`,
+      {
+        headers: { Accept: 'image/png', Authorization: `Bearer ${token}` },
+        ...(signal === undefined ? {} : { signal }),
+      },
+    );
+  } catch {
+    throw new CloudConnectionError('service_unavailable');
+  }
+  if (!response.ok) {
+    const body = await responseBody(response);
+    const parsed = errorSchema.safeParse(body);
+    if (!parsed.success) throw new CloudConnectionError('service_unavailable');
+    throw new CloudConnectionError(
+      parsed.data.code,
+      parsed.data.params,
+      parsed.data.pricingUrl ?? null,
+    );
+  }
+  if (response.headers.get('content-type') !== 'image/png') {
+    throw new CloudConnectionError('service_unavailable');
+  }
+  let bytes: ArrayBuffer;
+  try {
+    bytes = await response.arrayBuffer();
+  } catch {
+    throw new CloudConnectionError('service_unavailable');
+  }
+  if (bytes.byteLength < 1 || bytes.byteLength > 10 * 1024 * 1024) {
+    throw new CloudConnectionError('service_unavailable');
+  }
+  const signature = new Uint8Array(bytes, 0, Math.min(bytes.byteLength, 8));
+  const expectedSignature = [137, 80, 78, 71, 13, 10, 26, 10];
+  if (signature.length !== expectedSignature.length || expectedSignature.some((byte, index) => signature[index] !== byte)) {
+    throw new CloudConnectionError('service_unavailable');
+  }
+  return Object.freeze({ mediaType: 'image/png', bytes });
+}
+
 function taskContractError(): CloudConnectionError {
   return new CloudConnectionError('incompatible_report_schema');
 }
@@ -134,69 +193,11 @@ function imageBlob(capture: AnalysisCapture): Blob {
   }
 }
 
-const timeframeDurations = Object.freeze({
-  '1m': 1,
-  '3m': 3,
-  '5m': 5,
-  '15m': 15,
-  '30m': 30,
-  '1h': 60,
-  '2h': 120,
-  '4h': 240,
-  '6h': 360,
-  '8h': 480,
-  '12h': 720,
-  '1d': 1440,
-  '3d': 4320,
-  '1w': 10080,
-  '1M': 43200,
-} as const);
-
-type NormalizedCaptureRole = 'context' | 'setup' | 'trigger' | 'setup_and_trigger' | null;
-
-function normalizedRoles(timeframes: readonly string[]): readonly NormalizedCaptureRole[] {
-  let rolesByDuration: readonly NormalizedCaptureRole[];
-  if (timeframes.length === 1) rolesByDuration = [null];
-  else if (timeframes.length === 2) rolesByDuration = ['context', 'setup_and_trigger'];
-  else rolesByDuration = ['context', 'setup', 'trigger'];
-  const orderedIndices = timeframes
-    .map((_, index) => index)
-    .sort((left, right) => (
-      timeframeDurations[timeframes[right] as keyof typeof timeframeDurations]
-      - timeframeDurations[timeframes[left] as keyof typeof timeframeDurations]
-    ));
-  const result: NormalizedCaptureRole[] = Array(timeframes.length).fill(null);
-  orderedIndices.forEach((captureIndex, roleIndex) => {
-    result[captureIndex] = rolesByDuration[roleIndex] ?? null;
-  });
-  return result;
-}
-
 function taskForm(input: CloudTaskCreateInput): FormData {
-  if (input.captures.length < 1 || input.captures.length > 3) {
-    throw new CloudConnectionError('invalid_image');
-  }
-  const timeframes = input.captures.map((capture) => capture.context.timeframe?.trim() ?? '');
-  if (timeframes.some((timeframe) => !Object.hasOwn(timeframeDurations, timeframe))) {
-    throw new CloudConnectionError('unsupported_timeframe');
-  }
-  if (new Set(timeframes).size !== timeframes.length) {
-    throw new CloudConnectionError('unsupported_timeframe');
-  }
-  const roles = normalizedRoles(timeframes);
+  const descriptors = describeCloudCaptures(input.captures);
   const metadata = {
     outputLanguage: input.outputLanguage,
-    captures: input.captures.map((capture, index) => ({
-      captureId: `C${String(index + 1).padStart(2, '0')}`,
-      timeframe: timeframes[index]!,
-      role: roles[index]!,
-      instrument: capture.context.instrument?.trim() || null,
-      site: capture.context.site?.trim() || null,
-      venue: capture.context.exchange?.trim() || null,
-      pageType: capture.context.pageType ?? null,
-      width: capture.image.width,
-      height: capture.image.height,
-    })),
+    captures: descriptors.map(({ exchange, ...descriptor }) => ({ ...descriptor, venue: exchange })),
   };
   const form = new FormData();
   form.append(
@@ -298,6 +299,17 @@ export function createCloudClient(fetcher: typeof fetch = fetch): CloudClient {
         { method: 'POST' },
       );
       return parseTask(body);
+    },
+    async capture(
+      token: string,
+      requestId: string,
+      captureId: 'C01' | 'C02' | 'C03',
+      signal?: AbortSignal,
+    ): Promise<DownloadedCapture> {
+      validateToken(token);
+      validateRequestId(requestId);
+      validateCaptureId(captureId);
+      return captureRequest(fetcher, token, requestId, captureId, signal);
     },
   });
 }
