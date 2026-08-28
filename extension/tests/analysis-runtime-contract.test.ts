@@ -9,7 +9,11 @@ import {
   unavailableCloudGateway,
   type CloudAnalysisGateway,
 } from '../src/cloud/cloud-gateway';
-import { annotatedImages, communityReport, processedImage } from './community-ui-fixtures';
+import { presentationAnnotatedImages, processedImage } from './community-ui-fixtures';
+import { parseReportPresentationModel } from '../src/presentation/report-presentation-model';
+import { validPresentationBundle } from './presentation-fixtures';
+
+const presentation = parseReportPresentationModel(structuredClone(validPresentationBundle.report));
 
 const captures: readonly AnalysisCapture[] = [
   { image: processedImage, context: { instrument: 'BTC/USDT', timeframe: '4h' } },
@@ -33,7 +37,7 @@ describe('analysis runtime contract', () => {
     const analyze = vi.fn(async (input: AnalysisRuntimeInput) => {
       expect(input.captures).toEqual(singleCapture);
       expect(input.outputLanguage).toBe('zh-CN');
-      return { report: communityReport, annotations: annotatedImages };
+      return { presentation, annotations: presentationAnnotatedImages };
     });
     const runtime: AnalysisRuntime = {
       mode: 'cloud',
@@ -52,14 +56,14 @@ describe('analysis runtime contract', () => {
     const outcome = await resolved?.analyze({ captures: singleCapture, outputLanguage: 'zh-CN' });
 
     expect(analyze).toHaveBeenCalledTimes(1);
-    expect(outcome).toEqual({ report: communityReport, annotations: annotatedImages });
+    expect(outcome).toEqual({ presentation, annotations: presentationAnnotatedImages });
   });
 
   it('rejects an available gateway that does not expose a Cloud runtime', () => {
     const directRuntime: AnalysisRuntime = {
       mode: 'direct',
       capabilities: () => ({ multiTimeframe: false, maxTimeframes: 1 }),
-      analyze: async () => ({ report: communityReport, annotations: annotatedImages }),
+      analyze: async () => ({ presentation, annotations: presentationAnnotatedImages }),
       cancel: () => undefined,
     };
     const gateway: CloudAnalysisGateway = {

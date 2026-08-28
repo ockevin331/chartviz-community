@@ -1,5 +1,5 @@
 import type { CommunityReportV3 } from '../src/analysis/stages/community-report-v3-schema';
-import type { AnnotatedReportImages } from '../src/annotations/annotation-types';
+import type { AnnotatedReportImages, PresentationAnnotatedImages } from '../src/annotations/annotation-types';
 import type { ProcessedImage } from '../src/capture/image-types';
 
 export const processedImage: ProcessedImage = {
@@ -61,4 +61,12 @@ export const annotatedImages: AnnotatedReportImages = {
   patterns: {
     P01: { id: 'P01', kind: 'pattern', title: 'Rising channel', dataUrl: 'data:image/png;base64,PATTERN', width: 640, height: 360 },
   },
+};
+
+export const presentationAnnotatedImages: PresentationAnnotatedImages = {
+  levels: {
+    C01: { ...annotatedImages.levels!, id: 'levels-C01' },
+  },
+  signals: annotatedImages.signals,
+  patterns: annotatedImages.patterns,
 };

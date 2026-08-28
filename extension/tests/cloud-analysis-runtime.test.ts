@@ -5,7 +5,9 @@ import { AnalysisRuntimeFailure, type AnalysisCapture } from '../src/analysis/ru
 import { CloudConnectionError, type CloudClient } from '../src/cloud/cloud-client';
 import { parseExtensionAnalysisTask } from '../src/cloud/cloud-task-schema';
 import type { StoredCloudActiveTask } from '../src/storage/cloud-active-task-storage';
-import { annotatedImages } from './community-ui-fixtures';
+import { parsePresentationBundle } from '../src/presentation/report-presentation-model';
+import { presentationAnnotatedImages } from './community-ui-fixtures';
+import { validPresentationBundle } from './presentation-fixtures';
 
 const token = `cv_live_${'x'.repeat(43)}`;
 const capture: AnalysisCapture = {
@@ -54,15 +56,17 @@ function dependencies(options: {
     clear: vi.fn(async () => { active = null; }),
   };
   const sleep = vi.fn(async (_delay: number, _signal: AbortSignal): Promise<void> => undefined);
-  const buildAnnotations = vi.fn(async () => annotatedImages);
+  const adaptPresentation = vi.fn(() => parsePresentationBundle(structuredClone(validPresentationBundle)));
+  const buildAnnotations = vi.fn(async () => presentationAnnotatedImages);
   const runtime = new CloudAnalysisRuntime({
     client,
     connection: { load: vi.fn(async () => ({ token, account: {} as never })) },
     activeTask: storage,
     sleep,
+    adaptPresentation,
     buildAnnotations,
   });
-  return { runtime, client, storage, sleep, buildAnnotations, current: () => active };
+  return { runtime, client, storage, sleep, adaptPresentation, buildAnnotations, current: () => active };
 }
 
 describe('CloudAnalysisRuntime', () => {
@@ -82,8 +86,13 @@ describe('CloudAnalysisRuntime', () => {
       'preparing', 'reading_chart', 'reviewing_clues', 'checking_signals',
       'preparing_result',
     ]);
-    expect(outcome.report.schemaVersion).toBe('community-3.0');
+    expect(outcome.presentation.schemaVersion).toBe('presentation-1.0');
+    expect(test.adaptPresentation).toHaveBeenCalledWith(completed.report);
     expect(test.buildAnnotations).toHaveBeenCalledTimes(1);
+    expect(test.buildAnnotations).toHaveBeenCalledWith(
+      [{ captureId: 'C01', image: capture.image }],
+      validPresentationBundle.drawings,
+    );
     expect(test.storage.clear).toHaveBeenCalledTimes(1);
   });
 
@@ -137,7 +146,7 @@ describe('CloudAnalysisRuntime', () => {
 
     test.runtime.cancel();
 
-    await expect(operation).resolves.toMatchObject({ report: { schemaVersion: 'community-3.0' } });
+    await expect(operation).resolves.toMatchObject({ presentation: { schemaVersion: 'presentation-1.0' } });
     expect(test.storage.clear).toHaveBeenCalled();
   });
 

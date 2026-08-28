@@ -1,4 +1,4 @@
-import type { CommunityReportV3 } from '../../analysis/stages/community-report-v3-schema';
+import type { ReportPresentationModel } from '../../presentation/report-presentation-model';
 import { translations, type Language } from '../components/LanguageMenu';
 
 const enMetric: Record<string, string> = {
@@ -19,12 +19,13 @@ function metric(value: string, language: Language): string {
   return (language === 'zh-CN' ? zhMetric : enMetric)[value] ?? value.replaceAll('_', ' ');
 }
 
-export function reportToText(report: CommunityReportV3, language: Language): string {
+export function reportToText(report: ReportPresentationModel, language: Language): string {
   const t = translations[language];
+  const capture = report.context.captures[0];
   const lines = [
     `ChartViz — ${metric(report.conclusion.direction, language)}`,
-    `${t.instrument}: ${report.chart.instrument ?? t.none}`,
-    `${t.timeframe}: ${report.chart.timeframe ?? t.none}`,
+    `${t.instrument}: ${report.context.instrument ?? capture?.instrument ?? t.none}`,
+    `${t.timeframe}: ${capture?.timeframe ?? t.none}`,
     `${t.trend}: ${metric(report.conclusion.trend, language)} · ${t.structure}: ${metric(report.conclusion.structure, language)} · ${t.strength}: ${metric(report.conclusion.strength, language)} · ${t.confidence}: ${Math.round(report.conclusion.confidence * 100)}%`,
     report.conclusion.summary,
     `${t.primaryRisk}: ${report.conclusion.primaryRisk}`,

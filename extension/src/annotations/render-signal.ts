@@ -1,4 +1,3 @@
-import type { CommunityReportV3 } from '../analysis/stages/community-report-v3-schema';
 import type { ProcessedImage } from '../capture/image-types';
 import type { PresentationDrawing } from '../presentation/report-presentation-model';
 import type { AnnotatedImage } from './annotation-types';
@@ -23,8 +22,6 @@ const ARROW_STROKE_MARGIN = 1.5;
 const LABEL_MIN_Y = 16;
 const LABEL_BOTTOM_PADDING = 8;
 const LABEL_SPACING = 18;
-type TradeSignal = CommunityReportV3['tradeSignals'][number];
-
 type RenderableSignal = {
   id: string;
   direction: 'long' | 'short';
@@ -182,14 +179,6 @@ async function renderSignalShape(
     width: image.width,
     height: image.height,
   };
-}
-
-export async function renderSignal(
-  image: ProcessedImage,
-  signal: TradeSignal,
-  dependencies: AnnotationCanvasDependencies = browserAnnotationCanvasDependencies,
-): Promise<AnnotatedImage> {
-  return renderSignalShape(image, signal, dependencies);
 }
 
 export async function renderPresentationSignal(

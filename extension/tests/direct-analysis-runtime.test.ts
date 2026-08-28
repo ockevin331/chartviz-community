@@ -4,7 +4,9 @@ import { DirectAnalysisRuntime } from '../src/analysis/runtime/direct-analysis-r
 import { attachProviderFailureDetail } from '../src/providers/provider-diagnostics';
 import { ProviderError } from '../src/providers/provider-errors';
 import type { StructuredVisionProvider } from '../src/providers/provider-types';
-import { annotatedImages, communityReport, processedImage } from './community-ui-fixtures';
+import { parsePresentationBundle } from '../src/presentation/report-presentation-model';
+import { communityReport, presentationAnnotatedImages, processedImage } from './community-ui-fixtures';
+import { validPresentationBundle } from './presentation-fixtures';
 
 const config = {
   provider: 'openrouter',
@@ -30,16 +32,18 @@ const capture = {
 function setup(overrides: Record<string, unknown> = {}) {
   const getProvider = vi.fn(() => provider);
   const runAnalysis = vi.fn(async () => communityReport);
-  const buildAnnotations = vi.fn(async () => annotatedImages);
+  const adaptPresentation = vi.fn(() => parsePresentationBundle(structuredClone(validPresentationBundle)));
+  const buildAnnotations = vi.fn(async () => presentationAnnotatedImages);
   const runtime = new DirectAnalysisRuntime(config, {
     getProvider,
     runAnalysis,
+    adaptPresentation,
     buildAnnotations,
     createRequestId: () => 'runtime-request-id',
     now: () => 1_000,
     ...overrides,
   });
-  return { runtime, getProvider, runAnalysis, buildAnnotations };
+  return { runtime, getProvider, runAnalysis, adaptPresentation, buildAnnotations };
 }
 
 describe('DirectAnalysisRuntime', () => {
@@ -59,7 +63,7 @@ describe('DirectAnalysisRuntime', () => {
       input.onProgress?.('reviewing_clues');
       return communityReport;
     });
-    const { runtime, getProvider, buildAnnotations } = setup({ runAnalysis });
+    const { runtime, getProvider, adaptPresentation, buildAnnotations } = setup({ runAnalysis });
 
     const outcome = await runtime.analyze({
       captures: [capture],
@@ -87,9 +91,16 @@ describe('DirectAnalysisRuntime', () => {
       onProgress: progress,
       signal: expect.any(AbortSignal),
     });
+    expect(adaptPresentation).toHaveBeenCalledWith(communityReport, capture, 'zh-CN');
     expect(buildAnnotations).toHaveBeenCalledTimes(1);
-    expect(buildAnnotations).toHaveBeenCalledWith(processedImage, communityReport);
-    expect(outcome).toEqual({ report: communityReport, annotations: annotatedImages });
+    expect(buildAnnotations).toHaveBeenCalledWith(
+      [{ captureId: 'C01', image: processedImage }],
+      validPresentationBundle.drawings,
+    );
+    expect(outcome).toEqual({
+      presentation: validPresentationBundle.report,
+      annotations: presentationAnnotatedImages,
+    });
     expect(progress).toHaveBeenCalledWith('reviewing_clues');
   });
 

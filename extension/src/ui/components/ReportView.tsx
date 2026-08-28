@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import type { CommunityReportV3, CommunityScenarioV3 } from '../../analysis/stages/community-report-v3-schema';
-import type { AnnotatedReportImages } from '../../annotations/annotation-types';
+import type { PresentationAnnotatedImages } from '../../annotations/annotation-types';
 import type { ProcessedImage } from '../../capture/image-types';
+import type { ReportPresentationModel, PresentationScenario } from '../../presentation/report-presentation-model';
 import { copyReport as defaultCopyReport, reportToText } from '../export/copy-report';
 import { AnnotatedImage } from './AnnotatedImage';
 import { ImageLightbox, type LightboxImage } from './ImageLightbox';
@@ -9,9 +9,9 @@ import { translations, type Language } from './LanguageMenu';
 
 type Props = {
   language: Language;
-  report: CommunityReportV3;
+  presentation: ReportPresentationModel;
   original: ProcessedImage;
-  annotations: AnnotatedReportImages;
+  annotations: PresentationAnnotatedImages;
   downloadImage?: (dataUrl: string, filename: string) => void;
   copyReport?: (text: string) => Promise<void>;
 };
@@ -37,23 +37,25 @@ function metric(value: string, language: Language): string {
   return language === 'zh-CN' ? zhMetrics[value] ?? value : enMetrics[value] ?? value.replaceAll('_', ' ');
 }
 
-function ScenarioCard({ title, scenario, language }: { title: string; scenario: CommunityScenarioV3; language: Language }) {
+function ScenarioCard({ title, scenario, language }: { title: string; scenario: PresentationScenario; language: Language }) {
   const t = translations[language];
   return <article className="scenario"><h3>{title}</h3><p><b>{t.condition}:</b> {scenario.condition}</p><p><b>{t.entry}:</b> {scenario.entry}</p><p><b>{t.stop}:</b> {scenario.stop}</p><div><b>{t.targets}:</b><ul>{scenario.targets.map((target) => <li key={target}>{target}</li>)}</ul></div><p><b>{t.reason}:</b> {scenario.reason}</p></article>;
 }
 
-export function ReportView({ language, report, original, annotations, downloadImage, copyReport = defaultCopyReport }: Props) {
+export function ReportView({ language, presentation: report, original, annotations, downloadImage, copyReport = defaultCopyReport }: Props) {
   const t = translations[language];
   const [lightbox, setLightbox] = useState<LightboxImage | null>(null);
   const [copied, setCopied] = useState(false);
   const zoom = (image: LightboxImage) => setLightbox(image);
+  const capture = report.context.captures[0];
+  const levelsImage = capture ? annotations.levels[capture.captureId] : undefined;
   const directionClass = report.conclusion.direction === 'long' ? 'bullish' : report.conclusion.direction === 'short' ? 'bearish' : 'neutral';
 
   return <div className="report-view">
     <section className="original-screenshot">
       <div className="section-heading"><h2>{t.original}</h2><button className="secondary copy-report" type="button" onClick={async () => { await copyReport(reportToText(report, language)); setCopied(true); }}>{copied ? t.copied : t.copyReport}</button></div>
       <AnnotatedImage language={language} image={{ dataUrl: original.dataUrl, title: t.original }} filename="chartviz-original.png" onZoom={zoom} downloadImage={downloadImage} />
-      <dl className="metadata"><div><dt>{t.instrument}</dt><dd>{report.chart.instrument ?? t.none}</dd></div><div><dt>{t.timeframe}</dt><dd>{report.chart.timeframe ?? t.none}</dd></div></dl>
+      <dl className="metadata"><div><dt>{t.instrument}</dt><dd>{report.context.instrument ?? capture?.instrument ?? t.none}</dd></div><div><dt>{t.timeframe}</dt><dd>{capture?.timeframe ?? t.none}</dd></div></dl>
     </section>
 
     <section className={`decision decision-${directionClass}`} data-report-section="conclusion">
@@ -71,7 +73,7 @@ export function ReportView({ language, report, original, annotations, downloadIm
       {report.marketExplanation.indicators.length > 0 && <div className="indicator-explanation"><h3>{t.technicalIndicators}</h3>{report.marketExplanation.indicators.map((indicator) => <article key={indicator.id}><p><b>{indicator.name}:</b> {indicator.state}</p><p><b>{t.implication}:</b> {indicator.implication}</p><small>{t.visibleAt}: {indicator.timeAnchor}</small></article>)}</div>}
     </section>
 
-    {report.levels.length > 0 && <section data-report-section="levels"><h2>{t.supportResistance}</h2><div className="level-list visual-levels">{report.levels.map((level) => <article className={level.type} key={level.id}><span>{metric(level.type, language)} · {metric(level.tier, language)}</span><strong>{level.priceLabel}</strong><p>{level.reason}</p><small>{t.levelStatus}: {metric(level.status, language)} · {t.visibleAt}: {level.timeAnchor} · {Math.round(level.confidence * 100)}%</small></article>)}</div>{annotations.levels && <div className="level-annotation"><AnnotatedImage language={language} image={{ ...annotations.levels, title: t.supportResistance }} filename="chartviz-levels.png" onZoom={zoom} downloadImage={downloadImage} /></div>}</section>}
+    {report.levels.length > 0 && <section data-report-section="levels"><h2>{t.supportResistance}</h2><div className="level-list visual-levels">{report.levels.map((level) => <article className={level.type} key={level.id}><span>{metric(level.type, language)} · {metric(level.tier, language)}</span><strong>{level.priceLabel}</strong><p>{level.reason}</p><small>{t.levelStatus}: {metric(level.status, language)} · {t.visibleAt}: {level.timeAnchor} · {Math.round(level.confidence * 100)}%</small></article>)}</div>{levelsImage && <div className="level-annotation"><AnnotatedImage language={language} image={{ ...levelsImage, title: t.supportResistance }} filename="chartviz-levels.png" onZoom={zoom} downloadImage={downloadImage} /></div>}</section>}
 
     <section className="trade-plan" data-report-section="tradePlan"><h2>{t.tradePlan}</h2><p className="trade-plan-summary">{report.tradePlan.summary}</p><ScenarioCard title={t.long} scenario={report.tradePlan.long} language={language} /><ScenarioCard title={t.short} scenario={report.tradePlan.short} language={language} /><article className="scenario"><h3>{t.wait}</h3><p><b>{t.condition}:</b> {report.tradePlan.wait.condition}</p><p><b>{t.reason}:</b> {report.tradePlan.wait.reason}</p></article></section>
 

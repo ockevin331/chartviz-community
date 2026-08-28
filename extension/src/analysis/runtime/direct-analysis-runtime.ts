@@ -1,6 +1,8 @@
-import { buildAnnotations as buildReportAnnotations } from '../../annotations/build-annotations';
-import type { AnnotatedReportImages } from '../../annotations/annotation-types';
-import type { ProcessedImage } from '../../capture/image-types';
+import {
+  buildPresentationAnnotations,
+  type PresentationSourceCapture,
+} from '../../annotations/build-presentation-annotations';
+import type { PresentationAnnotatedImages } from '../../annotations/annotation-types';
 import {
   attachProviderFailureDetail,
   createAnalysisDiagnostic,
@@ -14,11 +16,12 @@ import type {
   StructuredVisionProvider,
 } from '../../providers/provider-types';
 import { saveLastAnalysisFailure } from '../../storage/analysis-failure-storage';
+import { adaptDirectPresentation } from '../../presentation/direct-presentation-adapter';
+import type { PresentationBundle, PresentationDrawing } from '../../presentation/report-presentation-model';
 import {
   runThreeStageAnalysis,
   type ThreeStageAnalysisInput,
 } from '../stages/analysis-pipeline';
-import type { CommunityReportV3 } from '../stages/community-report-v3';
 import {
   AnalysisRuntimeFailure,
   type AnalysisRuntime,
@@ -28,11 +31,16 @@ import {
 
 export type DirectAnalysisRuntimeDependencies = Readonly<{
   getProvider(kind: ProviderKind): StructuredVisionProvider;
-  runAnalysis(input: ThreeStageAnalysisInput): Promise<CommunityReportV3>;
+  runAnalysis(input: ThreeStageAnalysisInput): ReturnType<typeof runThreeStageAnalysis>;
+  adaptPresentation(
+    report: Awaited<ReturnType<typeof runThreeStageAnalysis>>,
+    capture: AnalysisRuntimeInput['captures'][number],
+    outputLanguage: AnalysisRuntimeInput['outputLanguage'],
+  ): PresentationBundle;
   buildAnnotations(
-    image: ProcessedImage,
-    report: CommunityReportV3,
-  ): Promise<AnnotatedReportImages>;
+    captures: readonly PresentationSourceCapture[],
+    drawings: readonly PresentationDrawing[],
+  ): Promise<PresentationAnnotatedImages>;
   createRequestId(): string;
   now(): number;
   saveFailureDiagnostic(diagnostic: AnalysisDiagnostic): Promise<void>;
@@ -48,7 +56,8 @@ function createRequestId(): string {
 const defaultDependencies: DirectAnalysisRuntimeDependencies = {
   getProvider: (kind) => providerRegistry.get(kind),
   runAnalysis: runThreeStageAnalysis,
-  buildAnnotations: buildReportAnnotations,
+  adaptPresentation: adaptDirectPresentation,
+  buildAnnotations: buildPresentationAnnotations,
   createRequestId,
   now: () => Date.now(),
   saveFailureDiagnostic: saveLastAnalysisFailure,
@@ -107,9 +116,29 @@ export class DirectAnalysisRuntime implements AnalysisRuntime {
         onProgress: input.onProgress,
       });
 
-      let annotations: AnnotatedReportImages;
+      let presentation: PresentationBundle;
       try {
-        annotations = await this.dependencies.buildAnnotations(capture.image, report);
+        presentation = this.dependencies.adaptPresentation(report, capture, input.outputLanguage);
+      } catch (error) {
+        throw attachProviderFailureDetail(
+          new ProviderError('invalid_response', {
+            params: { provider: this.config.provider },
+          }),
+          {
+            stage: 'report_shape',
+            issues: [],
+            exception: error instanceof Error
+              ? { name: error.name, message: error.message }
+              : undefined,
+          },
+        );
+      }
+      let annotations: PresentationAnnotatedImages;
+      try {
+        annotations = await this.dependencies.buildAnnotations(
+          [{ captureId: 'C01', image: capture.image }],
+          presentation.drawings,
+        );
       } catch {
         throw attachProviderFailureDetail(
           new ProviderError('invalid_image', {
@@ -118,7 +147,7 @@ export class DirectAnalysisRuntime implements AnalysisRuntime {
           { stage: 'annotation_rendering', issues: [] },
         );
       }
-      return { report, annotations };
+      return { presentation: presentation.report, annotations };
     } catch (error) {
       if (controller.signal.aborted) {
         throw new AnalysisRuntimeFailure('cancelled');

@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { CommunityReportV3 } from '../src/analysis/stages/community-report-v3-schema';
 import type { ProcessedImage } from '../src/capture/image-types';
+import { patternGeometryPoints } from '../src/analysis/stages/pattern-geometry-schema';
+import type { PresentationDrawing } from '../src/presentation/report-presentation-model';
 import {
   type AnnotationCanvasDependencies,
   type AnnotationSurface,
 } from '../src/annotations/canvas-surface';
-import { renderPattern } from '../src/annotations/render-pattern';
+import { renderPresentationPattern } from '../src/annotations/render-pattern';
 
 type Operation = readonly [name: string, ...values: unknown[]];
 type Pattern = CommunityReportV3['patterns'][number];
@@ -61,6 +63,17 @@ function pattern(points: Pattern['geometry']['points']): Pattern {
   };
 }
 
+function patternDrawing(value: Pattern): PresentationDrawing {
+  return {
+    id: 'D01', captureId: 'C01', layer: 'pattern', refId: value.id,
+    meaning: 'pattern', caption: value.name,
+    tool: value.geometry.geometryKind === 'polyline' ? 'trend_line' : value.geometry.geometryKind,
+    points: patternGeometryPoints(value.geometry).map(({ xRatio, yRatio }) => ({
+      xRatio, yRatio, priceLabel: null, timeAnchor: null,
+    })),
+  };
+}
+
 describe('renderPattern', () => {
   it('draws a price channel as two independent boundaries without a diagonal connector', async () => {
     // Breaks on: treating a channel as one continuous polyline, which adds a false
@@ -85,7 +98,7 @@ describe('renderPattern', () => {
     } as unknown as Pattern;
     const { dependencies, operations } = recordingCanvas();
 
-    await renderPattern(image, input, dependencies);
+    await renderPresentationPattern(image, [patternDrawing(input)], dependencies);
 
     expect(operations.filter(([name]) => name === 'beginPath')).toHaveLength(2);
     expect(operations.filter(([name]) => name === 'stroke')).toHaveLength(2);
@@ -121,7 +134,7 @@ describe('renderPattern', () => {
     } as unknown as Pattern;
     const { dependencies, operations } = recordingCanvas();
 
-    await renderPattern(image, input, dependencies);
+    await renderPresentationPattern(image, [patternDrawing(input)], dependencies);
 
     expect(operations.filter(([name]) => name === 'moveTo' || name === 'lineTo')).toEqual([
       ['moveTo', 120, 210],
@@ -147,7 +160,7 @@ describe('renderPattern', () => {
     const before = structuredClone(input);
     const { dependencies, operations } = recordingCanvas();
 
-    const result = await renderPattern(image, input, dependencies);
+    const result = await renderPresentationPattern(image, [patternDrawing(input)], dependencies);
 
     expect(result).toEqual({
       id: 'P01',
@@ -188,7 +201,7 @@ describe('renderPattern', () => {
     })));
     const { dependencies, operations } = recordingCanvas();
 
-    await renderPattern(image, input, dependencies);
+    await renderPresentationPattern(image, [patternDrawing(input)], dependencies);
 
     const labels = operations
       .filter(([name]) => name === 'fillText')
@@ -206,7 +219,7 @@ describe('renderPattern', () => {
     ]);
     const { dependencies, operations } = recordingCanvas();
 
-    await renderPattern(image, input, dependencies);
+    await renderPresentationPattern(image, [patternDrawing(input)], dependencies);
 
     expect(operations.filter(([name]) => name === 'moveTo' || name === 'lineTo')).toEqual([
       ['moveTo', 1.5, 1.5],

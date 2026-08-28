@@ -2,14 +2,27 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import fixture from '../contracts/extension-cloud/v1/fixtures/single-completed-task.json';
+import { parseExtensionAnalysisTask } from '../src/cloud/cloud-task-schema';
+import { adaptCloudPresentation } from '../src/presentation/cloud-presentation-adapter';
+import { parseReportPresentationModel } from '../src/presentation/report-presentation-model';
 import { ReportView } from '../src/ui/components/ReportView';
-import { annotatedImages, communityReport, processedImage } from './community-ui-fixtures';
+import { presentationAnnotatedImages, processedImage } from './community-ui-fixtures';
+import { validPresentationBundle } from './presentation-fixtures';
 
 afterEach(cleanup);
 
-describe('ReportView community-3.0 visible structure', () => {
-  it('renders a direct conclusion in cloud-aligned module order without a current-view wrapper', () => {
-    const { container } = render(<ReportView language="en" report={communityReport} original={processedImage} annotations={annotatedImages} />);
+const directPresentation = parseReportPresentationModel(structuredClone(validPresentationBundle.report));
+const cloudTask = parseExtensionAnalysisTask(structuredClone(fixture));
+if (!cloudTask.report) throw new Error('Cloud fixture report missing');
+const cloudPresentation = adaptCloudPresentation(cloudTask.report).report;
+
+describe('ReportView presentation-1.0 visible structure', () => {
+  it.each([
+    ['Direct', directPresentation],
+    ['Cloud', cloudPresentation],
+  ] as const)('renders the %s conclusion in the same module order and terminology', (_producer, presentation) => {
+    const { container } = render(<ReportView language="en" presentation={presentation} original={processedImage} annotations={presentationAnnotatedImages} />);
 
     expect(Array.from(container.querySelectorAll('[data-report-section]')).map((node) => node.getAttribute('data-report-section'))).toEqual([
       'conclusion', 'marketExplanation', 'levels', 'tradePlan', 'tradeSignals', 'patterns', 'riskNotice',
@@ -30,7 +43,7 @@ describe('ReportView community-3.0 visible structure', () => {
   });
 
   it('uses the same direct conclusion semantics in Chinese', () => {
-    const { container } = render(<ReportView language="zh-CN" report={communityReport} original={processedImage} annotations={annotatedImages} />);
+    const { container } = render(<ReportView language="zh-CN" presentation={directPresentation} original={processedImage} annotations={presentationAnnotatedImages} />);
 
     expect(screen.getByRole('heading', { level: 2, name: '做多' })).toBeTruthy();
     expect(screen.queryByText('当前观点')).toBeNull();
@@ -39,7 +52,7 @@ describe('ReportView community-3.0 visible structure', () => {
   });
 
   it('places the levels image under levels and each signal/pattern image under its own explanation', () => {
-    const { container } = render(<ReportView language="en" report={communityReport} original={processedImage} annotations={annotatedImages} />);
+    const { container } = render(<ReportView language="en" presentation={directPresentation} original={processedImage} annotations={presentationAnnotatedImages} />);
 
     expect(container.querySelector('[data-report-section="levels"] img[src$="LEVELS"]')).toBeTruthy();
     expect(container.querySelector('[data-signal-id="S01"] img[src$="SIGNAL"]')).toBeTruthy();
@@ -52,7 +65,7 @@ describe('ReportView community-3.0 visible structure', () => {
     const user = userEvent.setup();
     const download = vi.fn();
     const postMessage = vi.spyOn(window.parent, 'postMessage');
-    render(<ReportView language="en" report={communityReport} original={processedImage} annotations={annotatedImages} downloadImage={download} />);
+    render(<ReportView language="en" presentation={directPresentation} original={processedImage} annotations={presentationAnnotatedImages} downloadImage={download} />);
 
     expect(screen.getAllByRole('button', { name: /Download image/ })).toHaveLength(4);
     for (const title of ['Original screenshot', 'Support and resistance', 'S01 · LONG', 'Rising channel']) {
@@ -69,7 +82,7 @@ describe('ReportView community-3.0 visible structure', () => {
 
   it('copies the same V3-visible modules without wrapper or hidden schema fields', async () => {
     const copy = vi.fn(async (_text: string) => undefined);
-    render(<ReportView language="en" report={communityReport} original={processedImage} annotations={annotatedImages} copyReport={copy} />);
+    render(<ReportView language="en" presentation={directPresentation} original={processedImage} annotations={presentationAnnotatedImages} copyReport={copy} />);
     await userEvent.click(screen.getByRole('button', { name: 'Copy report' }));
     const copied = copy.mock.calls[0]?.[0] as string;
 

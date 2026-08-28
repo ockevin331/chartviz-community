@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { CommunityReportV3 } from '../src/analysis/stages/community-report-v3-schema';
 import type { ProcessedImage } from '../src/capture/image-types';
+import type { PresentationDrawing } from '../src/presentation/report-presentation-model';
 import {
   type AnnotationCanvasDependencies,
   type AnnotationSurface,
 } from '../src/annotations/canvas-surface';
-import { renderSignal } from '../src/annotations/render-signal';
+import { renderPresentationSignal } from '../src/annotations/render-signal';
 
 type Operation = readonly [name: string, ...values: unknown[]];
 
@@ -45,7 +45,19 @@ const image: ProcessedImage = {
   height: 600,
 };
 
-type TradeSignal = CommunityReportV3['tradeSignals'][number];
+type TradeSignal = {
+  id: string;
+  direction: 'long' | 'short';
+  signalType: string;
+  signalTime: string;
+  thesisAtSignal: string;
+  evidenceAtSignal: string[];
+  entry: { priceLabel: string; xRatio: number; yRatio: number };
+  stopLoss: { priceLabel: string; yRatio: number };
+  takeProfits: Array<{ priceLabel: string; yRatio: number }>;
+  riskReward: string | null;
+  confidence: number;
+};
 
 function signal(overrides: Partial<TradeSignal> = {}): TradeSignal {
   return {
@@ -65,6 +77,30 @@ function signal(overrides: Partial<TradeSignal> = {}): TradeSignal {
     confidence: 0.8,
     ...overrides,
   };
+}
+
+function signalDrawings(value: TradeSignal): PresentationDrawing[] {
+  const point = (xRatio: number | null, yRatio: number, priceLabel: string) => ({
+    xRatio, yRatio, priceLabel, timeAnchor: null,
+  });
+  return [
+    {
+      id: 'D01', captureId: 'C01', layer: 'signal', refId: value.id,
+      meaning: `${value.direction}_entry`, caption: value.riskReward, tool: 'entry_arrow',
+      points: [point(value.entry.xRatio, value.entry.yRatio, value.entry.priceLabel)],
+    },
+    {
+      id: 'D02', captureId: 'C01', layer: 'signal', refId: value.id,
+      meaning: 'stop', caption: null, tool: 'stop_line',
+      points: [point(null, value.stopLoss.yRatio, value.stopLoss.priceLabel)],
+    },
+    ...value.takeProfits.map((target, index): PresentationDrawing => ({
+      id: `D${String(index + 3).padStart(2, '0')}`,
+      captureId: 'C01', layer: 'signal', refId: value.id,
+      meaning: 'target', caption: null, tool: 'target_line',
+      points: [point(null, target.yRatio, target.priceLabel)],
+    })),
+  ];
 }
 
 function tradeLabelBaselines(operations: Operation[]): number[] {
@@ -107,7 +143,7 @@ describe('renderSignal', () => {
     const before = structuredClone(input);
     const { dependencies, operations } = recordingCanvas('data:image/png;base64,bG9uZw==');
 
-    const result = await renderSignal(image, input, dependencies);
+    const result = await renderPresentationSignal(image, signalDrawings(input), dependencies);
 
     expect(result).toEqual({
       id: 'S01',
@@ -186,9 +222,9 @@ describe('renderSignal', () => {
     });
     const { dependencies, operations } = recordingCanvas('data:image/png;base64,c2hvcnQ=');
 
-    const result = await renderSignal(image, input, dependencies);
+    const result = await renderPresentationSignal(image, signalDrawings(input), dependencies);
 
-    expect(result.title).toBe('SHORT signal');
+    expect(result?.title).toBe('SHORT signal');
     expect(operations).toContainEqual(['moveTo', 600, 420]);
     expect(operations).toContainEqual(['lineTo', 600, 450]);
     expect(operations).toContainEqual(['moveTo', 594, 442]);
@@ -211,7 +247,7 @@ describe('renderSignal', () => {
     });
     const { dependencies, operations } = recordingCanvas('data:image/png;base64,bG9uZy1lZGdl');
 
-    await renderSignal(image, input, dependencies);
+    await renderPresentationSignal(image, signalDrawings(input), dependencies);
 
     const arrowStart = operations.findIndex((operation) => (
       operation[0] === 'setLineWidth' && operation[1] === 3
@@ -247,7 +283,7 @@ describe('renderSignal', () => {
     });
     const { dependencies, operations } = recordingCanvas('data:image/png;base64,c2hvcnQtZWRnZQ==');
 
-    await renderSignal(image, input, dependencies);
+    await renderPresentationSignal(image, signalDrawings(input), dependencies);
 
     const arrowStart = operations.findIndex((operation) => (
       operation[0] === 'setLineWidth' && operation[1] === 3
@@ -281,7 +317,7 @@ describe('renderSignal', () => {
     });
     const { dependencies, operations } = recordingCanvas('data:image/png;base64,bGFuZXM=');
 
-    await renderSignal(image, input, dependencies);
+    await renderPresentationSignal(image, signalDrawings(input), dependencies);
 
     expect(operations.filter(([name, , y]) => (
       (name === 'moveTo' || name === 'lineTo') && y === 300
@@ -311,7 +347,7 @@ describe('renderSignal', () => {
     });
     const { dependencies, operations } = recordingCanvas('data:image/png;base64,dG9w');
 
-    await renderSignal({ ...image, width: 320, height: 180 }, input, dependencies);
+    await renderPresentationSignal({ ...image, width: 320, height: 180 }, signalDrawings(input), dependencies);
 
     expect(tradeLabelBaselines(operations)).toEqual([16, 34, 52, 70, 88, 168]);
     expectPairwiseSpacing(tradeLabelBaselines(operations), 18);
@@ -333,7 +369,7 @@ describe('renderSignal', () => {
     });
     const { dependencies, operations } = recordingCanvas('data:image/png;base64,Ym90dG9t');
 
-    await renderSignal({ ...image, width: 320, height: 180 }, input, dependencies);
+    await renderPresentationSignal({ ...image, width: 320, height: 180 }, signalDrawings(input), dependencies);
 
     expect(tradeLabelBaselines(operations)).toEqual([100, 118, 136, 154, 172, 82]);
     expectPairwiseSpacing(tradeLabelBaselines(operations), 18);
@@ -356,7 +392,7 @@ describe('renderSignal', () => {
     });
     const { dependencies, operations } = recordingCanvas('data:image/png;base64,bWl4ZWQ=');
 
-    await renderSignal({ ...image, width: 320, height: 180 }, input, dependencies);
+    await renderPresentationSignal({ ...image, width: 320, height: 180 }, signalDrawings(input), dependencies);
 
     expect(tradeLabelBaselines(operations)).toEqual([34, 52, 16, 74, 134, 168]);
     expectPairwiseSpacing(tradeLabelBaselines(operations), 18);
@@ -373,7 +409,7 @@ describe('renderSignal', () => {
     // Breaks on: a minimum-size arrow clipping at an edge or collapsing its body/head geometry.
     const { dependencies, operations } = recordingCanvas('data:image/png;base64,YXJyb3c=');
 
-    await renderSignal({ ...image, width: 320, height: 180 }, input, dependencies);
+    await renderPresentationSignal({ ...image, width: 320, height: 180 }, signalDrawings(input), dependencies);
 
     const coordinates = arrowPathCoordinates(operations);
     expect(coordinates).toHaveLength(5);

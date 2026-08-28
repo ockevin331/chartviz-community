@@ -1,13 +1,17 @@
-import { buildAnnotations as buildReportAnnotations } from '../../annotations/build-annotations';
-import type { AnnotatedReportImages } from '../../annotations/annotation-types';
-import type { ProcessedImage } from '../../capture/image-types';
+import {
+  buildPresentationAnnotations,
+  type PresentationSourceCapture,
+} from '../../annotations/build-presentation-annotations';
+import type { PresentationAnnotatedImages } from '../../annotations/annotation-types';
 import {
   CloudConnectionError,
   createCloudClient,
   type CloudClient,
 } from '../../cloud/cloud-client';
 import type { ExtensionAnalysisTask } from '../../cloud/contracts/extension-cloud-v1';
-import { adaptExtensionReport } from '../../cloud/extension-report-adapter';
+import type { ExtensionReport } from '../../cloud/contracts/extension-cloud-v1';
+import { adaptCloudPresentation } from '../../presentation/cloud-presentation-adapter';
+import type { PresentationBundle, PresentationDrawing } from '../../presentation/report-presentation-model';
 import { loadCloudConnection, type StoredCloudConnection } from '../../storage/cloud-connection-storage';
 import {
   clearCloudActiveTask,
@@ -35,10 +39,11 @@ export type CloudAnalysisRuntimeDependencies = Readonly<{
   connection: Readonly<{ load(): Promise<StoredCloudConnection | null> }>;
   activeTask: ActiveTaskStorage;
   sleep(delayMs: number, signal: AbortSignal): Promise<void>;
+  adaptPresentation(report: ExtensionReport): PresentationBundle;
   buildAnnotations(
-    image: ProcessedImage,
-    report: ReturnType<typeof adaptExtensionReport>,
-  ): Promise<AnnotatedReportImages>;
+    captures: readonly PresentationSourceCapture[],
+    drawings: readonly PresentationDrawing[],
+  ): Promise<PresentationAnnotatedImages>;
 }>;
 
 function abortableSleep(delayMs: number, signal: AbortSignal): Promise<void> {
@@ -64,7 +69,8 @@ const defaultDependencies: CloudAnalysisRuntimeDependencies = {
     clear: clearCloudActiveTask,
   },
   sleep: abortableSleep,
-  buildAnnotations: buildReportAnnotations,
+  adaptPresentation: adaptCloudPresentation,
+  buildAnnotations: buildPresentationAnnotations,
 };
 
 const cloudCapabilities = Object.freeze({
@@ -147,22 +153,26 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
       await this.dependencies.activeTask.clear();
       throw new AnalysisRuntimeFailure('incompatible_report_schema');
     }
-    let report: ReturnType<typeof adaptExtensionReport>;
+    let presentation: PresentationBundle;
     try {
-      report = adaptExtensionReport(task.report);
+      presentation = this.dependencies.adaptPresentation(task.report);
     } catch {
       await this.dependencies.activeTask.clear();
       throw new AnalysisRuntimeFailure('incompatible_report_schema');
     }
-    let annotations: AnnotatedReportImages;
+    let annotations: PresentationAnnotatedImages;
     try {
-      annotations = await this.dependencies.buildAnnotations(capture.image, report);
+      const sources = presentation.report.context.captures.map((metadata, index) => ({
+        captureId: metadata.captureId,
+        image: index === 0 ? capture.image : capture.image,
+      }));
+      annotations = await this.dependencies.buildAnnotations(sources, presentation.drawings);
     } catch {
       await this.dependencies.activeTask.clear();
       throw new AnalysisRuntimeFailure('invalid_image');
     }
     await this.dependencies.activeTask.clear();
-    return { report, annotations };
+    return { presentation: presentation.report, annotations };
   }
 
   private async terminalOutcome(

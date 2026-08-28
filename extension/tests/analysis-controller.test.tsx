@@ -8,8 +8,10 @@ import {
   type AnalysisRuntimeOutcome,
 } from '../src/analysis/runtime/analysis-runtime';
 import type { AnalysisDiagnostic } from '../src/providers/provider-diagnostics';
+import { parseReportPresentationModel } from '../src/presentation/report-presentation-model';
 import { useAnalysisController } from '../src/ui/state/use-analysis-controller';
-import { annotatedImages, communityReport, processedImage } from './community-ui-fixtures';
+import { presentationAnnotatedImages, processedImage } from './community-ui-fixtures';
+import { validPresentationBundle } from './presentation-fixtures';
 
 afterEach(cleanup);
 
@@ -20,9 +22,10 @@ function deferred<T>() {
   return { promise, reject, resolve };
 }
 
+const presentation = parseReportPresentationModel(structuredClone(validPresentationBundle.report));
 const outcome: AnalysisRuntimeOutcome = {
-  report: communityReport,
-  annotations: annotatedImages,
+  presentation,
+  annotations: presentationAnnotatedImages,
 };
 
 function fakeRuntime(
@@ -58,7 +61,7 @@ describe('useAnalysisController runtime boundary', () => {
 
     expect(runtime.cancel).toHaveBeenCalledTimes(1);
     expect(result.current.state).toMatchObject({
-      status: 'setup', image: null, captures: [], report: null, annotations: null,
+      status: 'setup', image: null, captures: [], presentation: null, annotations: null,
     });
   });
 
@@ -119,8 +122,8 @@ describe('useAnalysisController runtime boundary', () => {
     });
     expect(result.current.state).toMatchObject({
       status: 'completed',
-      report: communityReport,
-      annotations: annotatedImages,
+      presentation,
+      annotations: presentationAnnotatedImages,
       progress: ['preparing', 'reading_chart', 'reviewing_clues', 'checking_signals', 'preparing_result'],
     });
   });
@@ -149,7 +152,7 @@ describe('useAnalysisController runtime boundary', () => {
 
     expect(runtime.analyze).toHaveBeenCalledTimes(1);
     expect(hook.result.current.state.status).toBe('completed');
-    expect(hook.result.current.state.report).toBe(communityReport);
+    expect(hook.result.current.state.presentation).toBe(presentation);
   });
 
   it('retries only after an explicit user action', async () => {
@@ -188,7 +191,7 @@ describe('useAnalysisController runtime boundary', () => {
       status: 'source',
       image: null,
       captures: [],
-      report: null,
+      presentation: null,
       annotations: null,
     });
     expect(runtime.cancel).not.toHaveBeenCalled();
@@ -237,7 +240,7 @@ describe('useAnalysisController runtime boundary', () => {
 
       expect(result.current.state).toMatchObject({
         status: 'preview',
-        report: null,
+        presentation: null,
         errorCode: null,
       });
     },
@@ -245,13 +248,13 @@ describe('useAnalysisController runtime boundary', () => {
 
   it('allows a fresh analysis after cancellation and ignores the old completion', async () => {
     const stale = deferred<AnalysisRuntimeOutcome>();
-    const freshReport = {
-      ...communityReport,
-      conclusion: { ...communityReport.conclusion, summary: 'Fresh report.' },
+    const freshPresentation = {
+      ...presentation,
+      conclusion: { ...presentation.conclusion, summary: 'Fresh report.' },
     };
     const runtime = fakeRuntime(vi.fn()
       .mockImplementationOnce(() => stale.promise)
-      .mockResolvedValueOnce({ ...outcome, report: freshReport }));
+      .mockResolvedValueOnce({ ...outcome, presentation: freshPresentation }));
     const { result } = setup(runtime);
     let staleAnalysis!: Promise<void>;
     act(() => {
@@ -266,11 +269,11 @@ describe('useAnalysisController runtime boundary', () => {
       { instrument: null, timeframe: null },
       'en',
     ));
-    expect(result.current.state.report?.conclusion.summary).toBe('Fresh report.');
+    expect(result.current.state.presentation?.conclusion.summary).toBe('Fresh report.');
 
     stale.resolve(outcome);
     await act(async () => staleAnalysis);
-    expect(result.current.state.report?.conclusion.summary).toBe('Fresh report.');
+    expect(result.current.state.presentation?.conclusion.summary).toBe('Fresh report.');
   });
 
   it('uses the runtime safe failure without reconstructing provider details', async () => {
@@ -339,7 +342,7 @@ describe('useAnalysisController runtime boundary', () => {
       status: 'source',
       image: null,
       captures: [],
-      report: null,
+      presentation: null,
       annotations: null,
       progress: [],
       errorCode: null,

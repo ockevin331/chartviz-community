@@ -6,10 +6,10 @@ import {
   type AnalysisRuntime,
   type AnalysisRuntimeInput,
 } from '../src/analysis/runtime/analysis-runtime';
-import { parseCommunityReportV3 } from '../src/analysis/stages/community-report-v3';
 import type { AnalysisDiagnostic } from '../src/providers/provider-diagnostics';
+import { parseReportPresentationModel } from '../src/presentation/report-presentation-model';
 import { useAnalysisController } from '../src/ui/state/use-analysis-controller';
-import { validReportV3 } from './three-stage-fixtures';
+import { validPresentationBundle } from './presentation-fixtures';
 
 afterEach(cleanup);
 
@@ -19,7 +19,7 @@ const image = {
   width: 640,
   height: 360,
 };
-const annotations = { levels: null, signals: {}, patterns: {} };
+const annotations = { levels: {}, signals: {}, patterns: {} };
 
 function runtimeWith(analyze: AnalysisRuntime['analyze']): AnalysisRuntime {
   return {
@@ -39,7 +39,7 @@ describe('V3 analysis controller integration', () => {
       input.onProgress?.('checking_signals');
       input.onProgress?.('preparing_result');
       return {
-        report: parseCommunityReportV3(structuredClone(validReportV3)),
+        presentation: parseReportPresentationModel(structuredClone(validPresentationBundle.report)),
         annotations,
       };
     });
@@ -55,8 +55,8 @@ describe('V3 analysis controller integration', () => {
       outputLanguage: 'zh-CN',
     });
     expect(result.current.state.status).toBe('completed');
-    expect(result.current.state.report?.schemaVersion).toBe('community-3.0');
-    expect(result.current.state.report?.conclusion.direction).toBe('sideways');
+    expect(result.current.state.presentation?.schemaVersion).toBe('presentation-1.0');
+    expect(result.current.state.presentation?.conclusion.direction).toBe('long');
     expect(result.current.state.progress).toEqual([
       'preparing', 'reading_chart', 'reviewing_clues', 'checking_signals', 'preparing_result',
     ]);

@@ -7,10 +7,10 @@ import {
   type AnalysisRuntimeErrorParams,
   type ProgressMessage,
 } from '../../analysis/runtime/analysis-runtime';
-import type { CommunityReportV3 } from '../../analysis/stages/community-report-v3';
 import type { OutputLanguage } from '../../analysis/stages/shared-stage-types';
-import type { AnnotatedReportImages } from '../../annotations/annotation-types';
+import type { PresentationAnnotatedImages } from '../../annotations/annotation-types';
 import type { ProcessedImage } from '../../capture/image-types';
+import type { ReportPresentationModel } from '../../presentation/report-presentation-model';
 import type { AnalysisDiagnostic } from '../../providers/provider-diagnostics';
 
 export type { ProgressMessage } from '../../analysis/runtime/analysis-runtime';
@@ -19,8 +19,8 @@ export type AnalysisState = {
   status: 'setup' | 'source' | 'preview' | 'analyzing' | 'completed' | 'failed' | 'cancelled';
   image: ProcessedImage | null;
   captures: readonly AnalysisCapture[];
-  report: CommunityReportV3 | null;
-  annotations: AnnotatedReportImages | null;
+  presentation: ReportPresentationModel | null;
+  annotations: PresentationAnnotatedImages | null;
   errorCode: AnalysisRuntimeErrorCode | 'unknown' | null;
   diagnostic: AnalysisDiagnostic | null;
   errorParams: AnalysisRuntimeErrorParams;
@@ -32,7 +32,7 @@ const INITIAL_STATE: AnalysisState = {
   status: 'setup',
   image: null,
   captures: [],
-  report: null,
+  presentation: null,
   annotations: null,
   errorCode: null,
   diagnostic: null,
@@ -154,7 +154,7 @@ export function useAnalysisController() {
     setState((current) => ({
       ...current,
       status: 'analyzing',
-      report: null,
+      presentation: null,
       annotations: null,
       errorCode: null,
       diagnostic: null,
@@ -186,7 +186,7 @@ export function useAnalysisController() {
         status: 'completed',
         image,
         captures,
-        report: outcome.report,
+        presentation: outcome.presentation,
         annotations: outcome.annotations,
         errorCode: null,
         diagnostic: null,
@@ -201,7 +201,7 @@ export function useAnalysisController() {
           setState((current) => ({
             ...current,
             status: 'cancelled',
-            report: null,
+            presentation: null,
             annotations: null,
             errorCode: null,
             diagnostic: null,
@@ -213,7 +213,7 @@ export function useAnalysisController() {
         setState((current) => ({
           ...current,
           status: 'failed',
-          report: null,
+          presentation: null,
           annotations: null,
           errorCode: error.code,
           diagnostic: error.diagnostic,
@@ -225,7 +225,7 @@ export function useAnalysisController() {
       setState((current) => ({
         ...current,
         status: 'failed',
-        report: null,
+        presentation: null,
         annotations: null,
         errorCode: 'unknown',
         diagnostic: null,
@@ -247,7 +247,7 @@ export function useAnalysisController() {
     setState((current) => ({
       ...current,
       status: 'cancelled',
-      report: null,
+      presentation: null,
       annotations: null,
       errorCode: null,
       diagnostic: null,
@@ -261,7 +261,7 @@ export function useAnalysisController() {
     setState((current) => ({
       ...current,
       status: current.image ? 'preview' : runtimeRef.current ? 'source' : 'setup',
-      report: null,
+      presentation: null,
       annotations: null,
       errorCode: null,
       diagnostic: null,

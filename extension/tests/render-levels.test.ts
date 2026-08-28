@@ -1,14 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { CommunityReportV3 } from '../src/analysis/stages/community-report-v3-schema';
 import type { ProcessedImage } from '../src/capture/image-types';
+import type { PresentationDrawing } from '../src/presentation/report-presentation-model';
 import {
   type AnnotationCanvasDependencies,
   type AnnotationSurface,
 } from '../src/annotations/canvas-surface';
-import { renderLevels } from '../src/annotations/render-levels';
+import { renderPresentationLevels } from '../src/annotations/render-levels';
 
 type Operation = readonly [name: string, ...values: unknown[]];
-type Level = CommunityReportV3['levels'][number];
 
 function recordingCanvas() {
   const operations: Operation[] = [];
@@ -46,17 +45,11 @@ const image: ProcessedImage = {
   height: 600,
 };
 
-function level(id: string, type: Level['type'], priceLabel: string, yRatio: number): Level {
+function level(id: string, type: 'support' | 'resistance', priceLabel: string, yRatio: number): PresentationDrawing {
   return {
-    id,
-    type,
-    tier: 'nearest',
-    status: 'holding',
-    priceLabel,
-    reason: 'Visible chart level.',
-    timeAnchor: 'Current visible chart.',
-    yRatio,
-    confidence: 0.8,
+    id, captureId: 'C01', layer: 'levels', refId: id,
+    meaning: type, caption: null, tool: 'horizontal_line',
+    points: [{ xRatio: null, yRatio, priceLabel, timeAnchor: 'Current visible chart.' }],
   };
 }
 
@@ -73,7 +66,7 @@ describe('renderLevels', () => {
     const before = structuredClone(levels);
     const { dependencies, operations } = recordingCanvas();
 
-    const result = await renderLevels(image, levels, dependencies);
+    const result = await renderPresentationLevels(image, levels, dependencies);
 
     expect(result).toEqual({
       id: 'levels',
@@ -128,7 +121,7 @@ describe('renderLevels', () => {
     // Breaks on: generating a spurious levels image for an empty report.
     const { dependencies, operations } = recordingCanvas();
 
-    await expect(renderLevels(image, [], dependencies)).resolves.toBeNull();
+    await expect(renderPresentationLevels(image, [], dependencies)).resolves.toBeNull();
     expect(operations).toEqual([]);
   });
 
@@ -136,7 +129,7 @@ describe('renderLevels', () => {
     // Breaks on: placing a 2 px stroke center at x/y 0 or width/height and clipping half the line.
     const { dependencies, operations } = recordingCanvas();
 
-    await renderLevels(image, [
+    await renderPresentationLevels(image, [
       level('support-edge', 'support', 'LOW', 0),
       level('resistance-edge', 'resistance', 'HIGH', 1),
     ], dependencies);

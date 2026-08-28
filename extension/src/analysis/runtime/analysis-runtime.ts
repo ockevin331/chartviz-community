@@ -1,8 +1,8 @@
-import type { AnnotatedReportImages } from '../../annotations/annotation-types';
+import type { PresentationAnnotatedImages } from '../../annotations/annotation-types';
 import type { ProcessedImage } from '../../capture/image-types';
 import type { AnalysisDiagnostic } from '../../providers/provider-diagnostics';
 import type { AnalysisErrorCode } from '../../providers/provider-errors';
-import type { CommunityReportV3 } from '../stages/community-report-v3';
+import type { ReportPresentationModel } from '../../presentation/report-presentation-model';
 import type { OutputLanguage, StagePageContext } from '../stages/shared-stage-types';
 import type { AnalysisMode } from '../analysis-mode';
 
@@ -35,8 +35,8 @@ export type AnalysisRuntimeInput = Readonly<{
 }>;
 
 export type AnalysisRuntimeOutcome = Readonly<{
-  report: CommunityReportV3;
-  annotations: AnnotatedReportImages;
+  presentation: ReportPresentationModel;
+  annotations: PresentationAnnotatedImages;
 }>;
 
 export type AnalysisRuntimeErrorCode = AnalysisErrorCode

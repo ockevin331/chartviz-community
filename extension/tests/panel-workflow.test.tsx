@@ -15,7 +15,9 @@ import type { CloudAnalysisGateway } from '../src/cloud/cloud-gateway';
 import type { CloudConnectionManager } from '../src/cloud/cloud-connection';
 import type { ChartContext } from '../src/domain/chart-context';
 import type { AnalysisDiagnostic } from '../src/providers/provider-diagnostics';
-import { annotatedImages, communityReport, processedImage } from './community-ui-fixtures';
+import { parseReportPresentationModel } from '../src/presentation/report-presentation-model';
+import { presentationAnnotatedImages, processedImage } from './community-ui-fixtures';
+import { validPresentationBundle } from './presentation-fixtures';
 
 afterEach(cleanup);
 
@@ -33,7 +35,10 @@ const multiCaptures = (['4h', '1h', '15m'] as const).map((timeframe, index) => (
   image: { ...processedImage, dataUrl: `${processedImage.dataUrl}-${index}` },
   context: { ...chartContext, timeframe },
 }));
-const outcome: AnalysisRuntimeOutcome = { report: communityReport, annotations: annotatedImages };
+const outcome: AnalysisRuntimeOutcome = {
+  presentation: parseReportPresentationModel(structuredClone(validPresentationBundle.report)),
+  annotations: presentationAnnotatedImages,
+};
 const disconnectedCloudManager: CloudConnectionManager = {
   load: async () => ({ status: 'disconnected', account: null, errorCode: null }),
   connect: async () => ({ status: 'disconnected', account: null, errorCode: null }),
