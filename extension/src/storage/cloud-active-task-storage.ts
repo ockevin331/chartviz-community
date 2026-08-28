@@ -22,12 +22,13 @@ export type CloudActiveTaskDatabase = Readonly<{
   get(key: string): Promise<unknown>;
   put(key: string, value: unknown): Promise<void>;
   delete(key: string): Promise<void>;
+  deleteIf(key: string, predicate: (value: unknown) => boolean): Promise<void>;
 }>;
 
 export type CloudActiveTaskStorage = Readonly<{
   load(): Promise<StoredCloudActiveTask | null>;
   save(value: StoredCloudActiveTask): Promise<void>;
-  clear(): Promise<void>;
+  clear(expectedRequestId?: string): Promise<void>;
 }>;
 
 const storedCloudActiveTaskSchema: z.ZodType<StoredCloudActiveTask> = z.object({
@@ -123,6 +124,51 @@ export function createIndexedDbActiveTaskDatabase(
     async delete(key: string): Promise<void> {
       await withStore('readwrite', (store) => store.delete(key));
     },
+    async deleteIf(key: string, predicate: (value: unknown) => boolean): Promise<void> {
+      const database = await open();
+      const transaction = database.transaction(objectStoreName, 'readwrite');
+      const completion = transactionComplete(transaction);
+      const decision = new Promise<void>((resolve, reject) => {
+        let getRequest: IDBRequest<unknown>;
+        try {
+          getRequest = transaction.objectStore(objectStoreName).get(key);
+        } catch (error) {
+          try { transaction.abort(); } catch { /* completion is already observed below */ }
+          reject(error);
+          return;
+        }
+        getRequest.addEventListener('error', () => {
+          reject(getRequest.error ?? new Error('IndexedDB request failed.'));
+        }, { once: true });
+        getRequest.addEventListener('success', () => {
+          let shouldDelete: boolean;
+          try {
+            shouldDelete = predicate(getRequest.result);
+          } catch (error) {
+            try { transaction.abort(); } catch { /* completion is already observed below */ }
+            reject(error);
+            return;
+          }
+          if (!shouldDelete) {
+            resolve();
+            return;
+          }
+          let deleteRequest: IDBRequest<undefined>;
+          try {
+            deleteRequest = transaction.objectStore(objectStoreName).delete(key);
+          } catch (error) {
+            try { transaction.abort(); } catch { /* completion is already observed below */ }
+            reject(error);
+            return;
+          }
+          deleteRequest.addEventListener('success', () => resolve(), { once: true });
+          deleteRequest.addEventListener('error', () => {
+            reject(deleteRequest.error ?? new Error('IndexedDB request failed.'));
+          }, { once: true });
+        }, { once: true });
+      });
+      await Promise.all([decision, completion]);
+    },
   });
 }
 
@@ -147,7 +193,21 @@ export function createCloudActiveTaskStorage(
       if (!parsed.success) throw invalidActiveTask();
       await database.put(activeTaskKey, parsed.data);
     },
-    async clear(): Promise<void> {
+    async clear(expectedRequestId?: string): Promise<void> {
+      if (expectedRequestId !== undefined) {
+        let invalid = false;
+        await database.deleteIf(activeTaskKey, (value) => {
+          if (value === undefined) return false;
+          const parsed = storedCloudActiveTaskSchema.safeParse(value);
+          if (!parsed.success) {
+            invalid = true;
+            return true;
+          }
+          return parsed.data.requestId === expectedRequestId;
+        });
+        if (invalid) throw invalidActiveTask();
+        return;
+      }
       await database.delete(activeTaskKey);
     },
   });
@@ -163,6 +223,6 @@ export function loadCloudActiveTask(): Promise<StoredCloudActiveTask | null> {
   return defaultStorage.load();
 }
 
-export function clearCloudActiveTask(): Promise<void> {
-  return defaultStorage.clear();
+export function clearCloudActiveTask(expectedRequestId?: string): Promise<void> {
+  return defaultStorage.clear(expectedRequestId);
 }

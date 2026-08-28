@@ -118,7 +118,9 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
           void controller.analyze(first.context, restored.outputLanguage);
         }
       }
-    })().finally(() => { if (current) setLoading(false); });
+    })().catch(() => {
+      // Startup restore failures stay local and leave the configured source state available.
+    }).finally(() => { if (current) setLoading(false); });
     return () => { current = false; };
   }, [
     dependencies.loadConfig,

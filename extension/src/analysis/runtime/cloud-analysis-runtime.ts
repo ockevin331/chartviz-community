@@ -39,8 +39,16 @@ import {
 type ActiveTaskStorage = Readonly<{
   load(): Promise<StoredCloudActiveTask | null>;
   save(value: StoredCloudActiveTask): Promise<void>;
-  clear(): Promise<void>;
+  clear(expectedRequestId?: string): Promise<void>;
 }>;
+
+type CloudAnalysisOperation = {
+  readonly controller: AbortController;
+  requestId: string | null;
+  token: string | null;
+  cancelRequested: boolean;
+  cancelResponse: Promise<ExtensionAnalysisTask> | null;
+};
 
 export type CloudAnalysisRuntimeDependencies = Readonly<{
   client: Pick<CloudClient, 'createTask' | 'task' | 'cancelTask'>;
@@ -115,11 +123,7 @@ function taskFailure(task: ExtensionAnalysisTask): AnalysisRuntimeFailure {
 export class CloudAnalysisRuntime implements AnalysisRuntime {
   readonly mode = 'cloud' as const;
   private readonly dependencies: CloudAnalysisRuntimeDependencies;
-  private pollingController: AbortController | null = null;
-  private activeRequestId: string | null = null;
-  private activeToken: string | null = null;
-  private cancelRequested = false;
-  private cancelResponse: Promise<ExtensionAnalysisTask> | null = null;
+  private activeOperation: CloudAnalysisOperation | null = null;
 
   constructor(dependencies: Partial<CloudAnalysisRuntimeDependencies> = {}) {
     this.dependencies = { ...defaultDependencies, ...dependencies };
@@ -138,7 +142,7 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
     const tokenFingerprint = await this.dependencies.fingerprintGrant(connection.token);
     const active = await this.dependencies.activeTask.load();
     if (active && active.tokenFingerprint !== tokenFingerprint) {
-      await this.dependencies.activeTask.clear();
+      await this.dependencies.activeTask.clear(active.requestId);
       return null;
     }
     return active
@@ -158,30 +162,56 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
     }
   }
 
-  private startServerCancel(): Promise<ExtensionAnalysisTask> | null {
-    if (this.cancelResponse) return this.cancelResponse;
-    if (!this.activeRequestId || !this.activeToken) return null;
+  private startServerCancel(
+    operation: CloudAnalysisOperation,
+  ): Promise<ExtensionAnalysisTask> | null {
+    if (operation.cancelResponse) return operation.cancelResponse;
+    if (!operation.requestId || !operation.token) return null;
     const response = this.dependencies.client.cancelTask(
-      this.activeToken,
-      this.activeRequestId,
+      operation.token,
+      operation.requestId,
     );
     void response.catch(() => undefined);
-    this.cancelResponse = response;
+    operation.cancelResponse = response;
     return response;
   }
 
+  private isCurrent(operation: CloudAnalysisOperation): boolean {
+    return this.activeOperation === operation;
+  }
+
+  private requireCurrent(operation: CloudAnalysisOperation): void {
+    if (
+      !this.isCurrent(operation)
+      || operation.cancelRequested
+      || operation.controller.signal.aborted
+    ) {
+      throw new AnalysisRuntimeFailure('cancelled');
+    }
+  }
+
+  private async clearActiveTask(operation: CloudAnalysisOperation): Promise<void> {
+    if (!this.isCurrent(operation) || !operation.requestId) return;
+    await this.dependencies.activeTask.clear(operation.requestId);
+  }
+
   private async settleCleanupPendingRequest(
+    operation: CloudAnalysisOperation,
     token: string,
     tokenFingerprint: string,
   ): Promise<void> {
+    this.requireCurrent(operation);
     const pendingRequest = await this.dependencies.cleanupPending.load();
+    this.requireCurrent(operation);
     if (!pendingRequest) return;
     if (pendingRequest.tokenFingerprint !== tokenFingerprint) {
+      this.requireCurrent(operation);
       await this.dependencies.cleanupPending.clear();
       return;
     }
     let task: ExtensionAnalysisTask;
     try {
+      this.requireCurrent(operation);
       task = await this.dependencies.client.cancelTask(
         token,
         pendingRequest.requestId,
@@ -191,12 +221,14 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
         error instanceof CloudConnectionError
         && error.code === 'task_not_found'
       ) {
+        this.requireCurrent(operation);
         await this.dependencies.cleanupPending.clear();
         return;
       }
       throw new AnalysisRuntimeFailure('service_unavailable');
     }
     if (['completed', 'failed', 'cancelled'].includes(task.status)) {
+      this.requireCurrent(operation);
       await this.dependencies.cleanupPending.clear();
       return;
     }
@@ -204,11 +236,12 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
   }
 
   private async completedOutcome(
+    operation: CloudAnalysisOperation,
     task: ExtensionAnalysisTask,
     captures: readonly AnalysisCapture[],
   ): Promise<AnalysisRuntimeOutcome> {
     if (!task.report) {
-      await this.dependencies.activeTask.clear();
+      await this.clearActiveTask(operation);
       throw new AnalysisRuntimeFailure('incompatible_report_schema');
     }
     const reportCaptures = task.report.context.captures;
@@ -217,14 +250,14 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
       reportCaptures.length !== captures.length
       || reportCaptures.some((metadata, index) => metadata.timeframe !== sourceTimeframes[index])
     ) {
-      await this.dependencies.activeTask.clear();
+      await this.clearActiveTask(operation);
       throw new AnalysisRuntimeFailure('incompatible_report_schema');
     }
     let presentation: PresentationBundle;
     try {
       presentation = this.dependencies.adaptPresentation(task.report);
     } catch {
-      await this.dependencies.activeTask.clear();
+      await this.clearActiveTask(operation);
       throw new AnalysisRuntimeFailure('incompatible_report_schema');
     }
     if (
@@ -233,7 +266,7 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
         (metadata, index) => metadata.timeframe !== sourceTimeframes[index],
       )
     ) {
-      await this.dependencies.activeTask.clear();
+      await this.clearActiveTask(operation);
       throw new AnalysisRuntimeFailure('incompatible_report_schema');
     }
     let annotations: PresentationAnnotatedImages;
@@ -244,24 +277,25 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
       }));
       annotations = await this.dependencies.buildAnnotations(sources, presentation.drawings);
     } catch {
-      await this.dependencies.activeTask.clear();
+      await this.clearActiveTask(operation);
       throw new AnalysisRuntimeFailure('invalid_image');
     }
-    await this.dependencies.activeTask.clear();
+    await this.clearActiveTask(operation);
     return { captures, presentation: presentation.report, annotations };
   }
 
   private async terminalOutcome(
+    operation: CloudAnalysisOperation,
     task: ExtensionAnalysisTask,
     captures: readonly AnalysisCapture[],
   ): Promise<AnalysisRuntimeOutcome | null> {
-    if (task.status === 'completed') return this.completedOutcome(task, captures);
+    if (task.status === 'completed') return this.completedOutcome(operation, task, captures);
     if (task.status === 'failed') {
-      await this.dependencies.activeTask.clear();
+      await this.clearActiveTask(operation);
       throw taskFailure(task);
     }
     if (task.status === 'cancelled') {
-      await this.dependencies.activeTask.clear();
+      await this.clearActiveTask(operation);
       throw new AnalysisRuntimeFailure('cancelled');
     }
     return null;
@@ -271,41 +305,51 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
     if (input.captures.length < 1 || input.captures.length > 3) {
       throw new AnalysisRuntimeFailure('invalid_image');
     }
-    const controller = new AbortController();
+    const operation: CloudAnalysisOperation = {
+      controller: new AbortController(),
+      requestId: null,
+      token: null,
+      cancelRequested: false,
+      cancelResponse: null,
+    };
     const seenProgress = new Set<ProgressMessage>();
-    this.pollingController = controller;
-    this.cancelRequested = false;
-    this.cancelResponse = null;
-    this.activeRequestId = null;
-    this.activeToken = null;
+    this.activeOperation = operation;
     let captures = input.captures;
 
     try {
       const connection = await this.dependencies.connection.load();
+      this.requireCurrent(operation);
       if (!connection) throw new AnalysisRuntimeFailure('authentication_required');
-      this.activeToken = connection.token;
+      operation.token = connection.token;
       const tokenFingerprint = await this.dependencies.fingerprintGrant(connection.token);
+      this.requireCurrent(operation);
       let stored = await this.dependencies.activeTask.load();
+      this.requireCurrent(operation);
       if (stored && stored.tokenFingerprint !== tokenFingerprint) {
-        await this.dependencies.activeTask.clear();
+        await this.dependencies.activeTask.clear(stored.requestId);
+        this.requireCurrent(operation);
         stored = null;
       }
       let task: ExtensionAnalysisTask;
       if (stored) {
         captures = stored.captures;
-        this.activeRequestId = stored.requestId;
+        operation.requestId = stored.requestId;
+        this.requireCurrent(operation);
         task = await this.dependencies.client.task(
           connection.token,
           stored.requestId,
-          controller.signal,
+          operation.controller.signal,
         );
+        this.requireCurrent(operation);
       } else {
-        await this.settleCleanupPendingRequest(connection.token, tokenFingerprint);
+        await this.settleCleanupPendingRequest(operation, connection.token, tokenFingerprint);
+        this.requireCurrent(operation);
         task = await this.dependencies.client.createTask(connection.token, {
           captures,
           outputLanguage: input.outputLanguage,
         });
-        this.activeRequestId = task.requestId;
+        operation.requestId = task.requestId;
+        this.requireCurrent(operation);
         try {
           await this.dependencies.activeTask.save({
             requestId: task.requestId,
@@ -314,6 +358,10 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
             outputLanguage: input.outputLanguage,
           });
         } catch {
+          if (!this.isCurrent(operation)) {
+            this.startServerCancel(operation);
+            throw new AnalysisRuntimeFailure('cancelled');
+          }
           const pendingCleanup = {
             requestId: task.requestId,
             tokenFingerprint,
@@ -329,51 +377,55 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
             throw new AnalysisRuntimeFailure('service_unavailable');
           }
           try {
-            await this.settleCleanupPendingRequest(connection.token, tokenFingerprint);
+            await this.settleCleanupPendingRequest(operation, connection.token, tokenFingerprint);
           } catch {
             // The persisted tombstone blocks duplicate creation until cleanup is terminal.
           }
           throw new AnalysisRuntimeFailure('service_unavailable');
         }
-        if (this.cancelRequested) this.startServerCancel();
+        this.requireCurrent(operation);
       }
+      this.requireCurrent(operation);
       this.emitProgress(task, seenProgress, input.onProgress);
-      const immediate = await this.terminalOutcome(task, captures);
+      const immediate = await this.terminalOutcome(operation, task, captures);
       if (immediate) return immediate;
 
       let attempt = 0;
       while (true) {
         const delay = Math.min(attempt + 1, 3) * 1000;
         attempt += 1;
-        await this.dependencies.sleep(delay, controller.signal);
+        await this.dependencies.sleep(delay, operation.controller.signal);
+        this.requireCurrent(operation);
+        if (!operation.requestId) throw new AnalysisRuntimeFailure('task_not_found');
         task = await this.dependencies.client.task(
           connection.token,
-          this.activeRequestId,
-          controller.signal,
+          operation.requestId,
+          operation.controller.signal,
         );
+        this.requireCurrent(operation);
         this.emitProgress(task, seenProgress, input.onProgress);
-        const outcome = await this.terminalOutcome(task, captures);
+        const outcome = await this.terminalOutcome(operation, task, captures);
         if (outcome) return outcome;
       }
     } catch (error) {
-      if (controller.signal.aborted || this.cancelRequested) {
+      if (operation.controller.signal.aborted || operation.cancelRequested) {
         let terminal: ExtensionAnalysisTask | null;
         try {
-          terminal = await (this.cancelResponse ?? this.startServerCancel());
+          terminal = await (operation.cancelResponse ?? this.startServerCancel(operation));
         } catch (cancelError) {
           if (
             cancelError instanceof CloudConnectionError
             && cancelError.code === 'task_not_found'
           ) {
-            await this.dependencies.activeTask.clear();
+            await this.clearActiveTask(operation);
           }
           throw new AnalysisRuntimeFailure('cancelled');
         }
         if (terminal?.status === 'completed') {
-          return this.completedOutcome(terminal, captures);
+          return await this.completedOutcome(operation, terminal, captures);
         }
         if (terminal?.status === 'failed' || terminal?.status === 'cancelled') {
-          const outcome = await this.terminalOutcome(terminal, captures);
+          const outcome = await this.terminalOutcome(operation, terminal, captures);
           if (outcome) return outcome;
         }
         throw new AnalysisRuntimeFailure('cancelled');
@@ -387,23 +439,21 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
           'incompatible_report_schema',
           'incompatible_api_version',
         ].includes(error.code)) {
-          await this.dependencies.activeTask.clear();
+          await this.clearActiveTask(operation);
         }
         throw cloudFailure(error);
       }
       throw new AnalysisRuntimeFailure('unknown');
     } finally {
-      if (this.pollingController === controller) this.pollingController = null;
-      this.activeRequestId = null;
-      this.activeToken = null;
-      this.cancelResponse = null;
+      if (this.activeOperation === operation) this.activeOperation = null;
     }
   }
 
   cancel(): void {
-    if (this.cancelRequested) return;
-    this.cancelRequested = true;
-    this.pollingController?.abort(new DOMException('Cancelled', 'AbortError'));
-    this.startServerCancel();
+    const operation = this.activeOperation;
+    if (!operation || operation.cancelRequested) return;
+    operation.cancelRequested = true;
+    operation.controller.abort(new DOMException('Cancelled', 'AbortError'));
+    this.startServerCancel(operation);
   }
 }

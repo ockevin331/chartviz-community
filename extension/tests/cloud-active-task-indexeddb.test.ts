@@ -38,9 +38,14 @@ function fakeConnection(transaction: FakeTransaction): IDBDatabase {
 
 class MemoryDatabase implements CloudActiveTaskDatabase {
   readonly records = new Map<string, unknown>();
+  replacementDuringConditionalDelete: unknown = undefined;
 
   async get(key: string): Promise<unknown> {
-    return this.records.get(key);
+    const value = this.records.get(key);
+    if (this.replacementDuringConditionalDelete !== undefined) {
+      this.records.set(key, structuredClone(this.replacementDuringConditionalDelete));
+    }
+    return value;
   }
 
   async put(key: string, value: unknown): Promise<void> {
@@ -49,6 +54,13 @@ class MemoryDatabase implements CloudActiveTaskDatabase {
 
   async delete(key: string): Promise<void> {
     this.records.delete(key);
+  }
+
+  async deleteIf(key: string, predicate: (value: unknown) => boolean): Promise<void> {
+    if (this.replacementDuringConditionalDelete !== undefined) {
+      this.records.set(key, structuredClone(this.replacementDuringConditionalDelete));
+    }
+    if (predicate(this.records.get(key))) this.records.delete(key);
   }
 }
 
@@ -133,6 +145,29 @@ describe('IndexedDB Cloud active task repository', () => {
     await storage.clear();
 
     await expect(storage.load()).resolves.toBeNull();
+  });
+
+  it('does not clear a newer active request when the expected request ID is stale', async () => {
+    const storage = createCloudActiveTaskStorage(database);
+    await storage.save(activeTask);
+
+    await storage.clear('c_20260828_stale');
+
+    await expect(storage.load()).resolves.toEqual(activeTask);
+    await storage.clear(activeTask.requestId);
+    await expect(storage.load()).resolves.toBeNull();
+  });
+
+  it('does not delete a newer request saved between conditional read and delete', async () => {
+    const storage = createCloudActiveTaskStorage(database);
+    const newerTask = { ...activeTask, requestId: 'c_20260828_newer' };
+    await storage.save(activeTask);
+    database.replacementDuringConditionalDelete = newerTask;
+
+    await storage.clear(activeTask.requestId);
+
+    database.replacementDuringConditionalDelete = undefined;
+    await expect(storage.load()).resolves.toEqual(newerTask);
   });
 
   it('observes both request and transaction rejection for one failed operation', async () => {

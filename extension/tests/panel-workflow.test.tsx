@@ -344,6 +344,58 @@ describe('direct Community panel workflow', () => {
     expect(captureChart).not.toHaveBeenCalled();
   });
 
+  it('contains a startup restore rejection and leaves Cloud safely at chart source', async () => {
+    const secretToken = `cv_live_${'r'.repeat(43)}`;
+    const runtime = fakeCloudRuntime();
+    runtime.restoreActiveAnalysis = vi.fn(async () => {
+      throw new Error(`IndexedDB restore failed for ${secretToken}`);
+    });
+    const manager: CloudConnectionManager = {
+      load: vi.fn(async () => ({
+        status: 'connected' as const,
+        errorCode: null,
+        account: {
+          emailMasked: 'a***z@example.com', plan: 'pro' as const,
+          currentPeriodEnd: '2026-09-28T00:00:00+00:00',
+          quota: { limit: 50, used: 1, remaining: 49, unlimited: false },
+          selectedModel: { id: 'openai/gpt-5.4', name: 'GPT-5.4', quotaCost: 2 },
+          entitlements: { multiTimeframe: false, maxCaptures: 1 },
+        },
+      })),
+      connect: disconnectedCloudManager.connect,
+      disconnect: disconnectedCloudManager.disconnect,
+    };
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+    process.on('unhandledRejection', onUnhandled);
+
+    try {
+      render(<App dependencies={{
+        loadConfig: async () => null,
+        loadMode: async () => 'cloud',
+        saveMode: async () => undefined,
+        cloudGateway: {
+          availability: () => ({ available: true }),
+          runtime: () => runtime,
+        },
+        cloudConnectionManager: manager,
+        inspect,
+        capture,
+      }} />);
+
+      await waitFor(() => expect(runtime.restoreActiveAnalysis).toHaveBeenCalledTimes(1));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(unhandled).toEqual([]);
+      expect(await screen.findByRole('heading', { name: 'Detected chart' })).toBeTruthy();
+      expect(await screen.findByText('BTCUSD')).toBeTruthy();
+      expect(runtime.analyze).not.toHaveBeenCalled();
+      expect(document.body.textContent).not.toContain(secretToken);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+  });
+
   it('opens Direct setup when its mode is saved but the session key has expired', async () => {
     render(<App dependencies={{
       loadConfig: async () => null,

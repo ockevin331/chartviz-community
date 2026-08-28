@@ -440,6 +440,99 @@ describe('CloudAnalysisRuntime', () => {
     expect(test.current()).not.toBeNull();
   });
 
+  it('isolates cancelled account A while account B starts and completes before A settles', async () => {
+    const requestA = 'c_20260828_operation_a';
+    const requestB = 'c_20260828_operation_b';
+    const pendingA = parseExtensionAnalysisTask({ ...pending, requestId: requestA });
+    const pendingB = parseExtensionAnalysisTask({ ...pending, requestId: requestB });
+    const cancelledA = parseExtensionAnalysisTask({
+      ...pendingA,
+      status: 'cancelled',
+      error: null,
+    });
+    const completedB = parseExtensionAnalysisTask({ ...completed, requestId: requestB });
+    const captureA = {
+      ...capture,
+      image: { ...capture.image, dataUrl: 'data:image/png;base64,OPERATION_A' },
+    };
+    const captureB = {
+      ...capture,
+      image: { ...capture.image, dataUrl: 'data:image/png;base64,OPERATION_B' },
+    };
+    const cancellationA = deferred<typeof cancelledA>();
+    const sleepB = deferred<void>();
+    let active: StoredCloudActiveTask | null = null;
+    const storage = {
+      load: vi.fn(async () => active),
+      save: vi.fn(async (value: StoredCloudActiveTask) => { active = value; }),
+      clear: vi.fn(async () => { active = null; }),
+    };
+    const connection = {
+      load: vi.fn()
+        .mockResolvedValueOnce({ token, account: {} as never })
+        .mockResolvedValueOnce({ token: rotatedToken, account: {} as never }),
+    };
+    const client = {
+      createTask: vi.fn(async (value: string) => value === token ? pendingA : pendingB),
+      task: vi.fn(async (value: string, requestId: string | null) => {
+        if (value === rotatedToken && requestId === requestB) return completedB;
+        throw new CloudConnectionError('task_not_found');
+      }),
+      cancelTask: vi.fn(() => cancellationA.promise),
+    };
+    const sleep = vi.fn()
+      .mockImplementationOnce((_delay: number, signal: AbortSignal) =>
+        new Promise<void>((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        }))
+      .mockImplementationOnce(() => sleepB.promise);
+    const buildAnnotations = vi.fn(async () => presentationAnnotatedImages);
+    const runtime = new CloudAnalysisRuntime({
+      client,
+      connection,
+      activeTask: storage,
+      cleanupPending: { load: async () => null, save: async () => undefined, clear: async () => undefined },
+      fingerprintGrant: async (value) => value === token ? fingerprint : rotatedFingerprint,
+      sleep,
+      adaptPresentation: () => parsePresentationBundle(structuredClone(validPresentationBundle)),
+      buildAnnotations,
+    });
+
+    const operationA = runtime.analyze({ captures: [captureA], outputLanguage: 'en' });
+    await vi.waitFor(() => expect(active?.requestId).toBe(requestA));
+    runtime.cancel();
+    await vi.waitFor(() => expect(client.cancelTask).toHaveBeenCalledWith(token, requestA));
+
+    const operationB = runtime.analyze({ captures: [captureB], outputLanguage: 'en' });
+    await vi.waitFor(() => expect(active).toEqual({
+      requestId: requestB,
+      tokenFingerprint: rotatedFingerprint,
+      captures: [captureB],
+      outputLanguage: 'en',
+    }));
+
+    cancellationA.resolve(cancelledA);
+    await expect(operationA).rejects.toMatchObject({ code: 'cancelled' });
+    expect(active).toMatchObject({ requestId: requestB });
+    expect(client.cancelTask).toHaveBeenCalledTimes(1);
+
+    sleepB.resolve();
+    const outcomeB = await operationB;
+
+    expect(outcomeB.captures).toEqual([captureB]);
+    expect(client.task).toHaveBeenCalledTimes(1);
+    expect(client.task).toHaveBeenCalledWith(rotatedToken, requestB, expect.any(AbortSignal));
+    expect(storage.save).toHaveBeenLastCalledWith(expect.objectContaining({
+      requestId: requestB,
+      captures: [captureB],
+    }));
+    expect(storage.clear).toHaveBeenCalledTimes(2);
+    expect(buildAnnotations).toHaveBeenCalledWith(
+      [{ captureId: 'C01', image: captureB.image }],
+      expect.any(Array),
+    );
+  });
+
   it('cancels a just-created server task when active capture persistence fails', async () => {
     const test = dependencies();
     test.storage.save.mockRejectedValue(new Error('IndexedDB write failed'));
