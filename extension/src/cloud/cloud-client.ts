@@ -1,9 +1,16 @@
 import { z } from 'zod';
-import type { ExtensionAccount, ExtensionApiError } from './contracts/extension-cloud-v1';
+import type { AnalysisCapture } from '../analysis/runtime/analysis-runtime';
+import type { OutputLanguage } from '../analysis/stages/shared-stage-types';
+import type {
+  ExtensionAccount,
+  ExtensionAnalysisTask,
+  ExtensionApiError,
+} from './contracts/extension-cloud-v1';
 import {
   parseExtensionAccount,
   parseExtensionCapabilities,
 } from './cloud-account-schema';
+import { parseExtensionAnalysisTask } from './cloud-task-schema';
 
 export const CLOUD_API_BASE_URL = 'https://www.chartviz.xyz/api' as const;
 
@@ -47,6 +54,14 @@ export class CloudConnectionError extends Error {
 export type CloudClient = Readonly<{
   connect(token: string): Promise<ExtensionAccount>;
   account(token: string): Promise<ExtensionAccount>;
+  createTask(token: string, input: CloudTaskCreateInput): Promise<ExtensionAnalysisTask>;
+  task(token: string, requestId: string, signal?: AbortSignal): Promise<ExtensionAnalysisTask>;
+  cancelTask(token: string, requestId: string): Promise<ExtensionAnalysisTask>;
+}>;
+
+export type CloudTaskCreateInput = Readonly<{
+  captures: readonly AnalysisCapture[];
+  outputLanguage: OutputLanguage;
 }>;
 
 function validateToken(token: string): void {
@@ -65,12 +80,21 @@ async function request(
   fetcher: typeof fetch,
   path: string,
   token?: string,
+  options: Readonly<{
+    method?: 'GET' | 'POST';
+    body?: BodyInit;
+    signal?: AbortSignal;
+  }> = {},
 ): Promise<unknown> {
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (token !== undefined) headers.Authorization = `Bearer ${token}`;
+  const init: RequestInit = { headers };
+  if (options.method && options.method !== 'GET') init.method = options.method;
+  if (options.body !== undefined) init.body = options.body;
+  if (options.signal !== undefined) init.signal = options.signal;
   let response: Response;
   try {
-    response = await fetcher(`${CLOUD_API_BASE_URL}${path}`, { headers });
+    response = await fetcher(`${CLOUD_API_BASE_URL}${path}`, init);
   } catch {
     throw new CloudConnectionError('service_unavailable');
   }
@@ -83,6 +107,72 @@ async function request(
     parsed.data.params,
     parsed.data.pricingUrl ?? null,
   );
+}
+
+function taskContractError(): CloudConnectionError {
+  return new CloudConnectionError('incompatible_report_schema');
+}
+
+function imageBlob(capture: AnalysisCapture): Blob {
+  const match = /^data:(image\/(?:png|jpeg));base64,([A-Za-z0-9+/]+={0,2})$/.exec(
+    capture.image.dataUrl,
+  );
+  const mediaType = match?.[1];
+  const encoded = match?.[2];
+  if (!mediaType || !encoded || mediaType !== capture.image.mediaType) {
+    throw new CloudConnectionError('invalid_image');
+  }
+  try {
+    const decoded = atob(encoded);
+    const bytes = Uint8Array.from(decoded, (character) => character.charCodeAt(0));
+    return new Blob([bytes], { type: capture.image.mediaType });
+  } catch {
+    throw new CloudConnectionError('invalid_image');
+  }
+}
+
+function taskForm(input: CloudTaskCreateInput): FormData {
+  if (input.captures.length !== 1) {
+    throw new CloudConnectionError('multi_timeframe_requires_advance');
+  }
+  const capture = input.captures[0];
+  if (!capture) throw new CloudConnectionError('invalid_image');
+  const timeframe = capture.context.timeframe?.trim();
+  if (!timeframe) throw new CloudConnectionError('unsupported_timeframe');
+  const metadata = {
+    outputLanguage: input.outputLanguage,
+    captures: [{
+      captureId: 'C01',
+      timeframe,
+      role: null,
+      instrument: capture.context.instrument?.trim() || null,
+      site: capture.context.site?.trim() || null,
+      venue: capture.context.exchange?.trim() || null,
+      pageType: capture.context.pageType ?? null,
+      width: capture.image.width,
+      height: capture.image.height,
+    }],
+  };
+  const form = new FormData();
+  form.append(
+    'metadata',
+    new Blob([JSON.stringify(metadata)], { type: 'application/json' }),
+    'metadata.json',
+  );
+  form.append(
+    'images',
+    imageBlob(capture),
+    capture.image.mediaType === 'image/png' ? 'chart.png' : 'chart.jpg',
+  );
+  return form;
+}
+
+function parseTask(value: unknown): ExtensionAnalysisTask {
+  try {
+    return parseExtensionAnalysisTask(value);
+  } catch {
+    throw taskContractError();
+  }
 }
 
 function contractError(value: unknown): CloudConnectionError {
@@ -119,5 +209,42 @@ export function createCloudClient(fetcher: typeof fetch = fetch): CloudClient {
       return account(token);
     },
     account,
+    async createTask(
+      token: string,
+      input: CloudTaskCreateInput,
+    ): Promise<ExtensionAnalysisTask> {
+      validateToken(token);
+      const body = await request(
+        fetcher,
+        '/v1/extension/analysis-tasks',
+        token,
+        { method: 'POST', body: taskForm(input) },
+      );
+      return parseTask(body);
+    },
+    async task(
+      token: string,
+      requestId: string,
+      signal?: AbortSignal,
+    ): Promise<ExtensionAnalysisTask> {
+      validateToken(token);
+      const body = await request(
+        fetcher,
+        `/v1/extension/analysis-tasks/${encodeURIComponent(requestId)}`,
+        token,
+        { signal },
+      );
+      return parseTask(body);
+    },
+    async cancelTask(token: string, requestId: string): Promise<ExtensionAnalysisTask> {
+      validateToken(token);
+      const body = await request(
+        fetcher,
+        `/v1/extension/analysis-tasks/${encodeURIComponent(requestId)}/cancel`,
+        token,
+        { method: 'POST' },
+      );
+      return parseTask(body);
+    },
   });
 }

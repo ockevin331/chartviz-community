@@ -20,7 +20,12 @@ export type AnalysisCapabilities = Readonly<{
 
 export type AnalysisCapture = Readonly<{
   image: ProcessedImage;
-  context: Pick<StagePageContext, 'instrument' | 'timeframe'>;
+  context: Pick<StagePageContext, 'instrument' | 'timeframe'>
+    & Partial<Pick<StagePageContext, 'site' | 'exchange'>>
+    & Readonly<{
+      pageType?: 'advanced-chart' | 'spot-trade' | 'futures-trade'
+        | 'stock-trade' | 'web3-token' | null;
+    }>;
 }>;
 
 export type AnalysisRuntimeInput = Readonly<{

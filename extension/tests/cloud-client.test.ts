@@ -4,18 +4,36 @@ import {
   CloudConnectionError,
   createCloudClient,
 } from '../src/cloud/cloud-client';
+import type { AnalysisCapture } from '../src/analysis/runtime/analysis-runtime';
+import taskFixture from '../contracts/extension-cloud/v1/fixtures/single-completed-task.json';
 
 const capabilities = {
   edition: 'cloud',
   apiVersion: '1',
   reportSchemaVersion: 'extension-report-1.0',
-  limits: { maxImages: 3, maxTimeframes: 3 },
+  limits: { maxImages: 1, maxTimeframes: 1 },
   features: {
-    multiTimeframe: true,
+    multiTimeframe: false,
     cloudManagedModels: true,
     advancedAnnotations: true,
     taskCancellation: true,
     taskResume: true,
+  },
+};
+
+const capture: AnalysisCapture = {
+  image: {
+    mediaType: 'image/png',
+    dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+    width: 1280,
+    height: 720,
+  },
+  context: {
+    instrument: 'BTC/USDT',
+    timeframe: '15m',
+    site: 'binance',
+    exchange: 'Binance',
+    pageType: 'spot-trade',
   },
 };
 
@@ -109,5 +127,77 @@ describe('fixed-origin ChartViz Cloud client', () => {
     await expect(createCloudClient(fetcher).connect('website-session'))
       .rejects.toMatchObject({ code: 'invalid_token' });
     expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('creates one task with multipart image data and strict metadata', async () => {
+    const fetcher = vi.fn().mockResolvedValue(jsonResponse({
+      requestId: 'c_20260828_new',
+      status: 'pending',
+      progressEvents: [{ code: 'preparing', createdAt: '2026-08-28T00:00:00Z' }],
+      report: null,
+      error: null,
+    }, 202));
+    const token = `cv_live_${'c'.repeat(43)}`;
+
+    const task = await createCloudClient(fetcher).createTask(token, {
+      captures: [capture],
+      outputLanguage: 'en',
+    });
+
+    expect(task.status).toBe('pending');
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${CLOUD_API_BASE_URL}/v1/extension/analysis-tasks`);
+    expect(init.method).toBe('POST');
+    expect(init.headers).toEqual({
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    });
+    expect(init.body).toBeInstanceOf(FormData);
+    const form = init.body as FormData;
+    expect(form.getAll('images')).toHaveLength(1);
+    expect(form.get('images')).toBeInstanceOf(Blob);
+    const metadata = JSON.parse(await (form.get('metadata') as Blob).text());
+    expect(metadata).toEqual({
+      outputLanguage: 'en',
+      captures: [{
+        captureId: 'C01', timeframe: '15m', role: null,
+        instrument: 'BTC/USDT', site: 'binance', venue: 'Binance',
+        pageType: 'spot-trade', width: 1280, height: 720,
+      }],
+    });
+    expect(JSON.stringify(metadata)).not.toContain(capture.image.dataUrl);
+  });
+
+  it('reads and cancels the exact scoped task path', async () => {
+    const fetcher = vi.fn().mockImplementation(async () => jsonResponse(taskFixture));
+    const client = createCloudClient(fetcher);
+    const token = `cv_live_${'r'.repeat(43)}`;
+
+    await client.task(token, 'c_20260828_123');
+    await client.cancelTask(token, 'c_20260828_123');
+
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      `${CLOUD_API_BASE_URL}/v1/extension/analysis-tasks/c_20260828_123`,
+    );
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      `${CLOUD_API_BASE_URL}/v1/extension/analysis-tasks/c_20260828_123/cancel`,
+    );
+    expect((fetcher.mock.calls[1]?.[1] as RequestInit).method).toBe('POST');
+  });
+
+  it('maps malformed tasks to an incompatible report schema without leaking payloads', async () => {
+    const token = `cv_live_${'z'.repeat(43)}`;
+    const secretImage = 'data:image/png;base64,SECRET';
+    const fetcher = vi.fn().mockResolvedValue(jsonResponse({
+      ...taskFixture,
+      report: { ...taskFixture.report, internalPrompt: secretImage },
+    }));
+
+    const operation = createCloudClient(fetcher).task(token, 'c_20260828_123');
+
+    await expect(operation).rejects.toMatchObject({ code: 'incompatible_report_schema' });
+    await expect(operation).rejects.not.toThrow(token);
+    await expect(operation).rejects.not.toThrow(secretImage);
   });
 });

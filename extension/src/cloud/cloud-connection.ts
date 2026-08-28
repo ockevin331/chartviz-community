@@ -28,7 +28,7 @@ export type CloudConnectionManager = Readonly<{
 }>;
 
 type CloudConnectionDependencies = Readonly<{
-  client: CloudClient;
+  client: Pick<CloudClient, 'connect' | 'account'>;
   storage: Readonly<{
     load(): Promise<StoredCloudConnection | null>;
     save(token: string, account: ExtensionAccount): Promise<void>;
