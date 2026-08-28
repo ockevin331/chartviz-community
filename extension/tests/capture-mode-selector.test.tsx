@@ -43,18 +43,18 @@ function SelectorHarness({
 }
 
 describe('CaptureModeSelector', () => {
-  it('starts with single timeframe selected and presents the three default roles', () => {
+  it('starts with single timeframe selected and presents role names without local timeframe defaults', () => {
     render(<SelectorHarness capabilities={directCapabilities} />);
 
     expect(screen.getByRole('group', { name: 'Screenshot mode' })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Single timeframe/ }).getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByText('Current chart')).toBeTruthy();
     expect(screen.getByText('Context')).toBeTruthy();
-    expect(screen.getByText('4h')).toBeTruthy();
     expect(screen.getByText('Setup')).toBeTruthy();
-    expect(screen.getByText('1h')).toBeTruthy();
     expect(screen.getByText('Trigger')).toBeTruthy();
-    expect(screen.getByText('15m')).toBeTruthy();
+    expect(screen.queryByText('4h')).toBeNull();
+    expect(screen.queryByText('1h')).toBeNull();
+    expect(screen.queryByText('15m')).toBeNull();
   });
 
   it('keeps Direct on single and opens localized Cloud guidance on request', async () => {

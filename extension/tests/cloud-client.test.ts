@@ -46,6 +46,14 @@ const account = {
   entitlements: { multiTimeframe: true, maxCaptures: 3 },
 };
 
+const captureSettings = {
+  timeframes: [
+    { role: 'context', timeframe: '1d' },
+    { role: 'setup', timeframe: '4h' },
+    { role: 'trigger', timeframe: '5m' },
+  ],
+};
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -83,6 +91,18 @@ describe('fixed-origin ChartViz Cloud client', () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(fetcher.mock.calls[0]?.[0]).toBe(`${CLOUD_API_BASE_URL}/v1/extension/account`);
     expect(JSON.stringify(fetcher.mock.calls)).not.toContain('analysis-tasks');
+  });
+
+  it('reads strict website-managed capture settings with the Cloud token', async () => {
+    const fetcher = vi.fn().mockResolvedValue(jsonResponse(captureSettings));
+    const token = `cv_live_${'m'.repeat(43)}`;
+
+    await expect(createCloudClient(fetcher).captureSettings(token)).resolves.toEqual(captureSettings);
+
+    expect(fetcher).toHaveBeenCalledWith(
+      `${CLOUD_API_BASE_URL}/v1/extension/capture-settings`,
+      { headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } },
+    );
   });
 
   it.each([

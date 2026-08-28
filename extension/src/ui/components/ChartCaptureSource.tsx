@@ -6,6 +6,7 @@ import {
 } from '../../capture/active-chart';
 import type { ChartContext } from '../../domain/chart-context';
 import type { SupportedCaptureTimeframe } from '../../domain/chart-messages';
+import { CloudConnectionError } from '../../cloud/cloud-client';
 import {
   findSupportedSiteByChartUrl,
   supportedSiteLinks,
@@ -13,6 +14,7 @@ import {
 } from '../../sites/supported-sites';
 import { translations, type Language } from './LanguageMenu';
 import { CaptureModeSelector, type CaptureMode } from './CaptureModeSelector';
+import { AnalysisError } from './AnalysisError';
 
 type ChartCaptureSourceProps = {
   language: Language;
@@ -23,6 +25,7 @@ type ChartCaptureSourceProps = {
     timeframes: readonly SupportedCaptureTimeframe[],
     signal: AbortSignal,
   ): Promise<readonly CapturedChart[]>;
+  loadMultiTimeframes?(): Promise<readonly SupportedCaptureTimeframe[]>;
   onCaptured(captured: readonly CapturedChart[]): void;
   onOpenCloudSettings(): void;
 };
@@ -37,6 +40,7 @@ export function ChartCaptureSource({
   inspect,
   capture,
   captureMany,
+  loadMultiTimeframes,
   onCaptured,
   onOpenCloudSettings,
 }: ChartCaptureSourceProps) {
@@ -46,6 +50,8 @@ export function ChartCaptureSource({
   const [capturing, setCapturing] = useState(false);
   const [captureMode, setCaptureMode] = useState<CaptureMode>('single');
   const [error, setError] = useState<string | null>(null);
+  const [captureError, setCaptureError] = useState<CloudConnectionError | null>(null);
+  const [roleTimeframes, setRoleTimeframes] = useState<readonly SupportedCaptureTimeframe[] | null>(null);
   const [availability, setAvailability] = useState<ChartAvailabilityFailure | null>(null);
   const captureController = useRef<AbortController | null>(null);
 
@@ -54,6 +60,7 @@ export function ChartCaptureSource({
     setContext(null);
     setCaptureMode('single');
     setError(null);
+    setCaptureError(null);
     setAvailability(null);
     try {
       setContext(await inspect());
@@ -79,17 +86,23 @@ export function ChartCaptureSource({
     captureController.current = controller;
     setCapturing(true);
     setError(null);
+    setCaptureError(null);
     try {
       if (captureMode === 'multi') {
-        if (!siteSupportsMultiTimeframe || !capabilities.multiTimeframe || !captureMany) {
+        if (!siteSupportsMultiTimeframe || !capabilities.multiTimeframe || !captureMany || !loadMultiTimeframes) {
           throw new Error(t.multi_timeframe_requires_cloud);
         }
-        onCaptured(await captureMany(DEFAULT_MULTI_TIMEFRAMES, controller.signal));
+        const timeframes = await loadMultiTimeframes();
+        setRoleTimeframes(timeframes);
+        onCaptured(await captureMany(timeframes, controller.signal));
       } else {
         onCaptured([await capture(controller.signal)]);
       }
     } catch (nextError) {
-      if (!controller.signal.aborted) setError(publicMessage(nextError, t.chartCaptureError));
+      if (!controller.signal.aborted) {
+        if (nextError instanceof CloudConnectionError) setCaptureError(nextError);
+        else setError(publicMessage(nextError, t.chartCaptureError));
+      }
     } finally {
       if (captureController.current === controller) captureController.current = null;
       setCapturing(false);
@@ -123,6 +136,7 @@ export function ChartCaptureSource({
         mode={captureMode}
         capabilities={capabilities}
         siteSupportsMultiTimeframe={siteSupportsMultiTimeframe}
+        roleTimeframes={roleTimeframes}
         disabled={capturing}
         onModeChange={setCaptureMode}
         onOpenCloudSettings={onOpenCloudSettings}
@@ -133,6 +147,13 @@ export function ChartCaptureSource({
     {!loading && error && <div className="chart-guidance" role="alert">
       <strong>{t.chartUnavailable}</strong><p>{error}</p>
     </div>}
+    {!loading && captureError && <AnalysisError
+      language={language}
+      errorCode={captureError.code === 'task_cancelled' ? 'unknown' : captureError.code}
+      params={captureError.params}
+      pricingUrl={captureError.pricingUrl}
+      onBack={() => setCaptureError(null)}
+    />}
     {!loading && unsupportedSite && <div className="chart-guidance" role="alert">
       <a
         className="chartviz-upload-link"
@@ -159,5 +180,3 @@ export function ChartCaptureSource({
     {!loading && !availability && <button className="secondary refresh-detection" type="button" disabled={capturing} onClick={() => void refresh()}>{t.refreshChartDetection}</button>}
   </section>;
 }
-
-const DEFAULT_MULTI_TIMEFRAMES: readonly SupportedCaptureTimeframe[] = ['4h', '1h', '15m'];

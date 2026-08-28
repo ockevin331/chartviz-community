@@ -13,6 +13,7 @@ import { ChartAvailabilityError } from '../src/capture/active-chart';
 import { unavailableCloudGateway } from '../src/cloud/cloud-gateway';
 import type { CloudAnalysisGateway } from '../src/cloud/cloud-gateway';
 import type { CloudConnectionManager } from '../src/cloud/cloud-connection';
+import type { StoredCloudConnection } from '../src/storage/cloud-connection-storage';
 import type { ChartContext } from '../src/domain/chart-context';
 import type { AnalysisDiagnostic } from '../src/providers/provider-diagnostics';
 import { parseReportPresentationModel } from '../src/presentation/report-presentation-model';
@@ -66,7 +67,7 @@ function fakeCloudRuntime(): AnalysisRuntime & {
 } {
   return {
     mode: 'cloud',
-    capabilities: () => ({ multiTimeframe: false, maxTimeframes: 1 }),
+    capabilities: () => ({ multiTimeframe: true, maxTimeframes: 3 }),
     analyze: vi.fn(async () => outcome),
     cancel: vi.fn(),
     restoreActiveAnalysis: vi.fn(async () => null),
@@ -204,15 +205,37 @@ describe('direct Community panel workflow', () => {
     expect(screen.getByRole('tab', { name: 'ChartViz Cloud' })).toHaveProperty('ariaSelected', 'true');
   });
 
-  it('keeps C2 Cloud capture single-timeframe even for an Advance account', async () => {
+  it('loads the stored Cloud token settings immediately before multi capture', async () => {
     const user = userEvent.setup();
     const runtime = fakeCloudRuntime();
-    const captureMany = vi.fn(async () => multiCaptures);
+    const captureMany = vi.fn(async (timeframes: readonly ('5m' | '15m' | '1h' | '4h' | '1d')[]) => timeframes.map((timeframe, index) => ({
+      ...multiCaptures[index]!,
+      context: { ...multiCaptures[index]!.context, timeframe },
+    })));
     const cloudGateway: CloudAnalysisGateway = {
       availability: () => ({ available: true }),
       runtime: () => runtime,
     };
     const createDirectRuntime = vi.fn(() => fakeRuntime());
+    const token = `cv_live_${'a'.repeat(43)}`;
+    const loadCloudConnection = vi.fn(async (): Promise<StoredCloudConnection> => ({
+      token,
+      account: {
+        emailMasked: 'a***z@example.com', plan: 'advance',
+        currentPeriodEnd: '2026-09-28T00:00:00+00:00',
+        quota: { limit: null, used: 3, remaining: null, unlimited: true },
+        selectedModel: { id: 'openai/gpt-5.4', name: 'GPT-5.4', quotaCost: 2 },
+        entitlements: { multiTimeframe: true, maxCaptures: 3 },
+      },
+    }));
+    const captureSettings = vi.fn(async (loadedToken: string) => {
+      expect(loadedToken).toBe(token);
+      return { timeframes: [
+        { role: 'context' as const, timeframe: '1d' },
+        { role: 'setup' as const, timeframe: '4h' },
+        { role: 'trigger' as const, timeframe: '5m' },
+      ] };
+    });
     render(<App dependencies={{
       loadConfig: async () => null,
       loadMode: async () => 'cloud',
@@ -236,17 +259,27 @@ describe('direct Community panel workflow', () => {
       inspect,
       capture,
       captureMany,
+      loadCloudConnection,
+      cloudClient: { captureSettings },
     }} />);
 
     await screen.findByText('BTCUSD');
     await user.click(screen.getByRole('button', { name: /Multi-timeframe/ }));
-    expect(screen.getByRole('button', { name: /Single timeframe/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: /Multi-timeframe/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(loadCloudConnection).not.toHaveBeenCalled();
+    expect(captureSettings).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'Capture and analyze' }));
 
     await waitFor(() => expect(runtime.analyze).toHaveBeenCalledTimes(1));
-    expect(captureMany).not.toHaveBeenCalled();
+    expect(loadCloudConnection).toHaveBeenCalledTimes(1);
+    expect(captureSettings).toHaveBeenCalledWith(token);
+    expect(captureMany).toHaveBeenCalledWith(['1d', '4h', '5m'], expect.any(AbortSignal));
     expect(runtime.analyze).toHaveBeenCalledWith(expect.objectContaining({
-      captures: [expect.objectContaining({ image: processedImage })],
+      captures: [
+        expect.objectContaining({ context: expect.objectContaining({ timeframe: '1d' }) }),
+        expect.objectContaining({ context: expect.objectContaining({ timeframe: '4h' }) }),
+        expect.objectContaining({ context: expect.objectContaining({ timeframe: '5m' }) }),
+      ],
     }));
     expect(createDirectRuntime).not.toHaveBeenCalled();
   });

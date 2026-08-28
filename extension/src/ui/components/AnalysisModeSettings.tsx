@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import type { AnalysisMode } from '../../analysis/analysis-mode';
 import type { CloudConnectionState } from '../../cloud/cloud-connection';
+import { CLOUD_API_BASE_URL } from '../../cloud/cloud-client';
 import type { ProviderConfig } from '../../providers/provider-types';
 import { translations, type Language } from './LanguageMenu';
 import { ProviderSetup } from './ProviderSetup';
@@ -81,6 +82,7 @@ export function AnalysisModeSettings({
         ? <section className="cloud-mode-card">
           <div><h2>{t.cloudSetupTitle}</h2><p>{t.cloudSetupHelp}</p></div>
           <p className="cloud-timeframe-note">{t.cloudMultiTimeframe}</p>
+          <label><span>{t.cloudApiUrl}</span><input value={CLOUD_API_BASE_URL} readOnly aria-readonly="true" /></label>
           {cloudError && <p className="cloud-unavailable" role="alert">{cloudError}</p>}
           {cloudAccount ? <>
             <section className="cloud-account-summary">

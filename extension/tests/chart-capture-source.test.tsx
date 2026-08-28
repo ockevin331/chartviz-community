@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AnalysisCapabilities } from '../src/analysis/runtime/analysis-runtime';
 import { ChartAvailabilityError, type CapturedChart } from '../src/capture/active-chart';
+import { CloudConnectionError } from '../src/cloud/cloud-client';
 import type { ChartContext } from '../src/domain/chart-context';
 import { ChartCaptureSource } from '../src/ui/components/ChartCaptureSource';
 
@@ -135,10 +136,10 @@ describe('ChartCaptureSource', () => {
     expect(openCloudSettings).toHaveBeenCalledTimes(1);
   });
 
-  it('captures the three role timeframes for a capable runtime without invoking single capture', async () => {
+  it('loads website-managed timeframes only after Analyze and captures their returned order', async () => {
     const user = userEvent.setup();
     const capture = vi.fn(async () => captured);
-    const multiCaptures = (['4h', '1h', '15m'] as const).map((timeframe) => ({
+    const multiCaptures = (['1d', '4h', '5m'] as const).map((timeframe) => ({
       ...captured,
       context: { ...context, timeframe },
     }));
@@ -146,6 +147,7 @@ describe('ChartCaptureSource', () => {
     const captureMany = vi.fn(() => new Promise<readonly CapturedChart[]>((resolve) => {
       finishCapture = resolve;
     }));
+    const loadMultiTimeframes = vi.fn(async () => ['1d', '4h', '5m'] as const);
     const onCaptured = vi.fn();
     render(<ChartCaptureSource
       language="en"
@@ -153,6 +155,7 @@ describe('ChartCaptureSource', () => {
       inspect={async () => context}
       capture={capture}
       captureMany={captureMany}
+      loadMultiTimeframes={loadMultiTimeframes}
       onCaptured={onCaptured}
       onOpenCloudSettings={() => undefined}
     />);
@@ -161,14 +164,52 @@ describe('ChartCaptureSource', () => {
     await user.click(screen.getByRole('button', { name: /Multi-timeframe/ }));
 
     expect(screen.getByRole('button', { name: /Multi-timeframe/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(loadMultiTimeframes).not.toHaveBeenCalled();
+    expect(screen.queryByText('1d')).toBeNull();
     expect(screen.getByRole('status').textContent).toContain('page may briefly flicker');
     await user.click(screen.getByRole('button', { name: 'Capture and analyze' }));
+    await waitFor(() => expect(loadMultiTimeframes).toHaveBeenCalledTimes(1));
     expect(screen.getByRole('button', { name: /Single timeframe/ })).toHaveProperty('disabled', true);
     expect(screen.getByRole('button', { name: /Multi-timeframe/ })).toHaveProperty('disabled', true);
     finishCapture(multiCaptures);
     await waitFor(() => expect(onCaptured).toHaveBeenCalledWith(multiCaptures));
-    expect(captureMany).toHaveBeenCalledWith(['4h', '1h', '15m'], expect.any(AbortSignal));
+    expect(captureMany).toHaveBeenCalledWith(['1d', '4h', '5m'], expect.any(AbortSignal));
+    expect(screen.getByText('1d')).toBeTruthy();
+    expect(screen.getByText('4h')).toBeTruthy();
+    expect(screen.getByText('5m')).toBeTruthy();
     expect(capture).not.toHaveBeenCalled();
+  });
+
+  it('shows localized Advance guidance and preserves its pricing URL when settings reject before capture', async () => {
+    const user = userEvent.setup();
+    const captureMany = vi.fn(async () => [captured]);
+    render(<ChartCaptureSource
+      language="en"
+      capabilities={cloudCapabilities}
+      inspect={async () => context}
+      capture={async () => captured}
+      captureMany={captureMany}
+      loadMultiTimeframes={async () => {
+        throw new CloudConnectionError(
+          'multi_timeframe_requires_advance',
+          {},
+          'https://www.chartviz.xyz/#pricing',
+        );
+      }}
+      onCaptured={() => undefined}
+      onOpenCloudSettings={() => undefined}
+    />);
+
+    await screen.findByText('BTCUSD');
+    await user.click(screen.getByRole('button', { name: /Multi-timeframe/ }));
+    await user.click(screen.getByRole('button', { name: 'Capture and analyze' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Multi-timeframe analysis requires the Advance plan.');
+    expect(screen.getByRole('link', { name: 'View plans' })).toHaveProperty(
+      'href',
+      'https://www.chartviz.xyz/#pricing',
+    );
+    expect(captureMany).not.toHaveBeenCalled();
   });
 
   it('keeps multi unavailable on 10jqka even for a capable runtime', async () => {

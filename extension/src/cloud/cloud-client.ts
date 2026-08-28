@@ -5,10 +5,12 @@ import type {
   ExtensionAccount,
   ExtensionAnalysisTask,
   ExtensionApiError,
+  ExtensionCaptureSettings,
 } from './contracts/extension-cloud-v1';
 import {
   parseExtensionAccount,
   parseExtensionCapabilities,
+  parseExtensionCaptureSettings,
 } from './cloud-account-schema';
 import { parseExtensionAnalysisTask } from './cloud-task-schema';
 
@@ -54,6 +56,7 @@ export class CloudConnectionError extends Error {
 export type CloudClient = Readonly<{
   connect(token: string): Promise<ExtensionAccount>;
   account(token: string): Promise<ExtensionAccount>;
+  captureSettings(token: string): Promise<ExtensionCaptureSettings>;
   createTask(token: string, input: CloudTaskCreateInput): Promise<ExtensionAnalysisTask>;
   task(token: string, requestId: string, signal?: AbortSignal): Promise<ExtensionAnalysisTask>;
   cancelTask(token: string, requestId: string): Promise<ExtensionAnalysisTask>;
@@ -209,6 +212,15 @@ export function createCloudClient(fetcher: typeof fetch = fetch): CloudClient {
       return account(token);
     },
     account,
+    async captureSettings(token: string): Promise<ExtensionCaptureSettings> {
+      validateToken(token);
+      const body = await request(fetcher, '/v1/extension/capture-settings', token);
+      try {
+        return parseExtensionCaptureSettings(body);
+      } catch (error) {
+        throw contractError(error);
+      }
+    },
     async createTask(
       token: string,
       input: CloudTaskCreateInput,

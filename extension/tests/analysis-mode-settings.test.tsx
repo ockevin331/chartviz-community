@@ -36,7 +36,10 @@ describe('AnalysisModeSettings', () => {
 
     expect(screen.getByRole('tab', { name: 'ChartViz Cloud' }).getAttribute('aria-selected')).toBe('true');
     expect(screen.getByLabelText('Cloud access token')).toHaveProperty('type', 'password');
-    expect(screen.getByText('This version of Cloud analysis supports one timeframe per analysis.')).toBeTruthy();
+    const apiUrl = screen.getByLabelText('Cloud API URL');
+    expect(apiUrl).toHaveProperty('value', 'https://www.chartviz.xyz/api');
+    expect(apiUrl).toHaveProperty('readOnly', true);
+    expect(apiUrl).toHaveProperty('disabled', false);
     expect(screen.getByRole('link', { name: 'Create or revoke tokens on ChartViz' })).toHaveProperty(
       'href',
       'https://www.chartviz.xyz/settings',

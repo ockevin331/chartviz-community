@@ -4,6 +4,7 @@ import { DirectAnalysisRuntime } from '../../src/analysis/runtime/direct-analysi
 import type { AnalysisCapabilities, AnalysisRuntime } from '../../src/analysis/runtime/analysis-runtime';
 import { activeChartClient, type CapturedChart } from '../../src/capture/active-chart';
 import { productionCloudGateway, resolveCloudRuntime, type CloudAnalysisGateway } from '../../src/cloud/cloud-gateway';
+import { CloudConnectionError, createCloudClient, type CloudClient } from '../../src/cloud/cloud-client';
 import {
   createCloudConnectionManager,
   type CloudConnectionManager,
@@ -15,6 +16,7 @@ import { providerRegistry } from '../../src/providers/provider-registry';
 import type { ProviderConfig } from '../../src/providers/provider-types';
 import { loadAnalysisMode, saveAnalysisMode } from '../../src/storage/analysis-mode-storage';
 import { loadProviderConfig, saveProviderConfig } from '../../src/storage/provider-session';
+import { loadCloudConnection, type StoredCloudConnection } from '../../src/storage/cloud-connection-storage';
 import { AnalysisError } from '../../src/ui/components/AnalysisError';
 import { AnalysisModeSettings } from '../../src/ui/components/AnalysisModeSettings';
 import { AnalysisProgress } from '../../src/ui/components/AnalysisProgress';
@@ -32,6 +34,8 @@ export type AppDependencies = {
   saveMode(mode: AnalysisMode): Promise<void>;
   cloudGateway: CloudAnalysisGateway;
   cloudConnectionManager: CloudConnectionManager;
+  cloudClient: Pick<CloudClient, 'captureSettings'>;
+  loadCloudConnection(): Promise<StoredCloudConnection | null>;
   inspect(): Promise<ChartContext>;
   capture(signal: AbortSignal): Promise<CapturedChart>;
   captureMany(
@@ -49,6 +53,8 @@ const defaultDependencies: AppDependencies = {
   saveMode: saveAnalysisMode,
   cloudGateway: productionCloudGateway,
   cloudConnectionManager: createCloudConnectionManager(),
+  cloudClient: createCloudClient(),
+  loadCloudConnection,
   inspect: () => activeChartClient.inspect(),
   capture: (signal) => activeChartClient.capture(signal),
   captureMany: (timeframes, signal) => activeChartClient.captureMany(timeframes, signal),
@@ -139,6 +145,13 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     window.addEventListener('message', handlePageMessage);
     return () => window.removeEventListener('message', handlePageMessage);
   }, [refreshAll]);
+
+  const loadMultiTimeframes = useCallback(async (): Promise<readonly SupportedCaptureTimeframe[]> => {
+    const connection = await dependencies.loadCloudConnection();
+    if (!connection) throw new CloudConnectionError('authentication_required');
+    const settings = await dependencies.cloudClient.captureSettings(connection.token);
+    return settings.timeframes.map(({ timeframe }) => timeframe as SupportedCaptureTimeframe);
+  }, [dependencies.cloudClient, dependencies.loadCloudConnection]);
 
   function analyzeCaptured(captures: readonly CapturedChart[]) {
     const first = captures[0];
@@ -268,7 +281,7 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     </section> : <>
       {loading && <section className="backend-loading" role="status">…</section>}
       {!loading && state.status === 'setup' && <AnalysisModeSettings language={language} variant="setup" activeMode={activeMode} selectedMode={setupMode} onSelectedModeChange={setSetupMode} initialDirectConfig={providerConfig} saveDirectConfig={dependencies.saveConfig} saveMode={dependencies.saveMode} onDirectActivated={finishInitialSetup} testConnection={dependencies.testDirectConnection} cloudConnection={cloudConnection} cloudBusy={cloudBusy} onCloudConnect={connectCloud} onCloudDisconnect={disconnectCloud} />}
-      {!loading && state.status === 'source' && analysisCapabilities && <ChartCaptureSource key={contextRevision} language={language} capabilities={analysisCapabilities} inspect={dependencies.inspect} capture={dependencies.capture} captureMany={dependencies.captureMany} onCaptured={analyzeCaptured} onOpenCloudSettings={openCloudSettings} />}
+      {!loading && state.status === 'source' && analysisCapabilities && <ChartCaptureSource key={contextRevision} language={language} capabilities={analysisCapabilities} inspect={dependencies.inspect} capture={dependencies.capture} captureMany={dependencies.captureMany} loadMultiTimeframes={loadMultiTimeframes} onCaptured={analyzeCaptured} onOpenCloudSettings={openCloudSettings} />}
       {state.status === 'preview' && state.image && <ImagePreview language={language} image={state.image} onZoom={setLightbox} onChange={captureAgain} onAnalyze={retryAnalysis} />}
       {state.status === 'analyzing' && state.image && <><ImagePreview language={language} image={state.image} analyzing onZoom={setLightbox} onChange={captureAgain} onAnalyze={() => undefined} /><AnalysisProgress language={language} progress={state.progress} onCancel={controller.cancel} /></>}
       {state.status === 'failed' && <AnalysisError language={language} errorCode={state.errorCode} diagnostic={state.diagnostic} params={state.errorParams} pricingUrl={state.pricingUrl} onBack={retryAnalysis} />}

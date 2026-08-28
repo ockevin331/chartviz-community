@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { AnalysisCapabilities } from '../../analysis/runtime/analysis-runtime';
+import type { SupportedCaptureTimeframe } from '../../domain/chart-messages';
 import { translations, type Language } from './LanguageMenu';
 
 export type CaptureMode = 'single' | 'multi';
@@ -9,6 +10,7 @@ export type CaptureModeSelectorProps = {
   mode: CaptureMode;
   capabilities: AnalysisCapabilities;
   siteSupportsMultiTimeframe: boolean;
+  roleTimeframes?: readonly SupportedCaptureTimeframe[] | null;
   disabled?: boolean;
   onModeChange(mode: CaptureMode): void;
   onOpenCloudSettings(): void;
@@ -21,6 +23,7 @@ export function CaptureModeSelector({
   mode,
   capabilities,
   siteSupportsMultiTimeframe,
+  roleTimeframes = null,
   disabled = false,
   onModeChange,
   onOpenCloudSettings,
@@ -70,9 +73,9 @@ export function CaptureModeSelector({
       >
         <strong>{t.multiTimeframe}</strong>
         <span className="capture-role-list">
-          <span><small>{t.contextRole}</small><b>4h</b></span>
-          <span><small>{t.setupRole}</small><b>1h</b></span>
-          <span><small>{t.triggerRole}</small><b>15m</b></span>
+          <span><small>{t.contextRole}</small>{roleTimeframes?.[0] && <b>{roleTimeframes[0]}</b>}</span>
+          <span><small>{t.setupRole}</small>{roleTimeframes?.[1] && <b>{roleTimeframes[1]}</b>}</span>
+          <span><small>{t.triggerRole}</small>{roleTimeframes?.[2] && <b>{roleTimeframes[2]}</b>}</span>
         </span>
       </button>
     </div>
