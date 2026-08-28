@@ -6,7 +6,9 @@ repo_root=$(cd -- "$script_dir/.." && pwd -P)
 cd -- "$repo_root"
 
 pnpm --dir extension install --frozen-lockfile
-node --test tests/repository-structure.test.mjs tests/release-docs.test.mjs
+pnpm --dir extension contracts:check
+node --test tests/repository-structure.test.mjs tests/release-docs.test.mjs \
+  tests/cloud-contract-release-gate.test.mjs
 pnpm --dir extension test
 pnpm --dir extension compile
 pnpm --dir extension build
