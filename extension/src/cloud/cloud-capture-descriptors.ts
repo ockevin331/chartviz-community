@@ -55,6 +55,16 @@ const pageTypes = new Set<NonNullable<StoredCaptureDescriptor['pageType']>>([
   'advanced-chart', 'spot-trade', 'futures-trade', 'stock-trade', 'web3-token',
 ]);
 
+function captureIdForIndex(index: number): StoredCaptureDescriptor['captureId'] {
+  return `C0${index + 1}` as StoredCaptureDescriptor['captureId'];
+}
+
+function isSupportedTimeframe(
+  timeframe: string,
+): timeframe is keyof typeof timeframeDurations {
+  return Object.hasOwn(timeframeDurations, timeframe);
+}
+
 function invalidImage(): never {
   throw new CloudConnectionError('invalid_image');
 }
@@ -71,7 +81,7 @@ function normalizedOptionalString(value: unknown, maxLength: number): string | n
 function normalizedTimeframe(value: unknown): string {
   if (typeof value !== 'string') throw new CloudConnectionError('unsupported_timeframe');
   const timeframe = value.trim();
-  if (!Object.hasOwn(timeframeDurations, timeframe)) {
+  if (!isSupportedTimeframe(timeframe)) {
     throw new CloudConnectionError('unsupported_timeframe');
   }
   return timeframe;
@@ -103,6 +113,24 @@ function normalizedRoles(timeframes: readonly string[]): readonly StoredCaptureD
   return roles;
 }
 
+export function areCanonicalStoredCaptureDescriptors(
+  captures: readonly StoredCaptureDescriptor[],
+): boolean {
+  if (captures.length < 1 || captures.length > 3) return false;
+  const timeframes = captures.map((capture) => capture.timeframe);
+  if (
+    timeframes.some((timeframe) => !isSupportedTimeframe(timeframe))
+    || new Set(timeframes).size !== timeframes.length
+  ) {
+    return false;
+  }
+  const roles = normalizedRoles(timeframes);
+  return captures.every((capture, index) => (
+    capture.captureId === captureIdForIndex(index)
+    && capture.role === roles[index]
+  ));
+}
+
 export function describeCloudCaptures(
   captures: readonly AnalysisCapture[],
 ): readonly StoredCaptureDescriptor[] {
@@ -116,7 +144,7 @@ export function describeCloudCaptures(
     const pageType = capture.context.pageType ?? null;
     if (pageType !== null && !pageTypes.has(pageType)) return invalidImage();
     return Object.freeze({
-      captureId: `C0${index + 1}` as StoredCaptureDescriptor['captureId'],
+      captureId: captureIdForIndex(index),
       timeframe: timeframes[index]!,
       role: roles[index]!,
       instrument: normalizedOptionalString(capture.context.instrument, 120),

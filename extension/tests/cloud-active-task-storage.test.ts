@@ -153,6 +153,55 @@ describe('local Cloud active task storage', () => {
     expect(area.records.size).toBe(0);
   });
 
+  it.each([
+    {
+      invariant: 'unsupported timeframes',
+      captures: [
+        { ...activeTask.captures[0], timeframe: '10m' },
+        activeTask.captures[1],
+      ],
+    },
+    {
+      invariant: 'duplicate timeframes',
+      captures: [
+        activeTask.captures[0],
+        { ...activeTask.captures[1], timeframe: '4h' },
+      ],
+    },
+    {
+      invariant: 'non-sequential capture IDs',
+      captures: [
+        { ...activeTask.captures[0], captureId: 'C02' },
+        { ...activeTask.captures[1], captureId: 'C01' },
+      ],
+    },
+    {
+      invariant: 'duplicate capture IDs',
+      captures: [
+        activeTask.captures[0],
+        { ...activeTask.captures[1], captureId: 'C01' },
+      ],
+    },
+    {
+      invariant: 'a role inconsistent with capture count',
+      captures: [{ ...activeTask.captures[0], role: 'context' }],
+    },
+    {
+      invariant: 'roles inconsistent with canonical timeframe ordering',
+      captures: [
+        { ...activeTask.captures[0], role: 'setup_and_trigger' },
+        { ...activeTask.captures[1], role: 'context' },
+      ],
+    },
+  ])('deletes stored descriptors with $invariant', async ({ captures }) => {
+    const storage = createCloudActiveTaskStorage(area);
+    area.records.set('chartvizCloudActiveTask', { ...activeTask, captures });
+
+    await expect(storage.load()).rejects.toBeInstanceOf(TypeError);
+    expect(area.records.has('chartvizCloudActiveTask')).toBe(false);
+    await expect(storage.load()).resolves.toBeNull();
+  });
+
   it('clears only the expected request ID', async () => {
     const storage = createCloudActiveTaskStorage(area);
     await storage.save(activeTask);

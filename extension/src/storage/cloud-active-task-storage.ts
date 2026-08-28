@@ -1,7 +1,10 @@
 import { z } from 'zod';
 import { browser } from 'wxt/browser';
 import type { OutputLanguage } from '../analysis/stages/shared-stage-types';
-import type { StoredCaptureDescriptor } from '../cloud/cloud-capture-descriptors';
+import {
+  areCanonicalStoredCaptureDescriptors,
+  type StoredCaptureDescriptor,
+} from '../cloud/cloud-capture-descriptors';
 import { outputLanguageSchema } from '../cloud/cloud-task-schema';
 
 const activeTaskKey = 'chartvizCloudActiveTask';
@@ -45,7 +48,15 @@ const storedCloudActiveTaskSchema: z.ZodType<StoredCloudActiveTask> = z.object({
   tokenFingerprint: z.string().regex(/^[0-9a-f]{64}$/),
   captures: z.array(storedCaptureDescriptorSchema).min(1).max(3),
   outputLanguage: outputLanguageSchema,
-}).strict();
+}).strict().superRefine((value, context) => {
+  if (!areCanonicalStoredCaptureDescriptors(value.captures)) {
+    context.addIssue({
+      code: 'custom',
+      path: ['captures'],
+      message: 'noncanonical_capture_descriptors',
+    });
+  }
+});
 
 function invalidActiveTask(): TypeError {
   return new TypeError('Invalid ChartViz Cloud active task.');
