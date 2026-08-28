@@ -34,7 +34,7 @@ export type CloudActiveTaskLockManager = Readonly<{
 export type CloudActiveTaskStorage = Readonly<{
   load(): Promise<StoredCloudActiveTask | null>;
   save(value: StoredCloudActiveTask): Promise<void>;
-  clear(expectedRequestId?: string): Promise<void>;
+  clear(expectedRequestId?: string, ownsClear?: () => boolean): Promise<void>;
 }>;
 
 const nullableShortString = z.string().min(1).max(120).nullable();
@@ -105,21 +105,25 @@ export function createCloudActiveTaskStorage(
         await area.set({ [activeTaskKey]: parsed.data });
       });
     },
-    clear(expectedRequestId?: string): Promise<void> {
+    clear(expectedRequestId?: string, ownsClear = () => true): Promise<void> {
       return withLock(async () => {
+        if (!ownsClear()) return;
         if (expectedRequestId === undefined) {
+          if (!ownsClear()) return;
           await area.remove(activeTaskKey);
           return;
         }
         const values = await area.get(activeTaskKey);
+        if (!ownsClear()) return;
         const value = values[activeTaskKey];
         if (value === undefined) return;
         const parsed = storedCloudActiveTaskSchema.safeParse(value);
+        if (!ownsClear()) return;
         if (!parsed.success) {
           await area.remove(activeTaskKey);
           throw invalidActiveTask();
         }
-        if (parsed.data.requestId === expectedRequestId) {
+        if (parsed.data.requestId === expectedRequestId && ownsClear()) {
           await area.remove(activeTaskKey);
         }
       });
@@ -154,6 +158,9 @@ export function loadCloudActiveTask(): Promise<StoredCloudActiveTask | null> {
   return defaultStorage.load();
 }
 
-export function clearCloudActiveTask(expectedRequestId?: string): Promise<void> {
-  return defaultStorage.clear(expectedRequestId);
+export function clearCloudActiveTask(
+  expectedRequestId?: string,
+  ownsClear?: () => boolean,
+): Promise<void> {
+  return defaultStorage.clear(expectedRequestId, ownsClear);
 }

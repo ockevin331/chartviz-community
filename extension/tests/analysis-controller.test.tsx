@@ -221,6 +221,47 @@ describe('useAnalysisController runtime boundary', () => {
     pending.resolve(outcome);
   });
 
+  it('detaches active Cloud work locally when the controller unmounts', async () => {
+    const pending = deferred<AnalysisRuntimeOutcome>();
+    const directRuntime = fakeRuntime(() => pending.promise);
+    const detach = vi.fn();
+    const runtime: AnalysisRuntime = {
+      ...directRuntime,
+      mode: 'cloud',
+      detach,
+    };
+    const hook = setup(runtime);
+    let analysis!: Promise<void>;
+    act(() => {
+      analysis = hook.result.current.analyze({ instrument: null, timeframe: null }, 'en');
+    });
+    await waitFor(() => expect(hook.result.current.state.status).toBe('analyzing'));
+
+    hook.unmount();
+
+    expect(detach).toHaveBeenCalledTimes(1);
+    expect(directRuntime.cancel).not.toHaveBeenCalled();
+    pending.resolve(outcome);
+    await analysis;
+  });
+
+  it('leaves active Direct work untouched when the controller unmounts', async () => {
+    const pending = deferred<AnalysisRuntimeOutcome>();
+    const runtime = fakeRuntime(() => pending.promise);
+    const hook = setup(runtime);
+    let analysis!: Promise<void>;
+    act(() => {
+      analysis = hook.result.current.analyze({ instrument: null, timeframe: null }, 'en');
+    });
+    await waitFor(() => expect(hook.result.current.state.status).toBe('analyzing'));
+
+    hook.unmount();
+
+    expect(runtime.cancel).not.toHaveBeenCalled();
+    pending.resolve(outcome);
+    await analysis;
+  });
+
   it.each(['resolve', 'reject'] as const)(
     'ignores a non-cooperative runtime that settles by %s after cancellation',
     async (settlement) => {

@@ -12,6 +12,16 @@ const browserMock = vi.hoisted(() => ({
   },
 }));
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
+
 vi.mock('wxt/browser', () => ({ browser: browserMock }));
 
 import {
@@ -245,6 +255,31 @@ describe('local Cloud active task storage', () => {
 
     await storage.clear(activeTask.requestId);
     await expect(storage.load()).resolves.toBeNull();
+  });
+
+  it('rechecks clear ownership after waiting for the shared lock', async () => {
+    const storage = createCloudActiveTaskStorage(area, lock);
+    await storage.save(activeTask);
+    const blockerEntered = deferred<void>();
+    const releaseBlocker = deferred<void>();
+    const blocker = lock.request(
+      'chartviz-cloud-active-task',
+      { mode: 'exclusive' },
+      async () => {
+        blockerEntered.resolve();
+        await releaseBlocker.promise;
+      },
+    );
+    await blockerEntered.promise;
+    let ownsClear = true;
+
+    const clearing = storage.clear(activeTask.requestId, () => ownsClear);
+    expect(lock.requests).toHaveLength(3);
+    ownsClear = false;
+    releaseBlocker.resolve();
+    await Promise.all([blocker, clearing]);
+
+    await expect(storage.load()).resolves.toEqual(activeTask);
   });
 
   it('serializes an older conditional clear before a newer save', async () => {

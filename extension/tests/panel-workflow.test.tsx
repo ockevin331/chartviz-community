@@ -904,7 +904,7 @@ describe('direct Community panel workflow', () => {
     expect(runtime.analyze).not.toHaveBeenCalled();
   });
 
-  it('detaches real Cloud restoration on unmount and reopens the same server task', async () => {
+  it('detaches real Cloud restoration and resumed polling before reopening the same task', async () => {
     const token = `cv_live_${'u'.repeat(43)}`;
     const tokenFingerprint = 'd'.repeat(64);
     const completedTask = parseExtensionAnalysisTask(structuredClone(cloudCompletedFixture));
@@ -941,6 +941,8 @@ describe('direct Community panel workflow', () => {
     };
     const task = vi.fn()
       .mockResolvedValueOnce(pendingTask)
+      .mockResolvedValueOnce(pendingTask)
+      .mockResolvedValueOnce(pendingTask)
       .mockResolvedValueOnce(completedTask)
       .mockResolvedValueOnce(completedTask);
     const cancelTask = vi.fn(async () => ({ ...pendingTask, status: 'cancelled' as const }));
@@ -949,6 +951,12 @@ describe('direct Community panel workflow', () => {
       bytes: ArrayBuffer;
     }>();
     let firstCaptureSignal: AbortSignal | undefined;
+    const resumedPoll = deferred<void>();
+    let resumedPollSignal: AbortSignal | undefined;
+    const sleep = vi.fn(async (_delay: number, signal: AbortSignal) => {
+      resumedPollSignal = signal;
+      await resumedPoll.promise;
+    });
     const validPng = Uint8Array.from(
       atob('iVBORw0KGgoAAAANSUhEUgAABQAAAALQCAYAAADPfd1WAAAACElEQVR4nAMAAAAAAUgGidIAAAAASUVORK5CYII='),
       (character) => character.charCodeAt(0),
@@ -985,7 +993,7 @@ describe('direct Community panel workflow', () => {
         clear: async () => undefined,
       },
       fingerprintGrant: async () => tokenFingerprint,
-      sleep: async () => undefined,
+      sleep,
       adaptPresentation: () => parsePresentationBundle(structuredClone(validPresentationBundle)),
       buildAnnotations: async () => presentationAnnotatedImages,
     };
@@ -1002,15 +1010,33 @@ describe('direct Community panel workflow', () => {
       capture,
     });
     const firstRuntime = new CloudAnalysisRuntime(runtimeDependencies);
-    const panel = render(<App dependencies={appDependencies(firstRuntime)} />);
+    const firstPanel = render(<App dependencies={appDependencies(firstRuntime)} />);
 
     await waitFor(() => expect(captureDownload).toHaveBeenCalledTimes(1));
-    panel.unmount();
-    panel.unmount();
+    firstPanel.unmount();
+    firstPanel.unmount();
 
     expect(firstCaptureSignal?.aborted).toBe(true);
     firstDownload.resolve({ mediaType: 'image/png', bytes: validPng });
     await act(async () => { await Promise.resolve(); });
+    expect(cancelTask).not.toHaveBeenCalled();
+    expect(active).toEqual(stored);
+
+    const pollingRuntime = new CloudAnalysisRuntime(runtimeDependencies);
+    const pollingPanel = render(<App dependencies={appDependencies(pollingRuntime)} />);
+    await waitFor(() => expect(sleep).toHaveBeenCalledTimes(1));
+
+    pollingPanel.unmount();
+    pollingPanel.unmount();
+
+    expect(resumedPollSignal?.aborted).toBe(true);
+    expect(cancelTask).not.toHaveBeenCalled();
+    expect(active).toEqual(stored);
+    resumedPoll.resolve();
+    await act(async () => {
+      await resumedPoll.promise;
+      await Promise.resolve();
+    });
     expect(cancelTask).not.toHaveBeenCalled();
     expect(active).toEqual(stored);
 
@@ -1019,6 +1045,8 @@ describe('direct Community panel workflow', () => {
 
     expect(await screen.findByText('Higher lows remain visible.')).toBeTruthy();
     expect(task.mock.calls.map((call) => call[1])).toEqual([
+      stored.requestId,
+      stored.requestId,
       stored.requestId,
       stored.requestId,
       stored.requestId,

@@ -45,7 +45,7 @@ import {
 type ActiveTaskStorage = Readonly<{
   load(): Promise<StoredCloudActiveTask | null>;
   save(value: StoredCloudActiveTask): Promise<void>;
-  clear(expectedRequestId?: string): Promise<void>;
+  clear(expectedRequestId?: string, ownsClear?: () => boolean): Promise<void>;
 }>;
 
 type CloudAnalysisOperation = {
@@ -526,12 +526,12 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
   }
 
   private async clearActiveTask(operation: CloudAnalysisOperation): Promise<void> {
-    if (
-      !this.isCurrent(operation)
-      || (operation.detached && !operation.cancelRequested)
-      || !operation.requestId
-    ) return;
-    await this.dependencies.activeTask.clear(operation.requestId);
+    if (!operation.requestId) return;
+    const ownsClear = () => this.isCurrent(operation)
+      && (!operation.detached || operation.cancelRequested);
+    if (!ownsClear()) throw new AnalysisRuntimeFailure('cancelled');
+    await this.dependencies.activeTask.clear(operation.requestId, ownsClear);
+    if (!ownsClear()) throw new AnalysisRuntimeFailure('cancelled');
   }
 
   private async settleCleanupPendingRequest(

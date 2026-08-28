@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AnalysisRuntimeFailure,
   type AnalysisCapture,
@@ -56,6 +56,13 @@ export function useAnalysisController() {
   const imageRef = useRef<ProcessedImage | null>(null);
   const capturesRef = useRef<readonly AnalysisCapture[]>([]);
   const generationRef = useRef(0);
+
+  useEffect(() => () => {
+    generationRef.current += 1;
+    const activeRuntime = activeRuntimeRef.current;
+    activeRuntimeRef.current = null;
+    if (activeRuntime?.mode === 'cloud') activeRuntime.detach?.();
+  }, []);
 
   const invalidateOperation = useCallback(() => {
     generationRef.current += 1;
