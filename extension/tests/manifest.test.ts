@@ -18,6 +18,9 @@ describe('extension manifest', () => {
     expect(manifest.action.default_popup).toBeUndefined();
     expect(JSON.stringify(manifest)).not.toContain('<all_urls>');
     expect(manifest.optional_host_permissions).toBeUndefined();
+    expect(manifest.host_permissions).toContain('https://www.chartviz.xyz/*');
+    expect(manifest.host_permissions).not.toContain('https://*.chartviz.xyz/*');
+    expect(manifest.host_permissions).not.toContain('http://www.chartviz.xyz/*');
   });
 
   it('limits the static content bridge to the supported chart URL patterns', () => {

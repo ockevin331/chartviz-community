@@ -175,7 +175,7 @@ describe('active-chart background boundary', () => {
     expect(events).toContain('restore:42');
   });
 
-  it.each(['provider', 'apiKey', 'key', 'prompt', 'model', 'response'])(
+  it.each(['provider', 'apiKey', 'key', 'cloudToken', 'prompt', 'model', 'response'])(
     'ignores a capture message carrying forbidden %s data',
     (field) => {
       const { dependencies } = captureDependencies();

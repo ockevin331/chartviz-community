@@ -8,7 +8,13 @@ export const approvedProviderOrigins = [
   'https://generativelanguage.googleapis.com/*',
 ] as const;
 
-export const approvedHostPermissions = [...approvedProviderOrigins, ...supportedChartHosts];
+export const approvedCloudOrigin = 'https://www.chartviz.xyz/*' as const;
+
+export const approvedHostPermissions = [
+  ...approvedProviderOrigins,
+  approvedCloudOrigin,
+  ...supportedChartHosts,
+];
 
 export type ExtensionManifest = {
   name: string;
