@@ -2,7 +2,12 @@
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import cloudCompletedFixture from '../contracts/extension-cloud/v1/fixtures/single-completed-task.json';
 import { App } from '../entrypoints/panel/App';
+import {
+  CloudAnalysisRuntime,
+  type CloudAnalysisRuntimeDependencies,
+} from '../src/analysis/runtime/cloud-analysis-runtime';
 import {
   AnalysisRuntimeFailure,
   type AnalysisRuntime,
@@ -15,10 +20,15 @@ import { unavailableCloudGateway } from '../src/cloud/cloud-gateway';
 import type { CloudAnalysisGateway } from '../src/cloud/cloud-gateway';
 import type { CloudConnectionManager } from '../src/cloud/cloud-connection';
 import type { StoredCloudConnection } from '../src/storage/cloud-connection-storage';
+import type { StoredCloudActiveTask } from '../src/storage/cloud-active-task-storage';
 import type { ChartContext } from '../src/domain/chart-context';
 import type { AnalysisDiagnostic } from '../src/providers/provider-diagnostics';
 import type { ProviderConfig } from '../src/providers/provider-types';
-import { parseReportPresentationModel } from '../src/presentation/report-presentation-model';
+import {
+  parsePresentationBundle,
+  parseReportPresentationModel,
+} from '../src/presentation/report-presentation-model';
+import { parseExtensionAnalysisTask } from '../src/cloud/cloud-task-schema';
 import { presentationAnnotatedImages, processedImage } from './community-ui-fixtures';
 import { validPresentationBundle } from './presentation-fixtures';
 
@@ -894,33 +904,127 @@ describe('direct Community panel workflow', () => {
     expect(runtime.analyze).not.toHaveBeenCalled();
   });
 
-  it('cancels a pending startup restoration when the panel unmounts', async () => {
-    const restoration = deferred<RestoredActiveAnalysis | null>();
-    const runtime = fakeCloudRuntime();
-    runtime.restoreActiveAnalysis = vi.fn(() => restoration.promise);
-    const panel = render(<App dependencies={{
+  it('detaches real Cloud restoration on unmount and reopens the same server task', async () => {
+    const token = `cv_live_${'u'.repeat(43)}`;
+    const tokenFingerprint = 'd'.repeat(64);
+    const completedTask = parseExtensionAnalysisTask(structuredClone(cloudCompletedFixture));
+    const pendingTask = parseExtensionAnalysisTask({
+      ...completedTask,
+      status: 'processing',
+      report: null,
+      progressEvents: [{ code: 'reading_chart', createdAt: '2026-08-28T00:00:01Z' }],
+    });
+    const descriptor = {
+      captureId: 'C01' as const,
+      timeframe: '15m',
+      role: null,
+      instrument: 'BTC/USDT',
+      site: 'tradingview',
+      exchange: 'TradingView',
+      pageType: 'advanced-chart' as const,
+      width: 1280,
+      height: 720,
+    };
+    const stored: StoredCloudActiveTask = {
+      requestId: completedTask.requestId,
+      tokenFingerprint,
+      captures: [descriptor],
+      outputLanguage: 'en',
+    };
+    let active: StoredCloudActiveTask | null = stored;
+    const activeTask = {
+      load: vi.fn(async () => active),
+      save: vi.fn(async (value: StoredCloudActiveTask) => { active = value; }),
+      clear: vi.fn(async (expectedRequestId?: string) => {
+        if (expectedRequestId === undefined || active?.requestId === expectedRequestId) active = null;
+      }),
+    };
+    const task = vi.fn()
+      .mockResolvedValueOnce(pendingTask)
+      .mockResolvedValueOnce(completedTask)
+      .mockResolvedValueOnce(completedTask);
+    const cancelTask = vi.fn(async () => ({ ...pendingTask, status: 'cancelled' as const }));
+    const firstDownload = deferred<{
+      mediaType: 'image/png';
+      bytes: ArrayBuffer;
+    }>();
+    let firstCaptureSignal: AbortSignal | undefined;
+    const validPng = Uint8Array.from(
+      atob('iVBORw0KGgoAAAANSUhEUgAABQAAAALQCAYAAADPfd1WAAAACElEQVR4nAMAAAAAAUgGidIAAAAASUVORK5CYII='),
+      (character) => character.charCodeAt(0),
+    ).buffer;
+    const captureDownload = vi.fn(async (
+      _token: string,
+      _requestId: string,
+      _captureId: 'C01' | 'C02' | 'C03',
+      signal?: AbortSignal,
+    ) => {
+      if (captureDownload.mock.calls.length === 1) {
+        firstCaptureSignal = signal;
+        return firstDownload.promise;
+      }
+      return { mediaType: 'image/png' as const, bytes: validPng };
+    });
+    const runtimeDependencies: CloudAnalysisRuntimeDependencies = {
+      client: {
+        createTask: vi.fn(async () => pendingTask),
+        task,
+        cancelTask,
+        capture: captureDownload,
+      },
+      connection: {
+        load: async () => ({
+          token,
+          account: (await connectedCloudManager().load()).account!,
+        }),
+      },
+      activeTask,
+      cleanupPending: {
+        load: async () => null,
+        save: async () => undefined,
+        clear: async () => undefined,
+      },
+      fingerprintGrant: async () => tokenFingerprint,
+      sleep: async () => undefined,
+      adaptPresentation: () => parsePresentationBundle(structuredClone(validPresentationBundle)),
+      buildAnnotations: async () => presentationAnnotatedImages,
+    };
+    const appDependencies = (runtime: CloudAnalysisRuntime) => ({
       loadConfig: async () => null,
-      loadMode: async () => 'cloud',
+      loadMode: async () => 'cloud' as const,
       saveMode: async () => undefined,
       cloudGateway: {
-        availability: () => ({ available: true }),
+        availability: () => ({ available: true } as const),
         runtime: () => runtime,
       },
       cloudConnectionManager: connectedCloudManager(),
       inspect,
       capture,
-    }} />);
+    });
+    const firstRuntime = new CloudAnalysisRuntime(runtimeDependencies);
+    const panel = render(<App dependencies={appDependencies(firstRuntime)} />);
 
-    await waitFor(() => expect(runtime.restoreActiveAnalysis).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(captureDownload).toHaveBeenCalledTimes(1));
+    panel.unmount();
     panel.unmount();
 
-    expect(runtime.cancel).toHaveBeenCalledTimes(1);
-    await act(async () => {
-      restoration.resolve({ captures: outcome.captures, outputLanguage: 'en' });
-      await restoration.promise;
-      await Promise.resolve();
-    });
-    expect(runtime.analyze).not.toHaveBeenCalled();
+    expect(firstCaptureSignal?.aborted).toBe(true);
+    firstDownload.resolve({ mediaType: 'image/png', bytes: validPng });
+    await act(async () => { await Promise.resolve(); });
+    expect(cancelTask).not.toHaveBeenCalled();
+    expect(active).toEqual(stored);
+
+    const reopenedRuntime = new CloudAnalysisRuntime(runtimeDependencies);
+    render(<App dependencies={appDependencies(reopenedRuntime)} />);
+
+    expect(await screen.findByText('Higher lows remain visible.')).toBeTruthy();
+    expect(task.mock.calls.map((call) => call[1])).toEqual([
+      stored.requestId,
+      stored.requestId,
+      stored.requestId,
+    ]);
+    expect(cancelTask).not.toHaveBeenCalled();
+    expect(active).toBeNull();
   });
 
   it('contains legacy cleanup failure without blocking source configuration', async () => {

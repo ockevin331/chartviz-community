@@ -119,11 +119,12 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     controller.configure(runtime);
   }, [controller.configure]);
 
-  const invalidateRestoration = useCallback(() => {
+  const invalidateRestoration = useCallback((detach = false) => {
     restorationAttempt.current += 1;
     const runtime = restorationRuntime.current;
     restorationRuntime.current = null;
-    runtime?.cancel();
+    if (detach) runtime?.detach?.();
+    else runtime?.cancel();
     return restorationAttempt.current;
   }, []);
 
@@ -282,7 +283,7 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     });
     return () => {
       current = false;
-      invalidateRestoration();
+      invalidateRestoration(true);
     };
   }, [
     dependencies.loadConfig,

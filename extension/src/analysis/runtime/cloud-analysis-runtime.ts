@@ -53,6 +53,7 @@ type CloudAnalysisOperation = {
   requestId: string | null;
   token: string | null;
   cancelRequested: boolean;
+  detached: boolean;
   cancelResponse: Promise<ExtensionAnalysisTask> | null;
 };
 
@@ -384,6 +385,7 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
       requestId: null,
       token: null,
       cancelRequested: false,
+      detached: false,
       cancelResponse: null,
     };
     this.activeOperation = operation;
@@ -444,6 +446,9 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
         outputLanguage: active.outputLanguage,
       });
     } catch (error) {
+      if (operation.detached && !operation.cancelRequested) {
+        throw new AnalysisRuntimeFailure('cancelled');
+      }
       if (operation.controller.signal.aborted || operation.cancelRequested) {
         try {
           const terminal = await (operation.cancelResponse ?? this.startServerCancel(operation));
@@ -521,7 +526,11 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
   }
 
   private async clearActiveTask(operation: CloudAnalysisOperation): Promise<void> {
-    if (!this.isCurrent(operation) || !operation.requestId) return;
+    if (
+      !this.isCurrent(operation)
+      || (operation.detached && !operation.cancelRequested)
+      || !operation.requestId
+    ) return;
     await this.dependencies.activeTask.clear(operation.requestId);
   }
 
@@ -640,6 +649,7 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
       requestId: null,
       token: null,
       cancelRequested: false,
+      detached: false,
       cancelResponse: null,
     };
     const seenProgress = new Set<ProgressMessage>();
@@ -742,6 +752,9 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
         if (outcome) return outcome;
       }
     } catch (error) {
+      if (operation.detached && !operation.cancelRequested) {
+        throw new AnalysisRuntimeFailure('cancelled');
+      }
       if (operation.controller.signal.aborted || operation.cancelRequested) {
         let terminal: ExtensionAnalysisTask | null;
         try {
@@ -789,5 +802,12 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
     operation.cancelRequested = true;
     operation.controller.abort(new DOMException('Cancelled', 'AbortError'));
     this.startServerCancel(operation);
+  }
+
+  detach(): void {
+    const operation = this.activeOperation;
+    if (!operation || operation.detached) return;
+    operation.detached = true;
+    operation.controller.abort(new DOMException('Detached', 'AbortError'));
   }
 }

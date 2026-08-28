@@ -854,9 +854,63 @@ describe('CloudAnalysisRuntime', () => {
     await vi.waitFor(() => expect(test.client.capture).toHaveBeenCalledTimes(1));
 
     test.runtime.cancel();
+    test.runtime.cancel();
 
     await expect(restoration).rejects.toMatchObject({ code: 'cancelled' });
+    expect(test.client.cancelTask).toHaveBeenCalledTimes(1);
     expect(test.client.cancelTask).toHaveBeenCalledWith(token, active.requestId);
+    expect(test.storage.clear).not.toHaveBeenCalled();
+    expect(test.current()).toEqual(active);
+  });
+
+  it('detaches restoration idempotently and ignores a late successful download', async () => {
+    const active = {
+      requestId: 'c_20260828_active', tokenFingerprint: fingerprint,
+      captures: [singleStoredCapture], outputLanguage: 'en' as const,
+    };
+    const download = deferred<DownloadedCapture>();
+    let captureSignal: AbortSignal | undefined;
+    const test = dependencies({
+      active,
+      tasks: [pending],
+      capture: async (_token, _requestId, _captureId, signal) => {
+        captureSignal = signal;
+        return download.promise;
+      },
+    });
+    const restoration = test.runtime.restoreActiveAnalysis();
+    await vi.waitFor(() => expect(test.client.capture).toHaveBeenCalledTimes(1));
+
+    test.runtime.detach();
+    test.runtime.detach();
+    expect(captureSignal?.aborted).toBe(true);
+    download.resolve(downloadedCapture('C01'));
+
+    await expect(restoration).rejects.toMatchObject({ code: 'cancelled' });
+    expect(test.client.cancelTask).not.toHaveBeenCalled();
+    expect(test.storage.clear).not.toHaveBeenCalled();
+    expect(test.current()).toEqual(active);
+  });
+
+  it('sanitizes a late restoration failure after detach without clearing the active record', async () => {
+    const active = {
+      requestId: 'c_20260828_active', tokenFingerprint: fingerprint,
+      captures: [singleStoredCapture], outputLanguage: 'en' as const,
+    };
+    const download = deferred<DownloadedCapture>();
+    const test = dependencies({
+      active,
+      tasks: [pending],
+      capture: async () => download.promise,
+    });
+    const restoration = test.runtime.restoreActiveAnalysis();
+    await vi.waitFor(() => expect(test.client.capture).toHaveBeenCalledTimes(1));
+
+    test.runtime.detach();
+    download.reject(new AnalysisRuntimeFailure('invalid_image'));
+
+    await expect(restoration).rejects.toMatchObject({ code: 'cancelled' });
+    expect(test.client.cancelTask).not.toHaveBeenCalled();
     expect(test.storage.clear).not.toHaveBeenCalled();
     expect(test.current()).toEqual(active);
   });

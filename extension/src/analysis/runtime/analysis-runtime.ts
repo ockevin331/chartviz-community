@@ -98,5 +98,6 @@ export interface AnalysisRuntime {
   capabilities(): AnalysisCapabilities;
   analyze(input: AnalysisRuntimeInput): Promise<AnalysisRuntimeOutcome>;
   cancel(): void;
+  detach?(): void;
   restoreActiveAnalysis?(): Promise<RestoredActiveAnalysis | null>;
 }
