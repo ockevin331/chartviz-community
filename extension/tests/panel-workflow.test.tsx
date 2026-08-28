@@ -574,6 +574,95 @@ describe('direct Community panel workflow', () => {
     expect(screen.queryByText('Higher lows remain visible.')).toBeNull();
   });
 
+  it('invalidates startup before configuration assigns a restoration runtime on refresh', async () => {
+    const user = userEvent.setup();
+    const configLoad = deferred<{
+      provider: 'openrouter'; apiKey: string; model: string; customModel: false;
+    } | null>();
+    const runtime = fakeCloudRuntime();
+    runtime.restoreActiveAnalysis = vi.fn(async () => ({
+      captures: outcome.captures,
+      outputLanguage: 'en' as const,
+    }));
+    const loadMode = vi.fn(async () => 'cloud' as const);
+
+    render(<App dependencies={{
+      loadConfig: vi.fn(() => configLoad.promise),
+      loadMode,
+      saveMode: async () => undefined,
+      cloudGateway: {
+        availability: () => ({ available: true }),
+        runtime: () => runtime,
+      },
+      cloudConnectionManager: connectedCloudManager(),
+      inspect,
+      capture,
+    }} />);
+
+    await user.click(screen.getByRole('button', { name: 'Refresh' }));
+    expect(await screen.findByRole('heading', { name: 'Managed chart analysis' })).toBeTruthy();
+
+    await act(async () => {
+      configLoad.resolve({
+        provider: 'openrouter', apiKey: 'existing-key',
+        model: 'openai/gpt-5.6-terra', customModel: false,
+      });
+      await configLoad.promise;
+      await Promise.resolve();
+    });
+
+    expect(loadMode).not.toHaveBeenCalled();
+    expect(runtime.restoreActiveAnalysis).not.toHaveBeenCalled();
+    expect(runtime.analyze).not.toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: 'Managed chart analysis' })).toBeTruthy();
+  });
+
+  it('invalidates startup before configuration assigns a restoration runtime on context change', async () => {
+    const connectionLoad = deferred<Awaited<ReturnType<CloudConnectionManager['load']>>>();
+    const runtime = fakeCloudRuntime();
+    runtime.restoreActiveAnalysis = vi.fn(async () => ({
+      captures: outcome.captures,
+      outputLanguage: 'en' as const,
+    }));
+    const loadMode = vi.fn(async () => 'cloud' as const);
+    const manager: CloudConnectionManager = {
+      ...connectedCloudManager(),
+      load: vi.fn(() => connectionLoad.promise),
+    };
+
+    render(<App dependencies={{
+      loadConfig: async () => null,
+      loadMode,
+      saveMode: async () => undefined,
+      cloudGateway: {
+        availability: () => ({ available: true }),
+        runtime: () => runtime,
+      },
+      cloudConnectionManager: manager,
+      inspect,
+      capture,
+    }} />);
+
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', {
+        source: window.parent,
+        data: { source: 'chartviz-page', type: 'context-changed' },
+      }));
+    });
+    expect(await screen.findByRole('heading', { name: 'Managed chart analysis' })).toBeTruthy();
+
+    await act(async () => {
+      connectionLoad.resolve(await connectedCloudManager().load());
+      await connectionLoad.promise;
+      await Promise.resolve();
+    });
+
+    expect(loadMode).not.toHaveBeenCalled();
+    expect(runtime.restoreActiveAnalysis).not.toHaveBeenCalled();
+    expect(runtime.analyze).not.toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: 'Managed chart analysis' })).toBeTruthy();
+  });
+
   it('keeps context-change state when an older startup restoration resolves', async () => {
     const restoration = deferred<RestoredActiveAnalysis | null>();
     const runtime = fakeCloudRuntime();
@@ -654,6 +743,153 @@ describe('direct Community panel workflow', () => {
 
     expect(screen.queryByRole('alert')).toBeNull();
     expect(screen.getByText('BTCUSD')).toBeTruthy();
+    expect(runtime.analyze).not.toHaveBeenCalled();
+  });
+
+  it('does not send late Cloud restoration captures to a newly selected Direct runtime', async () => {
+    const user = userEvent.setup();
+    const restoration = deferred<RestoredActiveAnalysis | null>();
+    const configSave = deferred<void>();
+    const cloudRuntime = fakeCloudRuntime();
+    cloudRuntime.restoreActiveAnalysis = vi.fn(() => restoration.promise);
+    const directRuntime = fakeRuntime();
+
+    render(<App dependencies={{
+      loadConfig: async () => ({
+        provider: 'openrouter', apiKey: 'existing-key',
+        model: 'openai/gpt-5.6-terra', customModel: false,
+      }),
+      loadMode: async () => 'cloud',
+      saveMode: async () => undefined,
+      saveConfig: vi.fn(() => configSave.promise),
+      cloudGateway: {
+        availability: () => ({ available: true }),
+        runtime: () => cloudRuntime,
+      },
+      cloudConnectionManager: connectedCloudManager(),
+      inspect,
+      capture,
+      createDirectRuntime: () => directRuntime,
+    }} />);
+
+    await waitFor(() => expect(cloudRuntime.restoreActiveAnalysis).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    await user.click(screen.getByRole('tab', { name: 'Direct model' }));
+    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+
+    await act(async () => {
+      restoration.resolve({ captures: outcome.captures, outputLanguage: 'en' });
+      await restoration.promise;
+      await Promise.resolve();
+    });
+    expect(cloudRuntime.analyze).not.toHaveBeenCalled();
+
+    await act(async () => {
+      configSave.resolve();
+      await configSave.promise;
+      await Promise.resolve();
+    });
+    expect(await screen.findByRole('heading', { name: 'Detected chart' })).toBeTruthy();
+
+    expect(directRuntime.analyze).not.toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: 'Detected chart' })).toBeTruthy();
+    expect(screen.queryByText('Higher lows remain visible.')).toBeNull();
+  });
+
+  it('does not send an older restoration to a replacement Cloud runtime', async () => {
+    const user = userEvent.setup();
+    const restoration = deferred<RestoredActiveAnalysis | null>();
+    const oldRuntime = fakeCloudRuntime();
+    oldRuntime.restoreActiveAnalysis = vi.fn(() => restoration.promise);
+    const replacementRuntime = fakeCloudRuntime();
+    const gatewayRuntime = vi.fn()
+      .mockReturnValueOnce(oldRuntime)
+      .mockReturnValueOnce(replacementRuntime);
+    const manager: CloudConnectionManager = {
+      ...connectedCloudManager(),
+      disconnect: vi.fn(async () => ({
+        status: 'disconnected' as const, account: null, errorCode: null,
+      })),
+      connect: vi.fn(async () => connectedCloudManager().load()),
+    };
+
+    render(<App dependencies={{
+      loadConfig: async () => null,
+      loadMode: async () => 'cloud',
+      saveMode: async () => undefined,
+      cloudGateway: {
+        availability: () => ({ available: true }),
+        runtime: gatewayRuntime,
+      },
+      cloudConnectionManager: manager,
+      inspect,
+      capture,
+    }} />);
+
+    await waitFor(() => expect(oldRuntime.restoreActiveAnalysis).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    await user.click(screen.getByRole('button', { name: 'Disconnect' }));
+    await waitFor(() => expect(manager.disconnect).toHaveBeenCalledTimes(1));
+    await user.type(screen.getByLabelText('Cloud access token'), `cv_live_${'n'.repeat(43)}`);
+    await user.click(screen.getByRole('button', { name: 'Connect Cloud' }));
+    expect(await screen.findByRole('heading', { name: 'Detected chart' })).toBeTruthy();
+
+    await act(async () => {
+      restoration.resolve({ captures: outcome.captures, outputLanguage: 'en' });
+      await restoration.promise;
+      await Promise.resolve();
+    });
+
+    expect(oldRuntime.analyze).not.toHaveBeenCalled();
+    expect(replacementRuntime.analyze).not.toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: 'Detected chart' })).toBeTruthy();
+    expect(screen.queryByText('Higher lows remain visible.')).toBeNull();
+  });
+
+  it('does not surface a late restore failure after Cloud disconnect', async () => {
+    const user = userEvent.setup();
+    const restoration = deferred<RestoredActiveAnalysis | null>();
+    const disconnect = deferred<Awaited<ReturnType<CloudConnectionManager['disconnect']>>>();
+    const runtime = fakeCloudRuntime();
+    runtime.restoreActiveAnalysis = vi.fn(() => restoration.promise);
+    const manager: CloudConnectionManager = {
+      ...connectedCloudManager(),
+      disconnect: vi.fn(() => disconnect.promise),
+    };
+
+    render(<App dependencies={{
+      loadConfig: async () => null,
+      loadMode: async () => 'cloud',
+      saveMode: async () => undefined,
+      cloudGateway: {
+        availability: () => ({ available: true }),
+        runtime: () => runtime,
+      },
+      cloudConnectionManager: manager,
+      inspect,
+      capture,
+    }} />);
+
+    await waitFor(() => expect(runtime.restoreActiveAnalysis).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    await user.click(screen.getByRole('button', { name: 'Disconnect' }));
+    await waitFor(() => expect(manager.disconnect).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      restoration.reject(new AnalysisRuntimeFailure('service_unavailable'));
+      try {
+        await restoration.promise;
+      } catch {
+        // The App owns and sanitizes the invalidated restoration rejection.
+      }
+      disconnect.resolve({ status: 'disconnected', account: null, errorCode: null });
+      await disconnect.promise;
+      await Promise.resolve();
+    });
+    await user.click(screen.getByRole('button', { name: 'Back to chart' }));
+
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Managed chart analysis' })).toBeTruthy();
     expect(runtime.analyze).not.toHaveBeenCalled();
   });
 
