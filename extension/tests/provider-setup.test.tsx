@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProviderSetup } from '../src/ui/components/ProviderSetup';
@@ -7,6 +7,16 @@ import { ProviderError } from '../src/providers/provider-errors';
 import type { ProviderConfig } from '../src/providers/provider-types';
 
 afterEach(cleanup);
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
 
 describe('ProviderSetup', () => {
   it('presents key and screenshot handling as a prominent non-interactive privacy notice', () => {
@@ -62,6 +72,26 @@ describe('ProviderSetup', () => {
 
     await waitFor(() => expect(saveConfig).toHaveBeenCalledTimes(1));
     expect(onConfigured).not.toHaveBeenCalled();
+  });
+
+  it('disables Save while a Direct configuration submission is pending', async () => {
+    const user = userEvent.setup();
+    const submission = deferred<boolean>();
+    const saveConfig = vi.fn(() => submission.promise);
+    render(<ProviderSetup language="en" saveConfig={saveConfig} testConnection={async () => undefined} />);
+
+    await user.type(screen.getByLabelText('API key'), 'session-secret');
+    const save = screen.getByRole('button', { name: 'Save and continue' });
+    await user.click(save);
+
+    await waitFor(() => expect(saveConfig).toHaveBeenCalledTimes(1));
+    expect(save).toHaveProperty('disabled', true);
+
+    await act(async () => {
+      submission.resolve(true);
+      await submission.promise;
+    });
+    await waitFor(() => expect(save).toHaveProperty('disabled', false));
   });
 
   it('routes OpenAI and Google models directly when OpenRouter is disabled', async () => {

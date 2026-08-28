@@ -22,6 +22,7 @@ import { loadAnalysisMode, saveAnalysisMode } from '../../src/storage/analysis-m
 import { loadProviderConfig, saveProviderConfig } from '../../src/storage/provider-session';
 import { loadCloudConnection, type StoredCloudConnection } from '../../src/storage/cloud-connection-storage';
 import { cleanupLegacyCloudAnalysisStorage } from '../../src/storage/legacy-cloud-analysis-cleanup';
+import { createLatestPersistenceCoordinator } from '../../src/storage/latest-persistence';
 import { AnalysisError } from '../../src/ui/components/AnalysisError';
 import { AnalysisModeSettings } from '../../src/ui/components/AnalysisModeSettings';
 import { AnalysisProgress } from '../../src/ui/components/AnalysisProgress';
@@ -73,6 +74,20 @@ const defaultDependencies: AppDependencies = {
 export function App({ dependencies: overrides }: { dependencies?: Partial<AppDependencies> } = {}) {
   const dependencies = useMemo(() => ({ ...defaultDependencies, ...(overrides ?? {}) }), [overrides]);
   const controller = useAnalysisController();
+  const saveConfigDependency = useRef(dependencies.saveConfig);
+  const saveModeDependency = useRef(dependencies.saveMode);
+  saveConfigDependency.current = dependencies.saveConfig;
+  saveModeDependency.current = dependencies.saveMode;
+  const configPersistenceRef = useRef<ReturnType<typeof createLatestPersistenceCoordinator<ProviderConfig>> | null>(null);
+  const modePersistenceRef = useRef<ReturnType<typeof createLatestPersistenceCoordinator<AnalysisMode>> | null>(null);
+  const configPersistence = configPersistenceRef.current
+    ?? (configPersistenceRef.current = createLatestPersistenceCoordinator(
+      (config) => saveConfigDependency.current(config),
+    ));
+  const modePersistence = modePersistenceRef.current
+    ?? (modePersistenceRef.current = createLatestPersistenceCoordinator(
+      (mode) => saveModeDependency.current(mode),
+    ));
   const [language, setLanguage] = useState<Language>('en');
   const [loading, setLoading] = useState(true);
   const [providerConfig, setProviderConfig] = useState<ProviderConfig | null>(null);
@@ -92,10 +107,6 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
   const restorationRuntime = useRef<AnalysisRuntime | null>(null);
   const restorationAttempt = useRef(0);
   const activeModeRef = useRef<AnalysisMode>('cloud');
-  const desiredStoredMode = useRef<{ attempt: number; mode: AnalysisMode }>({
-    attempt: 0,
-    mode: 'cloud',
-  });
   const dragPosition = useRef<{ x: number; y: number } | null>(null);
   const t = translations[language];
 
@@ -114,45 +125,20 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
 
   const beginRuntimeTransition = useCallback(() => {
     const transition = invalidateRestoration();
-    desiredStoredMode.current = { attempt: transition, mode: activeModeRef.current };
+    modePersistence.supersedeWith(activeModeRef.current);
     setRestoreError(null);
     setLoading(false);
     setCloudBusy(false);
     return transition;
-  }, [invalidateRestoration]);
-
-  const reconcileStoredMode = useCallback((completed: {
-    attempt: number;
-    mode: AnalysisMode;
-  }): void => {
-    async function reconcile(write: { attempt: number; mode: AnalysisMode }): Promise<void> {
-      const desired = desiredStoredMode.current;
-      if (desired.attempt === write.attempt && desired.mode === write.mode) return;
-      try {
-        await dependencies.saveMode(desired.mode);
-      } catch {
-        return;
-      }
-      await reconcile(desired);
-    }
-    void reconcile(completed);
-  }, [dependencies.saveMode]);
+  }, [invalidateRestoration, modePersistence]);
 
   const persistModeForTransition = useCallback(async (
     mode: AnalysisMode,
     attempt: number,
   ): Promise<boolean> => {
-    const write = { attempt, mode };
-    desiredStoredMode.current = write;
-    try {
-      await dependencies.saveMode(mode);
-    } catch (error) {
-      if (restorationAttempt.current !== attempt) return false;
-      throw error;
-    }
-    reconcileStoredMode(write);
-    return restorationAttempt.current === attempt;
-  }, [dependencies.saveMode, reconcileStoredMode]);
+    const result = await modePersistence.persist(mode);
+    return result === 'persisted' && restorationAttempt.current === attempt;
+  }, [modePersistence]);
 
   const activateDirectTransition = useCallback(async (
     config: ProviderConfig,
@@ -160,7 +146,8 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
   ): Promise<boolean> => {
     const transition = beginRuntimeTransition();
     try {
-      await dependencies.saveConfig(config);
+      const result = await configPersistence.persist(config);
+      if (result === 'superseded') return false;
     } catch (error) {
       if (restorationAttempt.current !== transition) return false;
       throw error;
@@ -186,8 +173,8 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     beginRuntimeTransition,
     controller.configure,
     controller.updateRuntime,
+    configPersistence,
     dependencies.createDirectRuntime,
-    dependencies.saveConfig,
     persistModeForTransition,
   ]);
 
@@ -245,7 +232,6 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
       setProviderConfig(config);
       setCloudConnection(connection);
       activeModeRef.current = mode;
-      desiredStoredMode.current = { attempt: startupAttempt, mode };
       setActiveMode(mode);
       setSetupMode(mode);
       setSettingsMode(mode);
@@ -361,13 +347,13 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     try {
       const connection = await dependencies.cloudConnectionManager.connect(token);
       if (restorationAttempt.current !== transition) return false;
-      setCloudConnection(connection);
       if (connection.status === 'connected') {
         if (!await persistModeForTransition('cloud', transition)) return false;
         if (restorationAttempt.current !== transition) return false;
         const runtime = resolveCloudRuntime(dependencies.cloudGateway);
         if (!runtime) return false;
         if (restorationAttempt.current !== transition) return false;
+        setCloudConnection(connection);
         activeModeRef.current = 'cloud';
         setActiveMode('cloud');
         setSetupMode('cloud');
@@ -376,10 +362,12 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
         setSettingsOpen(false);
         return true;
       }
+      setCloudConnection(connection);
       return false;
-    } catch (error) {
+    } catch {
       if (restorationAttempt.current !== transition) return false;
-      throw error;
+      setCloudConnection({ status: 'error', account: null, errorCode: 'service_unavailable' });
+      return false;
     } finally {
       if (restorationAttempt.current === transition) setCloudBusy(false);
     }

@@ -61,6 +61,7 @@ export function ProviderSetup({ language, onConfigured, initialConfig = null, mo
   const [customModelId, setCustomModelId] = useState(initialConfig?.customModel ? initialConfig.model : '');
   const [showKey, setShowKey] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ kind: 'error' | 'success'; text: string } | null>(null);
   const t = translations[language];
   const customModel = selectedModelKey === CUSTOM_MODEL_KEY;
@@ -116,9 +117,11 @@ export function ProviderSetup({ language, onConfigured, initialConfig = null, mo
   }
 
   async function save() {
-    if (!valid) return;
+    if (!valid || saving) return;
+    setSaving(true); setMessage(null);
     try { const value = config(); if (await saveConfig(value)) onConfigured?.(value); }
     catch (error) { setMessage({ kind: 'error', text: localError(error, language) }); }
+    finally { setSaving(false); }
   }
 
   return <section className="provider-setup-card">
@@ -157,7 +160,7 @@ export function ProviderSetup({ language, onConfigured, initialConfig = null, mo
       <p className="cost-notice">{t.analysisRequestNotice}</p>
       <p className="cost-notice">{t.connectionCost}</p>
       {message && <p className={message.kind === 'error' ? 'setup-error' : 'setup-success'} role={message.kind === 'error' ? 'alert' : 'status'}>{message.text}</p>}
-      <div className="provider-actions"><button className="secondary" type="button" disabled={!valid || testing} onClick={() => void connect()}>{testing ? t.testingConnection : t.testConnection}</button><button className="primary" type="submit" disabled={!valid}>{mode === 'settings' ? t.saveSettings : t.saveContinue}</button></div>
+      <div className="provider-actions"><button className="secondary" type="button" disabled={!valid || testing} onClick={() => void connect()}>{testing ? t.testingConnection : t.testConnection}</button><button className="primary" type="submit" disabled={!valid || saving}>{mode === 'settings' ? t.saveSettings : t.saveContinue}</button></div>
     </form>
   </section>;
 }
