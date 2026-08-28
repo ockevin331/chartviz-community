@@ -73,11 +73,51 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 const pngBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0]);
+const maxCaptureBytes = 10 * 1024 * 1024;
 
 function pngResponse(bytes: Uint8Array = pngBytes, contentType = 'image/png'): Response {
   const body = new Uint8Array(bytes.byteLength);
   body.set(bytes);
   return new Response(body.buffer, { status: 200, headers: { 'Content-Type': contentType } });
+}
+
+function chunkedPng(totalBytes: number): readonly Uint8Array[] {
+  const chunks: Uint8Array[] = [pngBytes.subarray(0, 8)];
+  const reusableChunk = new Uint8Array(64 * 1024);
+  let remaining = totalBytes - 8;
+  while (remaining > 0) {
+    const size = Math.min(remaining, reusableChunk.byteLength);
+    chunks.push(size === reusableChunk.byteLength ? reusableChunk : new Uint8Array(size));
+    remaining -= size;
+  }
+  return chunks;
+}
+
+function chunkedResponse(
+  chunks: readonly Uint8Array[],
+  options: Readonly<{ contentLength?: string; contentType?: string }> = {},
+): Readonly<{ response: Response; cancel: ReturnType<typeof vi.fn> }> {
+  let index = 0;
+  const cancel = vi.fn();
+  const releaseLock = vi.fn();
+  const headers = new Headers({ 'Content-Type': options.contentType ?? 'image/png' });
+  if (options.contentLength !== undefined) headers.set('Content-Length', options.contentLength);
+  const reader = {
+    read: vi.fn(async () => {
+      const chunk = chunks[index++];
+      return chunk === undefined ? { done: true, value: undefined } : { done: false, value: chunk };
+    }),
+    cancel,
+    releaseLock,
+  } as unknown as ReadableStreamDefaultReader<Uint8Array>;
+  return {
+    response: {
+      ok: true,
+      headers,
+      body: { getReader: () => reader },
+    } as unknown as Response,
+    cancel,
+  };
 }
 
 describe('fixed-origin ChartViz Cloud client', () => {
@@ -339,12 +379,73 @@ describe('fixed-origin ChartViz Cloud client', () => {
 
   it.each([
     ['wrong content type', pngResponse(pngBytes, 'image/jpeg')],
+    ['parameterized PNG content type', pngResponse(pngBytes, 'image/png; charset=binary')],
+    ['missing PNG body', new Response(null, {
+      status: 200, headers: { 'Content-Type': 'image/png' },
+    })],
     ['empty PNG response', pngResponse(new Uint8Array())],
-    ['PNG response over 10 MiB', pngResponse(new Uint8Array(10 * 1024 * 1024 + 1))],
     ['bad PNG signature', pngResponse(new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7]))],
   ])('rejects a %s as an unavailable Cloud response', async (_name, response) => {
     await expect(createCloudClient(vi.fn().mockResolvedValue(response)).capture(
       `cv_live_${'b'.repeat(43)}`, 'c_20260828_capture', 'C01',
+    )).rejects.toMatchObject({ code: 'service_unavailable' });
+  });
+
+  it('rejects an oversized declared Content-Length before reading the body', async () => {
+    const getReader = vi.fn();
+    const arrayBuffer = vi.fn();
+    const response = {
+      ok: true,
+      headers: new Headers({
+        'Content-Type': 'image/png',
+        'Content-Length': String(maxCaptureBytes + 1),
+      }),
+      body: { getReader },
+      arrayBuffer,
+    } as unknown as Response;
+
+    await expect(createCloudClient(vi.fn().mockResolvedValue(response)).capture(
+      `cv_live_${'l'.repeat(43)}`, 'c_20260828_capture', 'C01',
+    )).rejects.toMatchObject({ code: 'service_unavailable' });
+
+    expect(getReader).not.toHaveBeenCalled();
+    expect(arrayBuffer).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['absent', undefined],
+    ['invalid', 'ten megabytes'],
+    ['lying-small', '9'],
+  ])('uses actual bytes when Content-Length is %s', async (_name, contentLength) => {
+    const streamed = chunkedResponse(chunkedPng(maxCaptureBytes + 1), { contentLength });
+
+    await expect(createCloudClient(vi.fn().mockResolvedValue(streamed.response)).capture(
+      `cv_live_${'a'.repeat(43)}`, 'c_20260828_capture', 'C01',
+    )).rejects.toMatchObject({ code: 'service_unavailable' });
+
+    expect(streamed.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts an exact 10 MiB PNG streamed in chunks', async () => {
+    const streamed = chunkedResponse(chunkedPng(maxCaptureBytes), {
+      contentLength: String(maxCaptureBytes),
+    });
+
+    await expect(createCloudClient(vi.fn().mockResolvedValue(streamed.response)).capture(
+      `cv_live_${'m'.repeat(43)}`, 'c_20260828_capture', 'C01',
+    )).resolves.toMatchObject({ mediaType: 'image/png', bytes: expect.any(ArrayBuffer) });
+
+    expect(streamed.cancel).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['an aborted fetch', vi.fn().mockRejectedValue(new DOMException('Aborted', 'AbortError'))],
+    ['a stream read error', vi.fn().mockResolvedValue(new Response(new ReadableStream({
+      start(controller) { controller.error(new Error('stream failure')); },
+    }), { status: 200, headers: { 'Content-Type': 'image/png' } }))],
+  ])('sanitizes %s', async (_name, fetcher) => {
+    await expect(createCloudClient(fetcher).capture(
+      `cv_live_${'s'.repeat(43)}`, 'c_20260828_capture', 'C01',
     )).rejects.toMatchObject({ code: 'service_unavailable' });
   });
 

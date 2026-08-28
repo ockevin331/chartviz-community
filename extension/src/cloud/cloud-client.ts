@@ -24,6 +24,7 @@ import { parseExtensionAnalysisTask } from './cloud-task-schema';
 export const CLOUD_API_BASE_URL = 'https://www.chartviz.xyz/api' as const;
 
 const cloudTokenPattern = /^cv_live_[A-Za-z0-9_-]{43,}$/;
+const maxCaptureBytes = 10 * 1024 * 1024;
 const errorCodeSchema = z.enum([
   'authentication_required', 'invalid_token', 'token_revoked', 'token_expired',
   'insufficient_scope', 'free_trial_exhausted', 'subscription_required',
@@ -154,21 +155,64 @@ async function captureRequest(
   if (response.headers.get('content-type') !== 'image/png') {
     throw new CloudConnectionError('service_unavailable');
   }
-  let bytes: ArrayBuffer;
-  try {
-    bytes = await response.arrayBuffer();
-  } catch {
-    throw new CloudConnectionError('service_unavailable');
+  const contentLength = response.headers.get('content-length');
+  if (contentLength !== null && /^\d+$/.test(contentLength)) {
+    try {
+      if (BigInt(contentLength) > BigInt(maxCaptureBytes)) {
+        throw new CloudConnectionError('service_unavailable');
+      }
+    } catch (error) {
+      if (error instanceof CloudConnectionError) throw error;
+    }
   }
-  if (bytes.byteLength < 1 || bytes.byteLength > 10 * 1024 * 1024) {
-    throw new CloudConnectionError('service_unavailable');
-  }
+  if (!response.body) throw new CloudConnectionError('service_unavailable');
+  const bytes = await boundedCaptureBytes(response.body);
   const signature = new Uint8Array(bytes, 0, Math.min(bytes.byteLength, 8));
   const expectedSignature = [137, 80, 78, 71, 13, 10, 26, 10];
   if (signature.length !== expectedSignature.length || expectedSignature.some((byte, index) => signature[index] !== byte)) {
     throw new CloudConnectionError('service_unavailable');
   }
   return Object.freeze({ mediaType: 'image/png', bytes });
+}
+
+async function boundedCaptureBytes(body: ReadableStream<Uint8Array>): Promise<ArrayBuffer> {
+  let reader: ReadableStreamDefaultReader<Uint8Array>;
+  try {
+    reader = body.getReader();
+  } catch {
+    throw new CloudConnectionError('service_unavailable');
+  }
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!(value instanceof Uint8Array) || value.byteLength > maxCaptureBytes - total) {
+        try {
+          await reader.cancel();
+        } catch {
+          // Cancellation is best-effort after a rejected oversized or malformed chunk.
+        }
+        throw new CloudConnectionError('service_unavailable');
+      }
+      chunks.push(value);
+      total += value.byteLength;
+    }
+  } catch (error) {
+    if (error instanceof CloudConnectionError) throw error;
+    throw new CloudConnectionError('service_unavailable');
+  } finally {
+    reader.releaseLock();
+  }
+  if (total < 1) throw new CloudConnectionError('service_unavailable');
+  const combined = new Uint8Array(total);
+  let offset = 0;
+  chunks.forEach((chunk) => {
+    combined.set(chunk, offset);
+    offset += chunk.byteLength;
+  });
+  return combined.buffer;
 }
 
 function taskContractError(): CloudConnectionError {
