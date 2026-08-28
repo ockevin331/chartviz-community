@@ -91,9 +91,8 @@ export function AnalysisModeSettings({
                 <div><dt>{t.cloudQuota}</dt><dd>{cloudAccount.quota.unlimited ? t.cloudUnlimited : `${cloudAccount.quota.remaining ?? 0} / ${cloudAccount.quota.limit ?? 0}`}</dd></div>
                 <div><dt>{t.cloudModel}</dt><dd>{cloudAccount.selectedModel.name}</dd></div>
               </dl>
-              <p>{cloudAccount.entitlements.multiTimeframe ? t.cloudMultiEnabled : t.cloudMultiDisabled}</p>
+              <p>{t.cloudMultiDisabled}</p>
             </section>
-            <p className="cloud-stage-notice">{t.cloudC1Notice}</p>
             <button className="secondary" type="button" disabled={cloudBusy} onClick={() => void onCloudDisconnect()}>{t.cloudDisconnect}</button>
             <small className="cloud-disconnect-help">{t.cloudDisconnectHelp}</small>
           </> : <form className="cloud-token-form" onSubmit={(event) => { event.preventDefault(); void connectCloud(); }}>

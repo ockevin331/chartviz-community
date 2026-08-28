@@ -61,9 +61,10 @@ function fakeCloudRuntime(): AnalysisRuntime & {
 } {
   return {
     mode: 'cloud',
-    capabilities: () => ({ multiTimeframe: true, maxTimeframes: 3 }),
+    capabilities: () => ({ multiTimeframe: false, maxTimeframes: 1 }),
     analyze: vi.fn(async () => outcome),
     cancel: vi.fn(),
+    restoreActiveAnalysis: vi.fn(async () => null),
   };
 }
 
@@ -96,7 +97,7 @@ describe('direct Community panel workflow', () => {
     expect(createDirectRuntime).not.toHaveBeenCalled();
   });
 
-  it('connects Cloud, saves the mode, and keeps capture unavailable during C1', async () => {
+  it('connects Cloud, saves the mode, and activates chart capture', async () => {
     const user = userEvent.setup();
     const saveMode = vi.fn(async () => undefined);
     const connect = vi.fn(async () => ({
@@ -115,11 +116,16 @@ describe('direct Community panel workflow', () => {
       disconnect: disconnectedCloudManager.disconnect,
     };
     const inspectPage = vi.fn(inspect);
+    const runtime = fakeCloudRuntime();
+    const cloudGateway: CloudAnalysisGateway = {
+      availability: () => ({ available: true }),
+      runtime: () => runtime,
+    };
     render(<App dependencies={{
       loadConfig: async () => null,
       loadMode: async () => 'cloud',
       saveMode,
-      cloudGateway: unavailableCloudGateway,
+      cloudGateway,
       cloudConnectionManager: manager,
       inspect: inspectPage,
     }} />);
@@ -128,15 +134,14 @@ describe('direct Community panel workflow', () => {
     await user.type(await screen.findByLabelText('Cloud access token'), token);
     await user.click(screen.getByRole('button', { name: 'Connect Cloud' }));
 
-    await screen.findByText('k***n@example.com');
     expect(connect).toHaveBeenCalledWith(token);
     expect(saveMode).toHaveBeenCalledWith('cloud');
-    expect(inspectPage).not.toHaveBeenCalled();
-    expect(screen.queryByRole('heading', { name: 'Detected chart' })).toBeNull();
+    expect(await screen.findByRole('heading', { name: 'Detected chart' })).toBeTruthy();
+    expect(inspectPage).toHaveBeenCalled();
     expect(document.querySelector('input[type="file"]')).toBeNull();
   });
 
-  it('refreshes a stored Cloud account without instantiating an analysis runtime', async () => {
+  it('loads a stored Cloud account and activates its runtime', async () => {
     const createDirectRuntime = vi.fn(() => fakeRuntime());
     const manager: CloudConnectionManager = {
       load: vi.fn(async () => ({
@@ -152,19 +157,24 @@ describe('direct Community panel workflow', () => {
       connect: disconnectedCloudManager.connect,
       disconnect: disconnectedCloudManager.disconnect,
     };
+    const runtime = fakeCloudRuntime();
     render(<App dependencies={{
       loadConfig: async () => null,
       loadMode: async () => 'cloud',
       saveMode: async () => undefined,
-      cloudGateway: unavailableCloudGateway,
+      cloudGateway: {
+        availability: () => ({ available: true }),
+        runtime: () => runtime,
+      },
       cloudConnectionManager: manager,
       createDirectRuntime,
+      inspect,
     }} />);
 
-    expect(await screen.findByText('a***z@example.com')).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Detected chart' })).toBeTruthy();
     expect(manager.load).toHaveBeenCalledTimes(1);
     expect(createDirectRuntime).not.toHaveBeenCalled();
-    expect(screen.queryByRole('heading', { name: 'Detected chart' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();
   });
 
   it('keeps Direct single-frame and opens Cloud settings from multi-timeframe guidance', async () => {
@@ -189,7 +199,7 @@ describe('direct Community panel workflow', () => {
     expect(screen.getByRole('tab', { name: 'ChartViz Cloud' })).toHaveProperty('ariaSelected', 'true');
   });
 
-  it('captures and submits three ordered timeframes to an available injected Cloud runtime', async () => {
+  it('keeps C2 Cloud capture single-timeframe even for an Advance account', async () => {
     const user = userEvent.setup();
     const runtime = fakeCloudRuntime();
     const captureMany = vi.fn(async () => multiCaptures);
@@ -203,6 +213,20 @@ describe('direct Community panel workflow', () => {
       loadMode: async () => 'cloud',
       saveMode: async () => undefined,
       cloudGateway,
+      cloudConnectionManager: {
+        load: async () => ({
+          status: 'connected', errorCode: null,
+          account: {
+            emailMasked: 'a***z@example.com', plan: 'advance',
+            currentPeriodEnd: '2026-09-28T00:00:00+00:00',
+            quota: { limit: null, used: 3, remaining: null, unlimited: true },
+            selectedModel: { id: 'openai/gpt-5.4', name: 'GPT-5.4', quotaCost: 2 },
+            entitlements: { multiTimeframe: true, maxCaptures: 3 },
+          },
+        }),
+        connect: disconnectedCloudManager.connect,
+        disconnect: disconnectedCloudManager.disconnect,
+      },
       createDirectRuntime,
       inspect,
       capture,
@@ -211,18 +235,65 @@ describe('direct Community panel workflow', () => {
 
     await screen.findByText('BTCUSD');
     await user.click(screen.getByRole('button', { name: /Multi-timeframe/ }));
-    expect(screen.getByRole('button', { name: /Multi-timeframe/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: /Single timeframe/ }).getAttribute('aria-pressed')).toBe('true');
     await user.click(screen.getByRole('button', { name: 'Capture and analyze' }));
 
     await waitFor(() => expect(runtime.analyze).toHaveBeenCalledTimes(1));
-    expect(captureMany).toHaveBeenCalledWith(['4h', '1h', '15m'], expect.any(AbortSignal));
+    expect(captureMany).not.toHaveBeenCalled();
     expect(runtime.analyze).toHaveBeenCalledWith(expect.objectContaining({
-      captures: multiCaptures.map((captured) => ({
-        image: captured.image,
-        context: { instrument: 'BTCUSD', timeframe: captured.context.timeframe },
-      })),
+      captures: [expect.objectContaining({ image: processedImage })],
     }));
     expect(createDirectRuntime).not.toHaveBeenCalled();
+  });
+
+  it('restores an active Cloud task without inspecting or capturing again', async () => {
+    const restoredCapture = {
+      image: processedImage,
+      context: {
+        instrument: 'BTCUSD', timeframe: '15m', site: 'tradingview',
+        exchange: 'BITSTAMP', pageType: 'advanced-chart' as const,
+      },
+    };
+    const runtime = fakeCloudRuntime();
+    runtime.restoreActiveAnalysis = vi.fn(async () => ({
+      captures: [restoredCapture], outputLanguage: 'zh-CN' as const,
+    }));
+    const inspectPage = vi.fn(inspect);
+    const captureChart = vi.fn(capture);
+    const manager: CloudConnectionManager = {
+      load: vi.fn(async () => ({
+        status: 'connected' as const, errorCode: null,
+        account: {
+          emailMasked: 'a***z@example.com', plan: 'pro' as const,
+          currentPeriodEnd: '2026-09-28T00:00:00+00:00',
+          quota: { limit: 50, used: 1, remaining: 49, unlimited: false },
+          selectedModel: { id: 'openai/gpt-5.4', name: 'GPT-5.4', quotaCost: 2 },
+          entitlements: { multiTimeframe: false, maxCaptures: 1 },
+        },
+      })),
+      connect: disconnectedCloudManager.connect,
+      disconnect: disconnectedCloudManager.disconnect,
+    };
+
+    render(<App dependencies={{
+      loadConfig: async () => null,
+      loadMode: async () => 'cloud',
+      saveMode: async () => undefined,
+      cloudGateway: {
+        availability: () => ({ available: true }),
+        runtime: () => runtime,
+      },
+      cloudConnectionManager: manager,
+      inspect: inspectPage,
+      capture: captureChart,
+    }} />);
+
+    await waitFor(() => expect(runtime.analyze).toHaveBeenCalledTimes(1));
+    expect(runtime.analyze).toHaveBeenCalledWith(expect.objectContaining({
+      captures: [restoredCapture], outputLanguage: 'zh-CN',
+    }));
+    expect(inspectPage).not.toHaveBeenCalled();
+    expect(captureChart).not.toHaveBeenCalled();
   });
 
   it('opens Direct setup when its mode is saved but the session key has expired', async () => {
@@ -295,7 +366,10 @@ describe('direct Community panel workflow', () => {
     expect(runtime.analyze).toHaveBeenCalledTimes(1);
     expect(runtime.analyze).toHaveBeenCalledWith(expect.objectContaining({
       captures: [expect.objectContaining({
-        context: { instrument: 'BTCUSD', timeframe: '15m' },
+        context: {
+          instrument: 'BTCUSD', timeframe: '15m', site: 'tradingview',
+          exchange: 'BITSTAMP', pageType: 'advanced-chart',
+        },
       })],
       outputLanguage: 'en',
     }));

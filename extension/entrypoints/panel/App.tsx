@@ -3,7 +3,7 @@ import type { AnalysisMode } from '../../src/analysis/analysis-mode';
 import { DirectAnalysisRuntime } from '../../src/analysis/runtime/direct-analysis-runtime';
 import type { AnalysisCapabilities, AnalysisRuntime } from '../../src/analysis/runtime/analysis-runtime';
 import { activeChartClient, type CapturedChart } from '../../src/capture/active-chart';
-import { resolveCloudRuntime, unavailableCloudGateway, type CloudAnalysisGateway } from '../../src/cloud/cloud-gateway';
+import { productionCloudGateway, resolveCloudRuntime, type CloudAnalysisGateway } from '../../src/cloud/cloud-gateway';
 import {
   createCloudConnectionManager,
   type CloudConnectionManager,
@@ -47,7 +47,7 @@ const defaultDependencies: AppDependencies = {
   saveConfig: saveProviderConfig,
   loadMode: loadAnalysisMode,
   saveMode: saveAnalysisMode,
-  cloudGateway: unavailableCloudGateway,
+  cloudGateway: productionCloudGateway,
   cloudConnectionManager: createCloudConnectionManager(),
   inspect: () => activeChartClient.inspect(),
   capture: (signal) => activeChartClient.capture(signal),
@@ -86,30 +86,44 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
   useEffect(() => {
     let current = true;
     void (async () => {
-      const config = await dependencies.loadConfig();
+      const [config, connection] = await Promise.all([
+        dependencies.loadConfig(),
+        dependencies.cloudConnectionManager.load(),
+      ]);
       const mode = await dependencies.loadMode(config);
       if (!current) return;
       setProviderConfig(config);
+      setCloudConnection(connection);
       setActiveMode(mode);
       setSetupMode(mode);
       setSettingsMode(mode);
       if (mode === 'direct' && config) {
         activateRuntime(dependencies.createDirectRuntime(config));
-      } else if (mode === 'cloud') {
+      } else if (mode === 'cloud' && connection.status === 'connected') {
         const runtime = resolveCloudRuntime(dependencies.cloudGateway);
-        if (runtime) activateRuntime(runtime);
+        if (runtime) {
+          activateRuntime(runtime);
+          const restored = await runtime.restoreActiveAnalysis?.();
+          if (!current || !restored) return;
+          const first = restored.captures[0];
+          if (!first) return;
+          setLanguage(restored.outputLanguage);
+          controller.restoreCaptures(restored.captures);
+          void controller.analyze(first.context, restored.outputLanguage);
+        }
       }
     })().finally(() => { if (current) setLoading(false); });
     return () => { current = false; };
-  }, [dependencies.loadConfig, dependencies.loadMode, dependencies.createDirectRuntime, dependencies.cloudGateway, activateRuntime]);
-
-  useEffect(() => {
-    let current = true;
-    void dependencies.cloudConnectionManager.load().then((connection) => {
-      if (current) setCloudConnection(connection);
-    });
-    return () => { current = false; };
-  }, [dependencies.cloudConnectionManager]);
+  }, [
+    dependencies.loadConfig,
+    dependencies.loadMode,
+    dependencies.createDirectRuntime,
+    dependencies.cloudGateway,
+    dependencies.cloudConnectionManager,
+    activateRuntime,
+    controller.restoreCaptures,
+    controller.analyze,
+  ]);
 
   const refreshAll = useCallback(() => {
     lastContext.current = null;
@@ -135,9 +149,18 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
       context: {
         instrument: captured.context.symbol ?? null,
         timeframe: captured.context.timeframe ?? null,
+        site: captured.context.site,
+        exchange: captured.context.exchange ?? null,
+        pageType: captured.context.pageType,
       },
     })));
-    void controller.analyze({ instrument: first.context.symbol ?? null, timeframe: first.context.timeframe ?? null }, language);
+    void controller.analyze({
+      instrument: first.context.symbol ?? null,
+      timeframe: first.context.timeframe ?? null,
+      site: first.context.site,
+      exchange: first.context.exchange ?? null,
+      pageType: first.context.pageType,
+    }, language);
   }
 
   function captureAgain() {
@@ -148,7 +171,14 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
 
   function retryAnalysis() {
     const context = lastContext.current;
-    void controller.analyze({ instrument: context?.symbol ?? null, timeframe: context?.timeframe ?? null }, language);
+    const capturedContext = state.captures[0]?.context;
+    void controller.analyze(capturedContext ?? {
+      instrument: context?.symbol ?? null,
+      timeframe: context?.timeframe ?? null,
+      site: context?.site,
+      exchange: context?.exchange ?? null,
+      pageType: context?.pageType,
+    }, language);
   }
 
   function finishInitialSetup(config: ProviderConfig) {
@@ -177,11 +207,13 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
       setCloudConnection(connection);
       if (connection.status === 'connected') {
         await dependencies.saveMode('cloud');
+        const runtime = resolveCloudRuntime(dependencies.cloudGateway);
+        if (!runtime) return false;
         setActiveMode('cloud');
         setSetupMode('cloud');
         setSettingsMode('cloud');
-        setAnalysisCapabilities(null);
-        controller.unconfigure();
+        activateRuntime(runtime);
+        setSettingsOpen(false);
         return true;
       }
       return false;
@@ -239,7 +271,7 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
       {!loading && state.status === 'source' && analysisCapabilities && <ChartCaptureSource key={contextRevision} language={language} capabilities={analysisCapabilities} inspect={dependencies.inspect} capture={dependencies.capture} captureMany={dependencies.captureMany} onCaptured={analyzeCaptured} onOpenCloudSettings={openCloudSettings} />}
       {state.status === 'preview' && state.image && <ImagePreview language={language} image={state.image} onZoom={setLightbox} onChange={captureAgain} onAnalyze={retryAnalysis} />}
       {state.status === 'analyzing' && state.image && <><ImagePreview language={language} image={state.image} analyzing onZoom={setLightbox} onChange={captureAgain} onAnalyze={() => undefined} /><AnalysisProgress language={language} progress={state.progress} onCancel={controller.cancel} /></>}
-      {state.status === 'failed' && <AnalysisError language={language} errorCode={state.errorCode} diagnostic={state.diagnostic} onBack={retryAnalysis} />}
+      {state.status === 'failed' && <AnalysisError language={language} errorCode={state.errorCode} diagnostic={state.diagnostic} params={state.errorParams} pricingUrl={state.pricingUrl} onBack={retryAnalysis} />}
       {state.status === 'cancelled' && <AnalysisError language={language} cancelled onBack={controller.returnToPreview} />}
       {state.status === 'completed' && state.image && state.report && state.annotations && <ReportView language={language} original={state.image} report={state.report} annotations={state.annotations} />}
     </>}

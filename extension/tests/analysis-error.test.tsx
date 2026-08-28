@@ -34,6 +34,44 @@ const diagnostic: AnalysisDiagnostic = {
 
 describe('AnalysisError diagnostics', () => {
   it.each([
+    ['en', 'authentication_required', 'Connect ChartViz Cloud to continue.'],
+    ['en', 'quota_exhausted', 'Your analysis quota is exhausted.'],
+    ['en', 'invalid_chart_image', 'The screenshot is not a readable candlestick chart.'],
+    ['en', 'incompatible_report_schema', 'Update ChartViz to read this Cloud report.'],
+    ['zh-CN', 'authentication_required', '请先连接 ChartViz Cloud。'],
+    ['zh-CN', 'quota_exhausted', '分析配额已用完。'],
+    ['zh-CN', 'invalid_chart_image', '截图不是可识别的 K 线图。'],
+    ['zh-CN', 'service_unavailable', 'ChartViz Cloud 暂时不可用。'],
+  ] as const)('localizes Cloud error %s/%s', (language, errorCode, message) => {
+    render(<AnalysisError language={language} errorCode={errorCode} onBack={() => undefined} />);
+    expect(screen.getByRole('alert')).toHaveProperty('textContent', message);
+  });
+
+  it('renders an explicit pricing link without navigating automatically', () => {
+    render(<AnalysisError
+      language="en"
+      errorCode="quota_exhausted"
+      params={{ remaining: 0 }}
+      pricingUrl="https://www.chartviz.xyz/#pricing"
+      onBack={() => undefined}
+    />);
+
+    expect(screen.getByRole('link', { name: 'View plans' })).toHaveProperty(
+      'href', 'https://www.chartviz.xyz/#pricing',
+    );
+  });
+
+  it('does not render an untrusted pricing URL', () => {
+    render(<AnalysisError
+      language="en"
+      errorCode="quota_exhausted"
+      pricingUrl="https://example.com/phishing"
+      onBack={() => undefined}
+    />);
+
+    expect(screen.queryByRole('link', { name: 'View plans' })).toBeNull();
+  });
+  it.each([
     ['en', 'Multi-timeframe analysis is available through ChartViz Cloud.'],
     ['zh-CN', '多周期分析由 ChartViz Cloud 提供，直连模型暂不支持。'],
   ] as const)('localizes the Direct multi-timeframe boundary in %s', (language, message) => {

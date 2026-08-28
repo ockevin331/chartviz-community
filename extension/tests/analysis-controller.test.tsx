@@ -304,6 +304,29 @@ describe('useAnalysisController runtime boundary', () => {
     expect(serializedDiagnostic).not.toMatch(/api.?key|data:image|systemPrompt|rawOutput/i);
   });
 
+  it('preserves safe Cloud error parameters and pricing URL and clears them on refresh', async () => {
+    const runtime = fakeRuntime(async () => {
+      throw new AnalysisRuntimeFailure('quota_exhausted', null, {
+        params: { remaining: 0 },
+        pricingUrl: 'https://www.chartviz.xyz/#pricing',
+      });
+    });
+    const { result } = setup(runtime);
+
+    await act(async () => result.current.analyze(
+      { instrument: 'BTC/USDT', timeframe: '15m' },
+      'en',
+    ));
+
+    expect(result.current.state).toMatchObject({
+      status: 'failed', errorCode: 'quota_exhausted',
+      errorParams: { remaining: 0 },
+      pricingUrl: 'https://www.chartviz.xyz/#pricing',
+    });
+    act(() => result.current.refresh());
+    expect(result.current.state).toMatchObject({ errorParams: {}, pricingUrl: null });
+  });
+
   it('configuring another runtime cancels the old operation and resets all analysis state', () => {
     const firstRuntime = fakeRuntime();
     const secondRuntime = fakeRuntime();
@@ -321,6 +344,8 @@ describe('useAnalysisController runtime boundary', () => {
       progress: [],
       errorCode: null,
       diagnostic: null,
+      errorParams: {},
+      pricingUrl: null,
     });
   });
 

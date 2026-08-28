@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
-import type { AnalysisRuntimeErrorCode } from '../../analysis/runtime/analysis-runtime';
+import type {
+  AnalysisRuntimeErrorCode,
+  AnalysisRuntimeErrorParams,
+} from '../../analysis/runtime/analysis-runtime';
 import type { AnalysisDiagnostic } from '../../providers/provider-diagnostics';
 import { translations, type Language } from './LanguageMenu';
 
@@ -8,10 +11,14 @@ type Props = {
   errorCode?: AnalysisRuntimeErrorCode | 'unknown' | null;
   cancelled?: boolean;
   diagnostic?: AnalysisDiagnostic | null;
+  params?: AnalysisRuntimeErrorParams;
+  pricingUrl?: string | null;
   onBack(): void;
   copyText?: (value: string) => Promise<void>;
   downloadText?: (name: string, value: string) => void;
 };
+
+const CHARTVIZ_PRICING_URL = 'https://www.chartviz.xyz/#pricing';
 
 async function defaultCopyText(value: string): Promise<void> {
   await navigator.clipboard.writeText(value);
@@ -26,7 +33,7 @@ function defaultDownloadText(name: string, value: string): void {
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-export function AnalysisError({ language, errorCode = 'unknown', cancelled = false, diagnostic = null, onBack, copyText = defaultCopyText, downloadText = defaultDownloadText }: Props) {
+export function AnalysisError({ language, errorCode = 'unknown', cancelled = false, diagnostic = null, params: _params = {}, pricingUrl = null, onBack, copyText = defaultCopyText, downloadText = defaultDownloadText }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const t = translations[language];
@@ -55,6 +62,7 @@ export function AnalysisError({ language, errorCode = 'unknown', cancelled = fal
 
   return <section className={cancelled ? 'analysis-cancelled-message' : 'error'}>
     <p role={cancelled ? 'status' : 'alert'}>{message}</p>
+    {pricingUrl === CHARTVIZ_PRICING_URL && <a className="analysis-pricing-link" href={CHARTVIZ_PRICING_URL} target="_blank" rel="noreferrer">{t.viewPlans}</a>}
     {diagnostic && <div className="diagnostic-actions">
       <button className="diagnostic-toggle" type="button" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>{expanded ? t.hideDiagnostics : t.viewDiagnostics}</button>
       {expanded && <div className="diagnostic-panel">

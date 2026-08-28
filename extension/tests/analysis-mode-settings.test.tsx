@@ -36,7 +36,7 @@ describe('AnalysisModeSettings', () => {
 
     expect(screen.getByRole('tab', { name: 'ChartViz Cloud' }).getAttribute('aria-selected')).toBe('true');
     expect(screen.getByLabelText('Cloud access token')).toHaveProperty('type', 'password');
-    expect(screen.getByText('Multi-timeframe analysis is provided through ChartViz Cloud.')).toBeTruthy();
+    expect(screen.getByText('This version of Cloud analysis supports one timeframe per analysis.')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Create or revoke tokens on ChartViz' })).toHaveProperty(
       'href',
       'https://www.chartviz.xyz/settings',
@@ -92,7 +92,7 @@ describe('AnalysisModeSettings', () => {
     expect(screen.getByText('ADVANCE')).toBeTruthy();
     expect(screen.getByText(/GPT-5.4/)).toBeTruthy();
     expect(screen.getByText(/Unlimited/)).toBeTruthy();
-    expect(screen.getByText('Cloud analysis activation follows in the next stage.')).toBeTruthy();
+    expect(screen.queryByText('Cloud analysis activation follows in the next stage.')).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Disconnect' }));
     expect(props.onCloudDisconnect).toHaveBeenCalledTimes(1);
     expect(document.querySelector('input[type="file"]')).toBeNull();

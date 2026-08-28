@@ -4,6 +4,7 @@ import {
   type AnalysisCapture,
   type AnalysisRuntime,
   type AnalysisRuntimeErrorCode,
+  type AnalysisRuntimeErrorParams,
   type ProgressMessage,
 } from '../../analysis/runtime/analysis-runtime';
 import type { CommunityReportV3 } from '../../analysis/stages/community-report-v3';
@@ -22,6 +23,8 @@ export type AnalysisState = {
   annotations: AnnotatedReportImages | null;
   errorCode: AnalysisRuntimeErrorCode | 'unknown' | null;
   diagnostic: AnalysisDiagnostic | null;
+  errorParams: AnalysisRuntimeErrorParams;
+  pricingUrl: string | null;
   progress: ProgressMessage[];
 };
 
@@ -33,6 +36,8 @@ const INITIAL_STATE: AnalysisState = {
   annotations: null,
   errorCode: null,
   diagnostic: null,
+  errorParams: {},
+  pricingUrl: null,
   progress: [],
 };
 
@@ -153,6 +158,8 @@ export function useAnalysisController() {
       annotations: null,
       errorCode: null,
       diagnostic: null,
+      errorParams: {},
+      pricingUrl: null,
       progress: currentProgress,
     }));
 
@@ -183,6 +190,8 @@ export function useAnalysisController() {
         annotations: outcome.annotations,
         errorCode: null,
         diagnostic: null,
+        errorParams: {},
+        pricingUrl: null,
         progress: [...currentProgress],
       });
     } catch (error) {
@@ -196,6 +205,8 @@ export function useAnalysisController() {
             annotations: null,
             errorCode: null,
             diagnostic: null,
+            errorParams: {},
+            pricingUrl: null,
           }));
           return;
         }
@@ -206,6 +217,8 @@ export function useAnalysisController() {
           annotations: null,
           errorCode: error.code,
           diagnostic: error.diagnostic,
+          errorParams: error.params,
+          pricingUrl: error.pricingUrl,
         }));
         return;
       }
@@ -216,6 +229,8 @@ export function useAnalysisController() {
         annotations: null,
         errorCode: 'unknown',
         diagnostic: null,
+        errorParams: {},
+        pricingUrl: null,
       }));
     } finally {
       if (activeRuntimeRef.current === runtime) {
@@ -236,6 +251,8 @@ export function useAnalysisController() {
       annotations: null,
       errorCode: null,
       diagnostic: null,
+      errorParams: {},
+      pricingUrl: null,
     }));
   }, []);
 
@@ -248,6 +265,8 @@ export function useAnalysisController() {
       annotations: null,
       errorCode: null,
       diagnostic: null,
+      errorParams: {},
+      pricingUrl: null,
       progress: [],
     }));
   }, [invalidateOperation]);
@@ -259,6 +278,7 @@ export function useAnalysisController() {
     unconfigure,
     selectImage,
     selectCaptures,
+    restoreCaptures: selectCaptures,
     chooseAnotherImage,
     refresh,
     analyze,
