@@ -34,6 +34,11 @@ type ActiveTaskStorage = Readonly<{
   clear(): Promise<void>;
 }>;
 
+type CleanupPendingRequest = Readonly<{
+  requestId: string;
+  token: string;
+}>;
+
 export type CloudAnalysisRuntimeDependencies = Readonly<{
   client: Pick<CloudClient, 'createTask' | 'task' | 'cancelTask'>;
   connection: Readonly<{ load(): Promise<StoredCloudConnection | null> }>;
@@ -104,6 +109,7 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
   private activeToken: string | null = null;
   private cancelRequested = false;
   private cancelResponse: Promise<ExtensionAnalysisTask> | null = null;
+  private cleanupPendingRequest: CleanupPendingRequest | null = null;
 
   constructor(dependencies: Partial<CloudAnalysisRuntimeDependencies> = {}) {
     this.dependencies = { ...defaultDependencies, ...dependencies };
@@ -138,11 +144,39 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
   private startServerCancel(): Promise<ExtensionAnalysisTask> | null {
     if (this.cancelResponse) return this.cancelResponse;
     if (!this.activeRequestId || !this.activeToken) return null;
-    this.cancelResponse = this.dependencies.client.cancelTask(
+    const response = this.dependencies.client.cancelTask(
       this.activeToken,
       this.activeRequestId,
     );
-    return this.cancelResponse;
+    void response.catch(() => undefined);
+    this.cancelResponse = response;
+    return response;
+  }
+
+  private async settleCleanupPendingRequest(): Promise<void> {
+    const pendingRequest = this.cleanupPendingRequest;
+    if (!pendingRequest) return;
+    let task: ExtensionAnalysisTask;
+    try {
+      task = await this.dependencies.client.cancelTask(
+        pendingRequest.token,
+        pendingRequest.requestId,
+      );
+    } catch (error) {
+      if (
+        error instanceof CloudConnectionError
+        && error.code === 'task_not_found'
+      ) {
+        this.cleanupPendingRequest = null;
+        return;
+      }
+      throw new AnalysisRuntimeFailure('service_unavailable');
+    }
+    if (['completed', 'failed', 'cancelled'].includes(task.status)) {
+      this.cleanupPendingRequest = null;
+      return;
+    }
+    throw new AnalysisRuntimeFailure('service_unavailable');
   }
 
   private async completedOutcome(
@@ -190,7 +224,7 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
       throw new AnalysisRuntimeFailure('invalid_image');
     }
     await this.dependencies.activeTask.clear();
-    return { presentation: presentation.report, annotations };
+    return { captures, presentation: presentation.report, annotations };
   }
 
   private async terminalOutcome(
@@ -237,6 +271,7 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
           controller.signal,
         );
       } else {
+        await this.settleCleanupPendingRequest();
         task = await this.dependencies.client.createTask(connection.token, {
           captures,
           outputLanguage: input.outputLanguage,
@@ -249,10 +284,14 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
             outputLanguage: input.outputLanguage,
           });
         } catch {
+          this.cleanupPendingRequest = {
+            requestId: task.requestId,
+            token: connection.token,
+          };
           try {
-            await this.startServerCancel();
+            await this.settleCleanupPendingRequest();
           } catch {
-            // The active request ID remains available until this cancellation attempt settles.
+            // Retain the request in memory and block duplicate creation until cleanup is terminal.
           }
           throw new AnalysisRuntimeFailure('service_unavailable');
         }

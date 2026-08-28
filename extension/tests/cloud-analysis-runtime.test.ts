@@ -12,6 +12,14 @@ import { presentationAnnotatedImages } from './community-ui-fixtures';
 import { validPresentationBundle } from './presentation-fixtures';
 
 const token = `cv_live_${'x'.repeat(43)}`;
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+  return { promise, reject, resolve };
+}
+
 const capture: AnalysisCapture = {
   image: {
     mediaType: 'image/png', dataUrl: 'data:image/png;base64,AAAA',
@@ -146,6 +154,7 @@ describe('CloudAnalysisRuntime', () => {
       'preparing_result',
     ]);
     expect(outcome.presentation.schemaVersion).toBe('presentation-1.0');
+    expect(outcome.captures).toEqual([capture]);
     expect(test.adaptPresentation).toHaveBeenCalledWith(completed.report);
     expect(test.buildAnnotations).toHaveBeenCalledTimes(1);
     expect(test.buildAnnotations).toHaveBeenCalledWith(
@@ -224,7 +233,8 @@ describe('CloudAnalysisRuntime', () => {
     expect(test.client.task).not.toHaveBeenCalled();
     expect(test.storage.clear).not.toHaveBeenCalled();
 
-    await test.runtime.analyze({ captures, outputLanguage: 'zh-CN' });
+    const outcome = await test.runtime.analyze({ captures, outputLanguage: 'zh-CN' });
+    expect(outcome.captures).toEqual(captures);
     expect(test.client.createTask).not.toHaveBeenCalled();
     expect(test.client.task).toHaveBeenCalledTimes(1);
   });
@@ -345,6 +355,73 @@ describe('CloudAnalysisRuntime', () => {
     expect(test.client.cancelTask).toHaveBeenCalledWith(token, pending.requestId);
     expect(test.client.createTask).toHaveBeenCalledTimes(1);
     expect(test.client.task).not.toHaveBeenCalled();
+  });
+
+  it('does not create a duplicate while save-failure cleanup cancellation keeps rejecting', async () => {
+    const test = dependencies({ cancelTask: async () => {
+      throw new CloudConnectionError('service_unavailable');
+    } });
+    test.storage.save.mockRejectedValue(new Error('IndexedDB write failed'));
+
+    await expect(test.runtime.analyze({ captures: [capture], outputLanguage: 'en' }))
+      .rejects.toMatchObject({ code: 'service_unavailable' });
+    await expect(test.runtime.analyze({ captures: [capture], outputLanguage: 'en' }))
+      .rejects.toMatchObject({ code: 'service_unavailable' });
+
+    expect(test.client.createTask).toHaveBeenCalledTimes(1);
+    expect(test.client.cancelTask).toHaveBeenCalledTimes(2);
+    expect(test.client.cancelTask).toHaveBeenNthCalledWith(2, token, pending.requestId);
+    expect(test.client.task).not.toHaveBeenCalled();
+  });
+
+  it('does not create a duplicate while save-failure cleanup remains cancel_requested', async () => {
+    const test = dependencies({ cancelTask: async () => ({
+      ...pending, status: 'cancel_requested' as const,
+    }) });
+    test.storage.save.mockRejectedValue(new Error('IndexedDB write failed'));
+
+    await expect(test.runtime.analyze({ captures: [capture], outputLanguage: 'en' }))
+      .rejects.toMatchObject({ code: 'service_unavailable' });
+    await expect(test.runtime.analyze({ captures: [capture], outputLanguage: 'en' }))
+      .rejects.toMatchObject({ code: 'service_unavailable' });
+
+    expect(test.client.createTask).toHaveBeenCalledTimes(1);
+    expect(test.client.cancelTask).toHaveBeenCalledTimes(2);
+    expect(test.client.cancelTask).toHaveBeenNthCalledWith(2, token, pending.requestId);
+    expect(test.client.task).not.toHaveBeenCalled();
+  });
+
+  it('observes cancellation rejection immediately while active-task save is pending', async () => {
+    const save = deferred<void>();
+    const cancellation = deferred<typeof pending>();
+    const cancellationCatch = vi.spyOn(cancellation.promise, 'catch');
+    const test = dependencies({ cancelTask: () => cancellation.promise });
+    test.storage.save.mockImplementation(() => save.promise);
+    test.sleep.mockImplementation(async (_delay: number, signal: AbortSignal) => {
+      throw signal.reason;
+    });
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+    process.on('unhandledRejection', onUnhandled);
+
+    try {
+      const operation = test.runtime.analyze({ captures: [capture], outputLanguage: 'en' });
+      await vi.waitFor(() => expect(test.storage.save).toHaveBeenCalledTimes(1));
+
+      test.runtime.cancel();
+      const immediateObserverCount = cancellationCatch.mock.calls.length;
+      cancellation.reject(new CloudConnectionError('service_unavailable'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(unhandled).toEqual([]);
+
+      save.resolve();
+      await expect(operation).rejects.toMatchObject({ code: 'cancelled' });
+      expect(immediateObserverCount).toBe(1);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+      void cancellation.promise.catch(() => undefined);
+      save.resolve();
+    }
   });
 
   it('returns completion when completion wins the cancel race', async () => {

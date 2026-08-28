@@ -39,6 +39,7 @@ describe('V3 analysis controller integration', () => {
       input.onProgress?.('checking_signals');
       input.onProgress?.('preparing_result');
       return {
+        captures: input.captures,
         presentation: parseReportPresentationModel(structuredClone(validPresentationBundle.report)),
         annotations,
       };

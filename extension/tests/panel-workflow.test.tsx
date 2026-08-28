@@ -37,6 +37,16 @@ const multiCaptures = (['4h', '1h', '15m'] as const).map((timeframe, index) => (
   context: { ...chartContext, timeframe },
 }));
 const outcome: AnalysisRuntimeOutcome = {
+  captures: [{
+    image: processedImage,
+    context: {
+      instrument: chartContext.symbol ?? null,
+      timeframe: chartContext.timeframe ?? null,
+      site: chartContext.site,
+      exchange: chartContext.exchange,
+      pageType: chartContext.pageType,
+    },
+  }],
   presentation: parseReportPresentationModel(structuredClone(validPresentationBundle.report)),
   annotations: presentationAnnotatedImages,
 };

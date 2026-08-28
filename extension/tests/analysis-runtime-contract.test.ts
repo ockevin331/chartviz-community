@@ -37,7 +37,7 @@ describe('analysis runtime contract', () => {
     const analyze = vi.fn(async (input: AnalysisRuntimeInput) => {
       expect(input.captures).toEqual(singleCapture);
       expect(input.outputLanguage).toBe('zh-CN');
-      return { presentation, annotations: presentationAnnotatedImages };
+      return { captures: singleCapture, presentation, annotations: presentationAnnotatedImages };
     });
     const runtime: AnalysisRuntime = {
       mode: 'cloud',
@@ -56,14 +56,22 @@ describe('analysis runtime contract', () => {
     const outcome = await resolved?.analyze({ captures: singleCapture, outputLanguage: 'zh-CN' });
 
     expect(analyze).toHaveBeenCalledTimes(1);
-    expect(outcome).toEqual({ presentation, annotations: presentationAnnotatedImages });
+    expect(outcome).toEqual({
+      captures: singleCapture,
+      presentation,
+      annotations: presentationAnnotatedImages,
+    });
   });
 
   it('rejects an available gateway that does not expose a Cloud runtime', () => {
     const directRuntime: AnalysisRuntime = {
       mode: 'direct',
       capabilities: () => ({ multiTimeframe: false, maxTimeframes: 1 }),
-      analyze: async () => ({ presentation, annotations: presentationAnnotatedImages }),
+      analyze: async (input) => ({
+        captures: input.captures,
+        presentation,
+        annotations: presentationAnnotatedImages,
+      }),
       cancel: () => undefined,
     };
     const gateway: CloudAnalysisGateway = {

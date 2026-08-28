@@ -3,6 +3,7 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AnalysisRuntimeFailure,
+  type AnalysisCapture,
   type AnalysisRuntime,
   type AnalysisRuntimeInput,
   type AnalysisRuntimeOutcome,
@@ -24,6 +25,10 @@ function deferred<T>() {
 
 const presentation = parseReportPresentationModel(structuredClone(validPresentationBundle.report));
 const outcome: AnalysisRuntimeOutcome = {
+  captures: [{
+    image: processedImage,
+    context: { instrument: 'BTC/USDT', timeframe: '15m' },
+  }],
   presentation,
   annotations: presentationAnnotatedImages,
 };
@@ -66,16 +71,16 @@ describe('useAnalysisController runtime boundary', () => {
   });
 
   it('submits a stored three-chart capture set unchanged to a capable runtime', async () => {
-    const directRuntime = fakeRuntime();
+    const captures = (['4h', '1h', '15m'] as const).map((timeframe, index) => ({
+      image: { ...processedImage, dataUrl: `${processedImage.dataUrl}-${index}` },
+      context: { instrument: 'BTC/USDT', timeframe },
+    }));
+    const directRuntime = fakeRuntime(async () => ({ ...outcome, captures }));
     const runtime = {
       ...directRuntime,
       mode: 'cloud' as const,
       capabilities: () => ({ multiTimeframe: true, maxTimeframes: 3 as const }),
     };
-    const captures = (['4h', '1h', '15m'] as const).map((timeframe, index) => ({
-      image: { ...processedImage, dataUrl: `${processedImage.dataUrl}-${index}` },
-      context: { instrument: 'BTC/USDT', timeframe },
-    }));
     const hook = renderHook(() => useAnalysisController());
 
     act(() => {
@@ -274,6 +279,46 @@ describe('useAnalysisController runtime boundary', () => {
     stale.resolve(outcome);
     await act(async () => staleAnalysis);
     expect(result.current.state.presentation?.conclusion.summary).toBe('Fresh report.');
+  });
+
+  it('uses restored runtime captures when preserved analysis A completes after selecting B', async () => {
+    const captureA: AnalysisCapture = {
+      image: { ...processedImage, dataUrl: 'data:image/png;base64,CAPTURE_A' },
+      context: { instrument: 'BTC/USDT', timeframe: '15m' },
+    };
+    const captureB: AnalysisCapture = {
+      image: { ...processedImage, dataUrl: 'data:image/png;base64,CAPTURE_B' },
+      context: { instrument: 'ETH/USDT', timeframe: '1h' },
+    };
+    const resumedOutcome = {
+      ...outcome,
+      captures: [captureA],
+    };
+    const runtime = fakeRuntime(vi.fn()
+      .mockRejectedValueOnce(new AnalysisRuntimeFailure('cancelled'))
+      .mockResolvedValueOnce(resumedOutcome));
+    const hook = renderHook(() => useAnalysisController());
+
+    act(() => {
+      hook.result.current.configure(runtime);
+      hook.result.current.selectCaptures([captureA]);
+    });
+    await act(async () => hook.result.current.analyze(captureA.context, 'en'));
+    expect(hook.result.current.state.status).toBe('cancelled');
+
+    act(() => hook.result.current.selectCaptures([captureB]));
+    await act(async () => hook.result.current.analyze(captureB.context, 'en'));
+
+    expect(hook.result.current.state).toMatchObject({
+      status: 'completed',
+      image: captureA.image,
+      captures: [captureA],
+      presentation: resumedOutcome.presentation,
+      annotations: resumedOutcome.annotations,
+    });
+    expect(hook.result.current.state.presentation?.context.captures).toEqual([
+      expect.objectContaining({ captureId: 'C01', timeframe: captureA.context.timeframe }),
+    ]);
   });
 
   it('uses the runtime safe failure without reconstructing provider details', async () => {

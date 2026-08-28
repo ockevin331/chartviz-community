@@ -179,13 +179,18 @@ export function useAnalysisController() {
       });
 
       if (generationRef.current !== operationGeneration) return;
+      const effectiveCaptures = [...outcome.captures];
+      const effectiveImage = effectiveCaptures[0]?.image;
+      if (!effectiveImage) throw new AnalysisRuntimeFailure('incompatible_report_schema');
       for (const message of REQUIRED_COMPLETION_PROGRESS) {
         if (!currentProgress.includes(message)) currentProgress.push(message);
       }
+      capturesRef.current = effectiveCaptures;
+      imageRef.current = effectiveImage;
       setState({
         status: 'completed',
-        image,
-        captures,
+        image: effectiveImage,
+        captures: effectiveCaptures,
         presentation: outcome.presentation,
         annotations: outcome.annotations,
         errorCode: null,

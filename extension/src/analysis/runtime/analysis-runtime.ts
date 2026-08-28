@@ -35,6 +35,7 @@ export type AnalysisRuntimeInput = Readonly<{
 }>;
 
 export type AnalysisRuntimeOutcome = Readonly<{
+  captures: readonly AnalysisCapture[];
   presentation: ReportPresentationModel;
   annotations: PresentationAnnotatedImages;
 }>;

@@ -147,7 +147,7 @@ export class DirectAnalysisRuntime implements AnalysisRuntime {
           { stage: 'annotation_rendering', issues: [] },
         );
       }
-      return { presentation: presentation.report, annotations };
+      return { captures: [capture], presentation: presentation.report, annotations };
     } catch (error) {
       if (controller.signal.aborted) {
         throw new AnalysisRuntimeFailure('cancelled');

@@ -98,6 +98,7 @@ describe('DirectAnalysisRuntime', () => {
       validPresentationBundle.drawings,
     );
     expect(outcome).toEqual({
+      captures: [capture],
       presentation: validPresentationBundle.report,
       annotations: presentationAnnotatedImages,
     });
