@@ -127,6 +127,131 @@ function taskFailure(task: ExtensionAnalysisTask): AnalysisRuntimeFailure {
 }
 
 const pngSignature = [137, 80, 78, 71, 13, 10, 26, 10] as const;
+const pngChunkTypes = Object.freeze({
+  ihdr: 0x49484452,
+  plte: 0x504c5445,
+  idat: 0x49444154,
+  iend: 0x49454e44,
+} as const);
+const pngCrcTable = (() => {
+  const table = new Uint32Array(256);
+  for (let value = 0; value < table.length; value += 1) {
+    let crc = value;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ ((crc & 1) === 1 ? 0xedb88320 : 0);
+    }
+    table[value] = crc >>> 0;
+  }
+  return table;
+})();
+
+function pngCrc32(bytes: Uint8Array, start: number, end: number): number {
+  let crc = 0xffffffff;
+  for (let index = start; index < end; index += 1) {
+    crc = (crc >>> 8) ^ pngCrcTable[(crc ^ bytes[index]!) & 0xff]!;
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function isAsciiLetter(value: number): boolean {
+  return (value >= 65 && value <= 90) || (value >= 97 && value <= 122);
+}
+
+function validPngBitDepth(bitDepth: number, colorType: number): boolean {
+  if (colorType === 0) return [1, 2, 4, 8, 16].includes(bitDepth);
+  if (colorType === 2 || colorType === 4 || colorType === 6) {
+    return bitDepth === 8 || bitDepth === 16;
+  }
+  if (colorType === 3) return [1, 2, 4, 8].includes(bitDepth);
+  return false;
+}
+
+function isStructurallyValidPng(
+  bytes: Uint8Array,
+  descriptor: StoredCaptureDescriptor,
+): boolean {
+  if (
+    bytes.byteLength < 8
+    || !pngSignature.every((byte, index) => bytes[index] === byte)
+  ) {
+    return false;
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let offset: number = pngSignature.length;
+  let colorType: number | null = null;
+  let sawIhdr = false;
+  let sawPlte = false;
+  let sawIdat = false;
+  let idatEnded = false;
+  let idatBytes = 0;
+  while (offset < bytes.byteLength) {
+    if (bytes.byteLength - offset < 12) return false;
+    const length = view.getUint32(offset);
+    const typeOffset = offset + 4;
+    const dataOffset = offset + 8;
+    if (length > bytes.byteLength - dataOffset - 4) return false;
+    const crcOffset = dataOffset + length;
+    const nextOffset = crcOffset + 4;
+    const type = view.getUint32(typeOffset);
+    if (
+      !isAsciiLetter(bytes[typeOffset]!)
+      || !isAsciiLetter(bytes[typeOffset + 1]!)
+      || !isAsciiLetter(bytes[typeOffset + 2]!)
+      || !isAsciiLetter(bytes[typeOffset + 3]!)
+      || (bytes[typeOffset + 2]! & 0x20) !== 0
+      || view.getUint32(crcOffset) !== pngCrc32(bytes, typeOffset, crcOffset)
+    ) {
+      return false;
+    }
+    if (!sawIhdr) {
+      if (type !== pngChunkTypes.ihdr || length !== 13) return false;
+      const bitDepth = bytes[dataOffset + 8]!;
+      colorType = bytes[dataOffset + 9]!;
+      if (
+        view.getUint32(dataOffset) !== descriptor.width
+        || view.getUint32(dataOffset + 4) !== descriptor.height
+        || !validPngBitDepth(bitDepth, colorType)
+        || bytes[dataOffset + 10] !== 0
+        || bytes[dataOffset + 11] !== 0
+        || (bytes[dataOffset + 12] !== 0 && bytes[dataOffset + 12] !== 1)
+      ) {
+        return false;
+      }
+      sawIhdr = true;
+      offset = nextOffset;
+      continue;
+    }
+    if (type === pngChunkTypes.ihdr) return false;
+    if (type === pngChunkTypes.plte) {
+      if (
+        sawPlte
+        || sawIdat
+        || length < 3
+        || length > 768
+        || length % 3 !== 0
+        || colorType === 0
+        || colorType === 4
+      ) {
+        return false;
+      }
+      sawPlte = true;
+    } else if (type === pngChunkTypes.idat) {
+      if (idatEnded || (colorType === 3 && !sawPlte)) return false;
+      sawIdat = true;
+      idatBytes += length;
+    } else if (type === pngChunkTypes.iend) {
+      return length === 0
+        && sawIdat
+        && idatBytes > 0
+        && nextOffset === bytes.byteLength;
+    } else {
+      if ((bytes[typeOffset]! & 0x20) === 0) return false;
+      if (sawIdat) idatEnded = true;
+    }
+    offset = nextOffset;
+  }
+  return false;
+}
 
 function descriptorsEqual(
   left: StoredCaptureDescriptor,
@@ -211,18 +336,12 @@ function hydrateCapture(
   downloaded: DownloadedCapture,
 ): AnalysisCapture {
   const bytes = new Uint8Array(downloaded.bytes);
-  const header = bytes.length >= 33 ? new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength) : null;
-  const validHeader = downloaded.mediaType === 'image/png'
-    && header !== null
-    && pngSignature.every((byte, index) => bytes[index] === byte)
-    && header.getUint32(8) === 13
-    && bytes[12] === 73
-    && bytes[13] === 72
-    && bytes[14] === 68
-    && bytes[15] === 82
-    && header.getUint32(16) === descriptor.width
-    && header.getUint32(20) === descriptor.height;
-  if (!validHeader) throw new AnalysisRuntimeFailure('invalid_image');
+  if (
+    downloaded.mediaType !== 'image/png'
+    || !isStructurallyValidPng(bytes, descriptor)
+  ) {
+    throw new AnalysisRuntimeFailure('invalid_image');
+  }
   let dataUrl: string;
   try {
     dataUrl = pngDataUrl(bytes);

@@ -82,20 +82,121 @@ const singleStoredCapture: StoredCaptureDescriptor = {
 };
 
 const captureDataUrls = [
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABQAAAALQCAYAAAAAAAAAAQ==',
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABQAAAALQCAYAAAAAAAAAAg==',
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABQAAAALQCAYAAAAAAAAAAw==',
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABQAAAALQCAYAAADPfd1WAAAACElEQVR4nAMAAAAAAUgGidIAAAAASUVORK5CYII=',
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABQAAAALQCAYAAADPfd1WAAAACElEQVR4nAMAAAAAAtEP2GgAAAAASUVORK5CYII=',
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABQAAAALQCAYAAADPfd1WAAAACElEQVR4nAMAAAAAA6YI6P4AAAAASUVORK5CYII=',
 ] as const;
 
-function pngBytes(width = 1280, height = 720, marker = 1): ArrayBuffer {
-  const bytes = new Uint8Array(34);
-  bytes.set([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]);
-  const view = new DataView(bytes.buffer);
-  view.setUint32(16, width);
-  view.setUint32(20, height);
-  bytes.set([8, 6, 0, 0, 0, 0, 0, 0, 0, marker], 24);
-  return bytes.buffer;
+const testPngSignature = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]);
+
+function testCrc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ ((crc & 1) === 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
 }
+
+function testPngChunk(type: string, data: Uint8Array): Uint8Array {
+  const chunk = new Uint8Array(12 + data.byteLength);
+  const view = new DataView(chunk.buffer);
+  view.setUint32(0, data.byteLength);
+  for (let index = 0; index < 4; index += 1) {
+    chunk[4 + index] = type.charCodeAt(index);
+  }
+  chunk.set(data, 8);
+  view.setUint32(8 + data.byteLength, testCrc32(chunk.subarray(4, 8 + data.byteLength)));
+  return chunk;
+}
+
+function joinTestBytes(...parts: readonly Uint8Array[]): Uint8Array {
+  const joined = new Uint8Array(parts.reduce((total, part) => total + part.byteLength, 0));
+  let offset = 0;
+  for (const part of parts) {
+    joined.set(part, offset);
+    offset += part.byteLength;
+  }
+  return joined;
+}
+
+function exactArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(new ArrayBuffer(bytes.byteLength));
+  copy.set(bytes);
+  return copy.buffer;
+}
+
+function testPngParts(width = 1280, height = 720, marker = 1) {
+  const ihdrData = new Uint8Array(13);
+  const header = new DataView(ihdrData.buffer);
+  header.setUint32(0, width);
+  header.setUint32(4, height);
+  ihdrData.set([8, 6, 0, 0, 0], 8);
+  return {
+    signature: testPngSignature,
+    ihdr: testPngChunk('IHDR', ihdrData),
+    idat: testPngChunk('IDAT', Uint8Array.from([120, 156, 3, 0, 0, 0, 0, marker])),
+    iend: testPngChunk('IEND', new Uint8Array()),
+  };
+}
+
+function pngBytes(width = 1280, height = 720, marker = 1): ArrayBuffer {
+  const parts = testPngParts(width, height, marker);
+  return exactArrayBuffer(joinTestBytes(parts.signature, parts.ihdr, parts.idat, parts.iend));
+}
+
+const malformedPng = (() => {
+  const parts = testPngParts();
+  const valid = new Uint8Array(pngBytes());
+  const truncatedData = new Uint8Array(10);
+  const truncatedDataView = new DataView(truncatedData.buffer);
+  truncatedDataView.setUint32(0, 4);
+  truncatedData.set([73, 68, 65, 84, 1, 2], 4);
+  const ihdrCrcMismatch = valid.slice();
+  const ihdrCrcIndex = parts.signature.byteLength + parts.ihdr.byteLength - 1;
+  ihdrCrcMismatch[ihdrCrcIndex] = ihdrCrcMismatch[ihdrCrcIndex]! ^ 0xff;
+  const idatCrcMismatch = valid.slice();
+  const idatCrcIndex = parts.signature.byteLength
+    + parts.ihdr.byteLength
+    + parts.idat.byteLength
+    - 1;
+  idatCrcMismatch[idatCrcIndex] = idatCrcMismatch[idatCrcIndex]! ^ 0xff;
+  return {
+    ihdrOnly: exactArrayBuffer(joinTestBytes(parts.signature, parts.ihdr)),
+    missingIend: exactArrayBuffer(joinTestBytes(parts.signature, parts.ihdr, parts.idat)),
+    missingIdat: exactArrayBuffer(joinTestBytes(parts.signature, parts.ihdr, parts.iend)),
+    truncatedChunkHeader: exactArrayBuffer(joinTestBytes(
+      parts.signature, parts.ihdr, parts.idat, parts.iend.subarray(0, 2),
+    )),
+    truncatedData: exactArrayBuffer(joinTestBytes(parts.signature, parts.ihdr, truncatedData)),
+    truncatedCrc: exactArrayBuffer(valid.slice(
+      0,
+      parts.signature.byteLength + parts.ihdr.byteLength + parts.idat.byteLength - 1,
+    )),
+    ihdrCrcMismatch: exactArrayBuffer(ihdrCrcMismatch),
+    idatCrcMismatch: exactArrayBuffer(idatCrcMismatch),
+    malformedIendLength: exactArrayBuffer(joinTestBytes(
+      parts.signature,
+      parts.ihdr,
+      parts.idat,
+      testPngChunk('IEND', Uint8Array.of(0)),
+    )),
+    trailingBytes: exactArrayBuffer(joinTestBytes(valid, Uint8Array.of(0))),
+    duplicateIhdr: exactArrayBuffer(joinTestBytes(
+      parts.signature, parts.ihdr, parts.ihdr, parts.idat, parts.iend,
+    )),
+    noncontiguousIdat: exactArrayBuffer(joinTestBytes(
+      parts.signature,
+      parts.ihdr,
+      parts.idat,
+      testPngChunk('tEXt', Uint8Array.of(0)),
+      parts.idat,
+      parts.iend,
+    )),
+  };
+})();
 
 function downloadedCapture(captureId: 'C01' | 'C02' | 'C03'): DownloadedCapture {
   return {
@@ -478,8 +579,35 @@ describe('CloudAnalysisRuntime', () => {
 
   it.each([
     ['invalid PNG bytes', { mediaType: 'image/png' as const, bytes: new Uint8Array([1, 2, 3]).buffer }],
-    ['truncated PNG header', {
-      mediaType: 'image/png' as const, bytes: pngBytes().slice(0, 24),
+    ['IHDR without IDAT or IEND', { mediaType: 'image/png' as const, bytes: malformedPng.ihdrOnly }],
+    ['missing IEND', { mediaType: 'image/png' as const, bytes: malformedPng.missingIend }],
+    ['missing IDAT', { mediaType: 'image/png' as const, bytes: malformedPng.missingIdat }],
+    ['truncated chunk header', {
+      mediaType: 'image/png' as const, bytes: malformedPng.truncatedChunkHeader,
+    }],
+    ['truncated chunk data', {
+      mediaType: 'image/png' as const, bytes: malformedPng.truncatedData,
+    }],
+    ['truncated chunk CRC', {
+      mediaType: 'image/png' as const, bytes: malformedPng.truncatedCrc,
+    }],
+    ['IHDR CRC mismatch', {
+      mediaType: 'image/png' as const, bytes: malformedPng.ihdrCrcMismatch,
+    }],
+    ['IDAT CRC mismatch', {
+      mediaType: 'image/png' as const, bytes: malformedPng.idatCrcMismatch,
+    }],
+    ['non-zero IEND length', {
+      mediaType: 'image/png' as const, bytes: malformedPng.malformedIendLength,
+    }],
+    ['trailing bytes after IEND', {
+      mediaType: 'image/png' as const, bytes: malformedPng.trailingBytes,
+    }],
+    ['duplicate IHDR', {
+      mediaType: 'image/png' as const, bytes: malformedPng.duplicateIhdr,
+    }],
+    ['non-contiguous IDAT chunks', {
+      mediaType: 'image/png' as const, bytes: malformedPng.noncontiguousIdat,
     }],
     ['PNG dimensions differing from the descriptor', {
       mediaType: 'image/png' as const, bytes: pngBytes(640, 360, 4),
@@ -493,6 +621,27 @@ describe('CloudAnalysisRuntime', () => {
 
     await expect(test.runtime.restoreActiveAnalysis()).rejects.toMatchObject({ code: 'invalid_image' });
 
+    expect(test.storage.clear).toHaveBeenCalledWith(active.requestId);
+    expect(test.current()).toBeNull();
+  });
+
+  it('discards every hydrated capture when one PNG is structurally invalid', async () => {
+    const active = {
+      requestId: 'c_20260828_active', tokenFingerprint: fingerprint,
+      captures: storedCaptures, outputLanguage: 'en' as const,
+    };
+    const test = dependencies({
+      active,
+      tasks: [processing],
+      capture: async (_token, _requestId, captureId) => ({
+        mediaType: 'image/png',
+        bytes: captureId === 'C02' ? malformedPng.missingIend : downloadedCapture(captureId).bytes,
+      }),
+    });
+
+    await expect(test.runtime.restoreActiveAnalysis()).rejects.toMatchObject({ code: 'invalid_image' });
+
+    expect(test.client.capture).toHaveBeenCalledTimes(3);
     expect(test.storage.clear).toHaveBeenCalledWith(active.requestId);
     expect(test.current()).toBeNull();
   });
