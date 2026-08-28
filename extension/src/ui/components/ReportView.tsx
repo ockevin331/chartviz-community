@@ -1,6 +1,6 @@
 import { useState } from 'react';
+import type { AnalysisCapture } from '../../analysis/runtime/analysis-runtime';
 import type { PresentationAnnotatedImages } from '../../annotations/annotation-types';
-import type { ProcessedImage } from '../../capture/image-types';
 import type { ReportPresentationModel, PresentationScenario } from '../../presentation/report-presentation-model';
 import { copyReport as defaultCopyReport, reportToText } from '../export/copy-report';
 import { AnnotatedImage } from './AnnotatedImage';
@@ -10,7 +10,7 @@ import { translations, type Language } from './LanguageMenu';
 type Props = {
   language: Language;
   presentation: ReportPresentationModel;
-  original: ProcessedImage;
+  captures: readonly AnalysisCapture[];
   annotations: PresentationAnnotatedImages;
   downloadImage?: (dataUrl: string, filename: string) => void;
   copyReport?: (text: string) => Promise<void>;
@@ -42,20 +42,30 @@ function ScenarioCard({ title, scenario, language }: { title: string; scenario: 
   return <article className="scenario"><h3>{title}</h3><p><b>{t.condition}:</b> {scenario.condition}</p><p><b>{t.entry}:</b> {scenario.entry}</p><p><b>{t.stop}:</b> {scenario.stop}</p><div><b>{t.targets}:</b><ul>{scenario.targets.map((target) => <li key={target}>{target}</li>)}</ul></div><p><b>{t.reason}:</b> {scenario.reason}</p></article>;
 }
 
-export function ReportView({ language, presentation: report, original, annotations, downloadImage, copyReport = defaultCopyReport }: Props) {
+export function ReportView({ language, presentation: report, captures, annotations, downloadImage, copyReport = defaultCopyReport }: Props) {
   const t = translations[language];
   const [lightbox, setLightbox] = useState<LightboxImage | null>(null);
   const [copied, setCopied] = useState(false);
   const zoom = (image: LightboxImage) => setLightbox(image);
-  const capture = report.context.captures[0];
-  const levelsImage = capture ? annotations.levels[capture.captureId] : undefined;
+  const captureSources = report.context.captures.flatMap((metadata, index) => {
+    const source = captures[index];
+    return source ? [{ metadata, source }] : [];
+  });
+  const multipleCaptures = report.context.captures.length > 1;
   const directionClass = report.conclusion.direction === 'long' ? 'bullish' : report.conclusion.direction === 'short' ? 'bearish' : 'neutral';
 
   return <div className="report-view">
     <section className="original-screenshot">
       <div className="section-heading"><h2>{t.original}</h2><button className="secondary copy-report" type="button" onClick={async () => { await copyReport(reportToText(report, language)); setCopied(true); }}>{copied ? t.copied : t.copyReport}</button></div>
-      <AnnotatedImage language={language} image={{ dataUrl: original.dataUrl, title: t.original }} filename="chartviz-original.png" onZoom={zoom} downloadImage={downloadImage} />
-      <dl className="metadata"><div><dt>{t.instrument}</dt><dd>{report.context.instrument ?? capture?.instrument ?? t.none}</dd></div><div><dt>{t.timeframe}</dt><dd>{capture?.timeframe ?? t.none}</dd></div></dl>
+      {captureSources.map(({ metadata, source }) => {
+        const title = multipleCaptures
+          ? `${t.original} · ${metadata.timeframe ?? metadata.captureId}`
+          : t.original;
+        return <div key={metadata.captureId} data-original-capture-id={metadata.captureId}>
+          <AnnotatedImage language={language} image={{ dataUrl: source.image.dataUrl, title }} filename={multipleCaptures ? `chartviz-original-${metadata.captureId}.png` : 'chartviz-original.png'} onZoom={zoom} downloadImage={downloadImage} />
+          <dl className="metadata"><div><dt>{t.instrument}</dt><dd>{report.context.instrument ?? metadata.instrument ?? t.none}</dd></div><div><dt>{t.timeframe}</dt><dd>{metadata.timeframe ?? t.none}</dd></div></dl>
+        </div>;
+      })}
     </section>
 
     <section className={`decision decision-${directionClass}`} data-report-section="conclusion">
@@ -73,7 +83,14 @@ export function ReportView({ language, presentation: report, original, annotatio
       {report.marketExplanation.indicators.length > 0 && <div className="indicator-explanation"><h3>{t.technicalIndicators}</h3>{report.marketExplanation.indicators.map((indicator) => <article key={indicator.id}><p><b>{indicator.name}:</b> {indicator.state}</p><p><b>{t.implication}:</b> {indicator.implication}</p><small>{t.visibleAt}: {indicator.timeAnchor}</small></article>)}</div>}
     </section>
 
-    {report.levels.length > 0 && <section data-report-section="levels"><h2>{t.supportResistance}</h2><div className="level-list visual-levels">{report.levels.map((level) => <article className={level.type} key={level.id}><span>{metric(level.type, language)} · {metric(level.tier, language)}</span><strong>{level.priceLabel}</strong><p>{level.reason}</p><small>{t.levelStatus}: {metric(level.status, language)} · {t.visibleAt}: {level.timeAnchor} · {Math.round(level.confidence * 100)}%</small></article>)}</div>{levelsImage && <div className="level-annotation"><AnnotatedImage language={language} image={{ ...levelsImage, title: t.supportResistance }} filename="chartviz-levels.png" onZoom={zoom} downloadImage={downloadImage} /></div>}</section>}
+    {report.levels.length > 0 && <section data-report-section="levels"><h2>{t.supportResistance}</h2><div className="level-list visual-levels">{report.levels.map((level) => <article className={level.type} key={level.id}><span>{metric(level.type, language)} · {metric(level.tier, language)}</span><strong>{level.priceLabel}</strong><p>{level.reason}</p><small>{t.levelStatus}: {metric(level.status, language)} · {t.visibleAt}: {level.timeAnchor} · {Math.round(level.confidence * 100)}%</small></article>)}</div>{report.context.captures.map((metadata) => {
+      const image = annotations.levels[metadata.captureId];
+      if (!image) return null;
+      const title = multipleCaptures
+        ? `${t.supportResistance} · ${metadata.timeframe ?? metadata.captureId}`
+        : t.supportResistance;
+      return <div className="level-annotation" data-levels-capture-id={metadata.captureId} key={metadata.captureId}><AnnotatedImage language={language} image={{ ...image, title }} filename={multipleCaptures ? `chartviz-levels-${metadata.captureId}.png` : 'chartviz-levels.png'} onZoom={zoom} downloadImage={downloadImage} /></div>;
+    })}</section>}
 
     <section className="trade-plan" data-report-section="tradePlan"><h2>{t.tradePlan}</h2><p className="trade-plan-summary">{report.tradePlan.summary}</p><ScenarioCard title={t.long} scenario={report.tradePlan.long} language={language} /><ScenarioCard title={t.short} scenario={report.tradePlan.short} language={language} /><article className="scenario"><h3>{t.wait}</h3><p><b>{t.condition}:</b> {report.tradePlan.wait.condition}</p><p><b>{t.reason}:</b> {report.tradePlan.wait.reason}</p></article></section>
 

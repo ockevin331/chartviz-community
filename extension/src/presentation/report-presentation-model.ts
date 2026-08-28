@@ -7,7 +7,7 @@ const nullableText = text.nullable();
 const captureSchema = z.object({
   captureId: z.string().regex(/^C\d{2}$/),
   timeframe: text.nullable(),
-  role: z.enum(['context', 'setup', 'trigger']).nullable(),
+  role: z.enum(['context', 'setup', 'trigger', 'setup_and_trigger']).nullable(),
   instrument: text.nullable(),
   width: z.number().int().positive(),
   height: z.number().int().positive(),
@@ -110,7 +110,7 @@ const patternSchema = z.object({
 const timeframeViewSchema = z.object({
   captureId: z.string().regex(/^C\d{2}$/),
   timeframe: text.nullable(),
-  role: z.enum(['context', 'setup', 'trigger']).nullable(),
+  role: z.enum(['context', 'setup', 'trigger', 'setup_and_trigger']).nullable(),
   trend: z.enum(['bullish', 'bearish', 'sideways', 'unclear']),
   structure: z.enum(['hh-hl', 'lh-ll', 'range', 'transition', 'unclear']),
   conclusion: text,

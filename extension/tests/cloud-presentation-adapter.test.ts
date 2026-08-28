@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fixture from '../contracts/extension-cloud/v1/fixtures/single-completed-task.json';
+import twoFixture from '../contracts/extension-cloud/v1/fixtures/two-completed-task.json';
 import { parseExtensionAnalysisTask } from '../src/cloud/cloud-task-schema';
 import { adaptCloudPresentation } from '../src/presentation/cloud-presentation-adapter';
 
@@ -10,6 +11,23 @@ function report() {
 }
 
 describe('Cloud presentation adapter', () => {
+  it('adapts the valid two-capture setup_and_trigger role', () => {
+    const task = parseExtensionAnalysisTask(structuredClone(twoFixture));
+    if (!task.report) throw new Error('two-capture fixture report missing');
+
+    const bundle = adaptCloudPresentation(task.report);
+
+    expect(bundle.report.context.captures.map(({ captureId, timeframe, role }) => ({
+      captureId, timeframe, role,
+    }))).toEqual([
+      { captureId: 'C01', timeframe: '4h', role: 'context' },
+      { captureId: 'C02', timeframe: '15m', role: 'setup_and_trigger' },
+    ]);
+    expect(bundle.report.timeframeViews.map(({ role }) => role)).toEqual([
+      'context', 'setup_and_trigger',
+    ]);
+  });
+
   it('maps the complete Cloud report without leaking drawing coordinates into visible items', () => {
     const bundle = adaptCloudPresentation(report());
 

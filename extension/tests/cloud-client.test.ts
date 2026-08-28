@@ -261,6 +261,7 @@ describe('fixed-origin ChartViz Cloud client', () => {
     { captures: [], code: 'invalid_image' },
     { captures: [captureAt('4h', 'AAAA'), captureAt('4h', 'BBBB')], code: 'unsupported_timeframe' },
     { captures: [captureAt('45m', 'AAAA')], code: 'unsupported_timeframe' },
+    { captures: [captureAt('toString', 'AAAA')], code: 'unsupported_timeframe' },
     { captures: [{ ...capture, context: { ...capture.context, timeframe: '  ' } }], code: 'unsupported_timeframe' },
     {
       captures: [

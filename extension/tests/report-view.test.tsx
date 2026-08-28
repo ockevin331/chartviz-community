@@ -9,6 +9,7 @@ import { parseReportPresentationModel } from '../src/presentation/report-present
 import { ReportView } from '../src/ui/components/ReportView';
 import { presentationAnnotatedImages, processedImage } from './community-ui-fixtures';
 import { validPresentationBundle } from './presentation-fixtures';
+import type { AnalysisCapture } from '../src/analysis/runtime/analysis-runtime';
 
 afterEach(cleanup);
 
@@ -17,12 +18,22 @@ const cloudTask = parseExtensionAnalysisTask(structuredClone(fixture));
 if (!cloudTask.report) throw new Error('Cloud fixture report missing');
 const cloudPresentation = adaptCloudPresentation(cloudTask.report).report;
 
+function sourceCapture(
+  image = processedImage,
+  timeframe = '15m',
+): AnalysisCapture {
+  return {
+    image,
+    context: { instrument: 'BTC/USDT', timeframe },
+  };
+}
+
 describe('ReportView presentation-1.0 visible structure', () => {
   it.each([
     ['Direct', directPresentation],
     ['Cloud', cloudPresentation],
   ] as const)('renders the %s conclusion in the same module order and terminology', (_producer, presentation) => {
-    const { container } = render(<ReportView language="en" presentation={presentation} original={processedImage} annotations={presentationAnnotatedImages} />);
+    const { container } = render(<ReportView language="en" presentation={presentation} captures={[sourceCapture()]} annotations={presentationAnnotatedImages} />);
 
     expect(Array.from(container.querySelectorAll('[data-report-section]')).map((node) => node.getAttribute('data-report-section'))).toEqual([
       'conclusion', 'marketExplanation', 'levels', 'tradePlan', 'tradeSignals', 'patterns', 'riskNotice',
@@ -43,7 +54,7 @@ describe('ReportView presentation-1.0 visible structure', () => {
   });
 
   it('uses the same direct conclusion semantics in Chinese', () => {
-    const { container } = render(<ReportView language="zh-CN" presentation={directPresentation} original={processedImage} annotations={presentationAnnotatedImages} />);
+    const { container } = render(<ReportView language="zh-CN" presentation={directPresentation} captures={[sourceCapture()]} annotations={presentationAnnotatedImages} />);
 
     expect(screen.getByRole('heading', { level: 2, name: '做多' })).toBeTruthy();
     expect(screen.queryByText('当前观点')).toBeNull();
@@ -52,7 +63,7 @@ describe('ReportView presentation-1.0 visible structure', () => {
   });
 
   it('places the levels image under levels and each signal/pattern image under its own explanation', () => {
-    const { container } = render(<ReportView language="en" presentation={directPresentation} original={processedImage} annotations={presentationAnnotatedImages} />);
+    const { container } = render(<ReportView language="en" presentation={directPresentation} captures={[sourceCapture()]} annotations={presentationAnnotatedImages} />);
 
     expect(container.querySelector('[data-report-section="levels"] img[src$="LEVELS"]')).toBeTruthy();
     expect(container.querySelector('[data-signal-id="S01"] img[src$="SIGNAL"]')).toBeTruthy();
@@ -65,7 +76,7 @@ describe('ReportView presentation-1.0 visible structure', () => {
     const user = userEvent.setup();
     const download = vi.fn();
     const postMessage = vi.spyOn(window.parent, 'postMessage');
-    render(<ReportView language="en" presentation={directPresentation} original={processedImage} annotations={presentationAnnotatedImages} downloadImage={download} />);
+    render(<ReportView language="en" presentation={directPresentation} captures={[sourceCapture()]} annotations={presentationAnnotatedImages} downloadImage={download} />);
 
     expect(screen.getAllByRole('button', { name: /Download image/ })).toHaveLength(4);
     for (const title of ['Original screenshot', 'Support and resistance', 'S01 · LONG', 'Rising channel']) {
@@ -80,7 +91,7 @@ describe('ReportView presentation-1.0 visible structure', () => {
     expect(postMessage).toHaveBeenCalledWith({ source: 'chartviz', type: 'image-lightbox-close' }, '*');
   });
 
-  it('opens each capture-specific result image with its exact source data URL', async () => {
+  it('renders every original and levels image in report capture order with exact lightbox sources', async () => {
     const user = userEvent.setup();
     const presentation = parseReportPresentationModel({
       ...structuredClone(validPresentationBundle.report),
@@ -92,6 +103,11 @@ describe('ReportView presentation-1.0 visible structure', () => {
           { ...validPresentationBundle.report.context.captures[0], captureId: 'C03', timeframe: '15m', role: 'trigger' },
         ],
       },
+      levels: [
+        { ...validPresentationBundle.report.levels[0], id: 'L01', captureId: 'C01' },
+        { ...validPresentationBundle.report.levels[0], id: 'L02', captureId: 'C02' },
+        { ...validPresentationBundle.report.levels[0], id: 'L03', captureId: 'C03' },
+      ],
       tradeSignals: validPresentationBundle.report.tradeSignals.map((signal) => ({
         ...signal, captureId: 'C03',
       })),
@@ -104,10 +120,16 @@ describe('ReportView presentation-1.0 visible structure', () => {
         { ...validPresentationBundle.report.timeframeViews[0], captureId: 'C03', timeframe: '15m', role: 'trigger' },
       ],
     });
-    const original = { ...processedImage, dataUrl: 'data:image/png;base64,C01SOURCE' };
+    const captures = [
+      sourceCapture({ ...processedImage, dataUrl: 'data:image/png;base64,C01SOURCE' }, '4h'),
+      sourceCapture({ ...processedImage, dataUrl: 'data:image/png;base64,C02SOURCE' }, '1h'),
+      sourceCapture({ ...processedImage, dataUrl: 'data:image/png;base64,C03SOURCE' }, '15m'),
+    ];
     const annotations = {
       levels: {
         C01: { ...presentationAnnotatedImages.levels.C01!, dataUrl: 'data:image/png;base64,C01LEVELS' },
+        C02: { ...presentationAnnotatedImages.levels.C01!, id: 'levels-C02', dataUrl: 'data:image/png;base64,C02LEVELS' },
+        C03: { ...presentationAnnotatedImages.levels.C01!, id: 'levels-C03', dataUrl: 'data:image/png;base64,C03LEVELS' },
       },
       signals: {
         S01: { ...presentationAnnotatedImages.signals.S01!, dataUrl: 'data:image/png;base64,C03SIGNAL' },
@@ -116,11 +138,22 @@ describe('ReportView presentation-1.0 visible structure', () => {
         P01: { ...presentationAnnotatedImages.patterns.P01!, dataUrl: 'data:image/png;base64,C02PATTERN' },
       },
     };
-    render(<ReportView language="en" presentation={presentation} original={original} annotations={annotations} />);
+    const { container } = render(<ReportView language="en" presentation={presentation} captures={captures} annotations={annotations} />);
+
+    expect(Array.from(container.querySelectorAll('[data-original-capture-id]')).map((node) => (
+      node.getAttribute('data-original-capture-id')
+    ))).toEqual(['C01', 'C02', 'C03']);
+    expect(Array.from(container.querySelectorAll('[data-levels-capture-id]')).map((node) => (
+      node.getAttribute('data-levels-capture-id')
+    ))).toEqual(['C01', 'C02', 'C03']);
 
     for (const [title, dataUrl] of [
-      ['Original screenshot', original.dataUrl],
-      ['Support and resistance', annotations.levels.C01.dataUrl],
+      ['Original screenshot · 4h', captures[0]!.image.dataUrl],
+      ['Original screenshot · 1h', captures[1]!.image.dataUrl],
+      ['Original screenshot · 15m', captures[2]!.image.dataUrl],
+      ['Support and resistance · 4h', annotations.levels.C01.dataUrl],
+      ['Support and resistance · 1h', annotations.levels.C02.dataUrl],
+      ['Support and resistance · 15m', annotations.levels.C03.dataUrl],
       ['S01 · LONG', annotations.signals.S01.dataUrl],
       ['Rising channel', annotations.patterns.P01.dataUrl],
     ] as const) {
@@ -134,7 +167,7 @@ describe('ReportView presentation-1.0 visible structure', () => {
 
   it('copies the same V3-visible modules without wrapper or hidden schema fields', async () => {
     const copy = vi.fn(async (_text: string) => undefined);
-    render(<ReportView language="en" presentation={directPresentation} original={processedImage} annotations={presentationAnnotatedImages} copyReport={copy} />);
+    render(<ReportView language="en" presentation={directPresentation} captures={[sourceCapture()]} annotations={presentationAnnotatedImages} copyReport={copy} />);
     await userEvent.click(screen.getByRole('button', { name: 'Copy report' }));
     const copied = copy.mock.calls[0]?.[0] as string;
 

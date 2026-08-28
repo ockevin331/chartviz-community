@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import fixture from '../contracts/extension-cloud/v1/fixtures/single-completed-task.json';
+import twoFixture from '../contracts/extension-cloud/v1/fixtures/two-completed-task.json';
 import { CloudAnalysisRuntime } from '../src/analysis/runtime/cloud-analysis-runtime';
 import { AnalysisRuntimeFailure, type AnalysisCapture } from '../src/analysis/runtime/analysis-runtime';
 import { CloudConnectionError, type CloudClient } from '../src/cloud/cloud-client';
 import { parseExtensionAnalysisTask } from '../src/cloud/cloud-task-schema';
 import type { StoredCloudActiveTask } from '../src/storage/cloud-active-task-storage';
 import { parsePresentationBundle } from '../src/presentation/report-presentation-model';
+import { adaptCloudPresentation } from '../src/presentation/cloud-presentation-adapter';
 import { presentationAnnotatedImages } from './community-ui-fixtures';
 import { validPresentationBundle } from './presentation-fixtures';
 
@@ -95,6 +97,7 @@ function dependencies(options: {
   tasks?: typeof completed[];
   cancelTask?: CloudClient['cancelTask'];
   presentation?: ReturnType<typeof parsePresentationBundle>;
+  adaptPresentation?: typeof adaptCloudPresentation;
 } = {}) {
   let active = options.active ?? null;
   const tasks = [...(options.tasks ?? [processing, completed])];
@@ -111,8 +114,8 @@ function dependencies(options: {
     clear: vi.fn(async () => { active = null; }),
   };
   const sleep = vi.fn(async (_delay: number, _signal: AbortSignal): Promise<void> => undefined);
-  const adaptPresentation = vi.fn(() => options.presentation
-    ?? parsePresentationBundle(structuredClone(validPresentationBundle)));
+  const adaptPresentation = vi.fn(options.adaptPresentation ?? (() => options.presentation
+    ?? parsePresentationBundle(structuredClone(validPresentationBundle))));
   const buildAnnotations = vi.fn(async () => presentationAnnotatedImages);
   const runtime = new CloudAnalysisRuntime({
     client,
@@ -174,6 +177,25 @@ describe('CloudAnalysisRuntime', () => {
       { captureId: 'C02', image: captures[1]!.image },
       { captureId: 'C03', image: captures[2]!.image },
     ], presentation.drawings);
+  });
+
+  it('completes a valid two-capture report with setup_and_trigger presentation role', async () => {
+    const twoCompleted = parseExtensionAnalysisTask(structuredClone(twoFixture));
+    const twoCaptures = [
+      { ...capture, image: { ...capture.image, dataUrl: 'data:image/png;base64,AAAA' }, context: { ...capture.context, timeframe: '4h' } },
+      { ...capture, image: { ...capture.image, dataUrl: 'data:image/png;base64,BBBB' }, context: { ...capture.context, timeframe: '15m' } },
+    ];
+    const test = dependencies({ tasks: [twoCompleted], adaptPresentation: adaptCloudPresentation });
+
+    const outcome = await test.runtime.analyze({ captures: twoCaptures, outputLanguage: 'en' });
+
+    expect(outcome.presentation.context.captures.map(({ role }) => role)).toEqual([
+      'context', 'setup_and_trigger',
+    ]);
+    expect(test.buildAnnotations).toHaveBeenCalledWith([
+      { captureId: 'C01', image: twoCaptures[0]!.image },
+      { captureId: 'C02', image: twoCaptures[1]!.image },
+    ], expect.any(Array));
   });
 
   it.each([
@@ -244,6 +266,21 @@ describe('CloudAnalysisRuntime', () => {
     expect(test.storage.clear).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    'incompatible_report_schema',
+    'incompatible_api_version',
+  ] as const)('clears an unrestorable active task after %s', async (code) => {
+    const active = { requestId: 'c_20260828_active', captures: [capture], outputLanguage: 'en' as const };
+    const test = dependencies({ active });
+    test.client.task.mockRejectedValue(new CloudConnectionError(code));
+
+    await expect(test.runtime.analyze({ captures: [capture], outputLanguage: 'en' }))
+      .rejects.toMatchObject({ code });
+
+    expect(test.client.createTask).not.toHaveBeenCalled();
+    expect(test.storage.clear).toHaveBeenCalledTimes(1);
+  });
+
   it('stops local polling and sends one idempotent cancellation request', async () => {
     let rejectSleep: ((reason: unknown) => void) | null = null;
     const test = dependencies();
@@ -260,6 +297,54 @@ describe('CloudAnalysisRuntime', () => {
     await expect(operation).rejects.toMatchObject({ code: 'cancelled' });
     expect(test.client.cancelTask).toHaveBeenCalledTimes(1);
     expect(test.storage.clear).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves stored captures when cancellation is only cancel_requested', async () => {
+    const test = dependencies({ cancelTask: async () => ({
+      ...pending, status: 'cancel_requested' as const,
+    }) });
+    test.sleep.mockImplementation((_delay: number, signal: AbortSignal) => new Promise<void>((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }));
+    const operation = test.runtime.analyze({ captures: [capture], outputLanguage: 'en' });
+    await vi.waitFor(() => expect(test.storage.save).toHaveBeenCalledTimes(1));
+
+    test.runtime.cancel();
+
+    await expect(operation).rejects.toMatchObject({ code: 'cancelled' });
+    expect(test.storage.clear).not.toHaveBeenCalled();
+    expect(test.current()).toEqual({
+      requestId: pending.requestId, captures: [capture], outputLanguage: 'en',
+    });
+  });
+
+  it('preserves stored captures when the cancellation request fails in transport', async () => {
+    const test = dependencies({ cancelTask: async () => {
+      throw new CloudConnectionError('service_unavailable');
+    } });
+    test.sleep.mockImplementation((_delay: number, signal: AbortSignal) => new Promise<void>((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }));
+    const operation = test.runtime.analyze({ captures: [capture], outputLanguage: 'en' });
+    await vi.waitFor(() => expect(test.storage.save).toHaveBeenCalledTimes(1));
+
+    test.runtime.cancel();
+
+    await expect(operation).rejects.toMatchObject({ code: 'cancelled' });
+    expect(test.storage.clear).not.toHaveBeenCalled();
+    expect(test.current()).not.toBeNull();
+  });
+
+  it('cancels a just-created server task when active capture persistence fails', async () => {
+    const test = dependencies();
+    test.storage.save.mockRejectedValue(new Error('IndexedDB write failed'));
+
+    await expect(test.runtime.analyze({ captures: [capture], outputLanguage: 'en' }))
+      .rejects.toMatchObject({ code: 'service_unavailable' });
+
+    expect(test.client.cancelTask).toHaveBeenCalledWith(token, pending.requestId);
+    expect(test.client.createTask).toHaveBeenCalledTimes(1);
+    expect(test.client.task).not.toHaveBeenCalled();
   });
 
   it('returns completion when completion wins the cancel race', async () => {

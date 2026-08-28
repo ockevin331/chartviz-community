@@ -103,7 +103,7 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
   private activeRequestId: string | null = null;
   private activeToken: string | null = null;
   private cancelRequested = false;
-  private cancelResponse: Promise<ExtensionAnalysisTask | null> | null = null;
+  private cancelResponse: Promise<ExtensionAnalysisTask> | null = null;
 
   constructor(dependencies: Partial<CloudAnalysisRuntimeDependencies> = {}) {
     this.dependencies = { ...defaultDependencies, ...dependencies };
@@ -135,13 +135,13 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
     }
   }
 
-  private startServerCancel(): Promise<ExtensionAnalysisTask | null> | null {
+  private startServerCancel(): Promise<ExtensionAnalysisTask> | null {
     if (this.cancelResponse) return this.cancelResponse;
     if (!this.activeRequestId || !this.activeToken) return null;
     this.cancelResponse = this.dependencies.client.cancelTask(
       this.activeToken,
       this.activeRequestId,
-    ).catch(() => null);
+    );
     return this.cancelResponse;
   }
 
@@ -242,11 +242,20 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
           outputLanguage: input.outputLanguage,
         });
         this.activeRequestId = task.requestId;
-        await this.dependencies.activeTask.save({
-          requestId: task.requestId,
-          captures,
-          outputLanguage: input.outputLanguage,
-        });
+        try {
+          await this.dependencies.activeTask.save({
+            requestId: task.requestId,
+            captures,
+            outputLanguage: input.outputLanguage,
+          });
+        } catch {
+          try {
+            await this.startServerCancel();
+          } catch {
+            // The active request ID remains available until this cancellation attempt settles.
+          }
+          throw new AnalysisRuntimeFailure('service_unavailable');
+        }
         if (this.cancelRequested) this.startServerCancel();
       }
       this.emitProgress(task, seenProgress, input.onProgress);
@@ -269,16 +278,36 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
       }
     } catch (error) {
       if (controller.signal.aborted || this.cancelRequested) {
-        const terminal = await (this.cancelResponse ?? this.startServerCancel());
+        let terminal: ExtensionAnalysisTask | null;
+        try {
+          terminal = await (this.cancelResponse ?? this.startServerCancel());
+        } catch (cancelError) {
+          if (
+            cancelError instanceof CloudConnectionError
+            && cancelError.code === 'task_not_found'
+          ) {
+            await this.dependencies.activeTask.clear();
+          }
+          throw new AnalysisRuntimeFailure('cancelled');
+        }
         if (terminal?.status === 'completed') {
           return this.completedOutcome(terminal, captures);
         }
-        await this.dependencies.activeTask.clear();
+        if (terminal?.status === 'failed' || terminal?.status === 'cancelled') {
+          const outcome = await this.terminalOutcome(terminal, captures);
+          if (outcome) return outcome;
+        }
         throw new AnalysisRuntimeFailure('cancelled');
       }
       if (error instanceof AnalysisRuntimeFailure) throw error;
       if (error instanceof CloudConnectionError) {
-        if (['task_not_found', 'task_failed', 'task_cancelled'].includes(error.code)) {
+        if ([
+          'task_not_found',
+          'task_failed',
+          'task_cancelled',
+          'incompatible_report_schema',
+          'incompatible_api_version',
+        ].includes(error.code)) {
           await this.dependencies.activeTask.clear();
         }
         throw cloudFailure(error);

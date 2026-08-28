@@ -83,27 +83,48 @@ function openDatabase(): Promise<IDBDatabase> {
   return openDatabasePromise;
 }
 
-async function withStore<T>(
-  mode: IDBTransactionMode,
-  operation: (store: IDBObjectStore) => IDBRequest<T>,
-): Promise<T> {
-  const database = await openDatabase();
-  const transaction = database.transaction(objectStoreName, mode);
-  const completion = transactionComplete(transaction);
-  const result = await requestResult(operation(transaction.objectStore(objectStoreName)));
-  await completion;
-  return result;
+export function createIndexedDbActiveTaskDatabase(
+  open: () => Promise<IDBDatabase>,
+): CloudActiveTaskDatabase {
+  async function withStore<T>(
+    mode: IDBTransactionMode,
+    operation: (store: IDBObjectStore) => IDBRequest<T>,
+  ): Promise<T> {
+    const database = await open();
+    const transaction = database.transaction(objectStoreName, mode);
+    const completion = transactionComplete(transaction);
+    let request: IDBRequest<T>;
+    try {
+      request = operation(transaction.objectStore(objectStoreName));
+    } catch (error) {
+      try {
+        transaction.abort();
+      } catch {
+        void completion.catch(() => undefined);
+        throw error;
+      }
+      await completion.catch(() => undefined);
+      throw error;
+    }
+    const [result] = await Promise.all([
+      requestResult(request),
+      completion,
+    ]);
+    return result;
+  }
+
+  return Object.freeze({
+    get: (key: string) => withStore('readonly', (store) => store.get(key)),
+    async put(key: string, value: unknown): Promise<void> {
+      await withStore('readwrite', (store) => store.put(value, key));
+    },
+    async delete(key: string): Promise<void> {
+      await withStore('readwrite', (store) => store.delete(key));
+    },
+  });
 }
 
-const indexedDatabase: CloudActiveTaskDatabase = Object.freeze({
-  get: (key: string) => withStore('readonly', (store) => store.get(key)),
-  async put(key: string, value: unknown): Promise<void> {
-    await withStore('readwrite', (store) => store.put(value, key));
-  },
-  async delete(key: string): Promise<void> {
-    await withStore('readwrite', (store) => store.delete(key));
-  },
-});
+const indexedDatabase = createIndexedDbActiveTaskDatabase(openDatabase);
 
 export function createCloudActiveTaskStorage(
   database: CloudActiveTaskDatabase,
@@ -113,7 +134,10 @@ export function createCloudActiveTaskStorage(
       const value = await database.get(activeTaskKey);
       if (value === undefined) return null;
       const parsed = storedCloudActiveTaskSchema.safeParse(value);
-      if (!parsed.success) throw invalidActiveTask();
+      if (!parsed.success) {
+        await database.delete(activeTaskKey);
+        throw invalidActiveTask();
+      }
       return parsed.data;
     },
     async save(value: StoredCloudActiveTask): Promise<void> {

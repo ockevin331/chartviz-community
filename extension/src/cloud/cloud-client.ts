@@ -177,7 +177,7 @@ function taskForm(input: CloudTaskCreateInput): FormData {
     throw new CloudConnectionError('invalid_image');
   }
   const timeframes = input.captures.map((capture) => capture.context.timeframe?.trim() ?? '');
-  if (timeframes.some((timeframe) => !(timeframe in timeframeDurations))) {
+  if (timeframes.some((timeframe) => !Object.hasOwn(timeframeDurations, timeframe))) {
     throw new CloudConnectionError('unsupported_timeframe');
   }
   if (new Set(timeframes).size !== timeframes.length) {

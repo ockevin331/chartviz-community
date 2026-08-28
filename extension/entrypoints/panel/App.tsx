@@ -286,7 +286,7 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
       {state.status === 'analyzing' && state.image && <><ImagePreview language={language} image={state.image} analyzing onZoom={setLightbox} onChange={captureAgain} onAnalyze={() => undefined} /><AnalysisProgress language={language} progress={state.progress} onCancel={controller.cancel} /></>}
       {state.status === 'failed' && <AnalysisError language={language} errorCode={state.errorCode} diagnostic={state.diagnostic} params={state.errorParams} pricingUrl={state.pricingUrl} onBack={retryAnalysis} />}
       {state.status === 'cancelled' && <AnalysisError language={language} cancelled onBack={controller.returnToPreview} />}
-      {state.status === 'completed' && state.image && state.presentation && state.annotations && <ReportView language={language} original={state.image} presentation={state.presentation} annotations={state.annotations} />}
+      {state.status === 'completed' && state.image && state.presentation && state.annotations && <ReportView language={language} captures={state.captures} presentation={state.presentation} annotations={state.annotations} />}
     </>}
     {lightbox && <ImageLightbox language={language} image={lightbox} onClose={() => setLightbox(null)} />}
   </main>;
