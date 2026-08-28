@@ -1776,6 +1776,178 @@ describe('direct Community panel workflow', () => {
     expect(cloudRuntime.analyze).not.toHaveBeenCalled();
   });
 
+  it('clears a persistence error only when refresh owns the successful compensation', async () => {
+    const user = userEvent.setup();
+    const staleDirectSave = deferred<void>();
+    const failedCompensation = deferred<void>();
+    const staleRetry = deferred<void>();
+    const refreshCompensation = deferred<void>();
+    let persistedMode: 'cloud' | 'direct' = 'cloud';
+    const saveMode = vi.fn(async (mode: 'cloud' | 'direct') => {
+      const attempt = saveMode.mock.calls.length;
+      if (attempt === 1) await staleDirectSave.promise;
+      if (attempt === 2) await failedCompensation.promise;
+      if (attempt === 3) await staleRetry.promise;
+      if (attempt === 4) await refreshCompensation.promise;
+      persistedMode = mode;
+    });
+    const cloudRuntime = fakeCloudRuntime();
+
+    render(<App dependencies={{
+      loadConfig: async () => ({
+        provider: 'openrouter', apiKey: 'existing-key',
+        model: 'openai/gpt-5.6-terra', customModel: false,
+      }),
+      saveConfig: async () => undefined,
+      loadMode: async () => 'cloud',
+      saveMode,
+      cloudGateway: {
+        availability: () => ({ available: true }),
+        runtime: () => cloudRuntime,
+      },
+      cloudConnectionManager: connectedCloudManager(),
+      inspect,
+      capture,
+      createDirectRuntime: () => fakeRuntime(),
+    }} />);
+
+    await screen.findByRole('heading', { name: 'Detected chart' });
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    await user.click(screen.getByRole('tab', { name: 'Direct model' }));
+    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(saveMode).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: 'Refresh' }));
+
+    await act(async () => {
+      staleDirectSave.resolve();
+      await staleDirectSave.promise;
+    });
+    await waitFor(() => expect(saveMode).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      failedCompensation.reject(new Error('active mode compensation failed'));
+      try {
+        await failedCompensation.promise;
+      } catch {
+        // The current transition exposes the sanitized retry state.
+      }
+    });
+
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(saveMode).toHaveBeenCalledTimes(3));
+    await user.click(screen.getByRole('button', { name: 'Refresh' }));
+
+    await act(async () => {
+      staleRetry.resolve();
+      await staleRetry.promise;
+    });
+    await waitFor(() => expect(saveMode).toHaveBeenCalledTimes(4));
+    expect(screen.getByRole('alert')).toBeTruthy();
+
+    await act(async () => {
+      refreshCompensation.resolve();
+      await refreshCompensation.promise;
+    });
+
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    expect(persistedMode).toBe('cloud');
+    expect(saveMode.mock.calls.map(([mode]) => mode)).toEqual([
+      'direct', 'cloud', 'cloud', 'cloud',
+    ]);
+    expect(cloudRuntime.analyze).not.toHaveBeenCalled();
+  });
+
+  it('keeps a stale retry rejection silent after context compensation succeeds', async () => {
+    const user = userEvent.setup();
+    const staleDirectSave = deferred<void>();
+    const failedCompensation = deferred<void>();
+    const staleRetry = deferred<void>();
+    const contextCompensation = deferred<void>();
+    let persistedMode: 'cloud' | 'direct' = 'cloud';
+    const saveMode = vi.fn(async (mode: 'cloud' | 'direct') => {
+      const attempt = saveMode.mock.calls.length;
+      if (attempt === 1) await staleDirectSave.promise;
+      if (attempt === 2) await failedCompensation.promise;
+      if (attempt === 3) await staleRetry.promise;
+      if (attempt === 4) await contextCompensation.promise;
+      persistedMode = mode;
+    });
+    const cloudRuntime = fakeCloudRuntime();
+
+    render(<App dependencies={{
+      loadConfig: async () => ({
+        provider: 'openrouter', apiKey: 'existing-key',
+        model: 'openai/gpt-5.6-terra', customModel: false,
+      }),
+      saveConfig: async () => undefined,
+      loadMode: async () => 'cloud',
+      saveMode,
+      cloudGateway: {
+        availability: () => ({ available: true }),
+        runtime: () => cloudRuntime,
+      },
+      cloudConnectionManager: connectedCloudManager(),
+      inspect,
+      capture,
+      createDirectRuntime: () => fakeRuntime(),
+    }} />);
+
+    await screen.findByRole('heading', { name: 'Detected chart' });
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    await user.click(screen.getByRole('tab', { name: 'Direct model' }));
+    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(saveMode).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: 'Refresh' }));
+
+    await act(async () => {
+      staleDirectSave.resolve();
+      await staleDirectSave.promise;
+    });
+    await waitFor(() => expect(saveMode).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      failedCompensation.reject(new Error('active mode compensation failed'));
+      try {
+        await failedCompensation.promise;
+      } catch {
+        // The current transition exposes the sanitized retry state.
+      }
+    });
+
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(saveMode).toHaveBeenCalledTimes(3));
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', {
+        source: window.parent,
+        data: { source: 'chartviz-page', type: 'context-changed' },
+      }));
+    });
+
+    await act(async () => {
+      staleRetry.reject(new Error('stale retry failed'));
+      try {
+        await staleRetry.promise;
+      } catch {
+        // The context transition supersedes this storage rejection.
+      }
+    });
+    await waitFor(() => expect(saveMode).toHaveBeenCalledTimes(4));
+    expect(screen.getByRole('alert')).toBeTruthy();
+
+    await act(async () => {
+      contextCompensation.resolve();
+      await contextCompensation.promise;
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    expect(persistedMode).toBe('cloud');
+    expect(saveMode.mock.calls.map(([mode]) => mode)).toEqual([
+      'direct', 'cloud', 'cloud', 'cloud',
+    ]);
+    expect(cloudRuntime.analyze).not.toHaveBeenCalled();
+  });
+
   it('keeps a superseded compensation rejection silent while a newer runtime wins', async () => {
     const user = userEvent.setup();
     const staleDirectSave = deferred<void>();

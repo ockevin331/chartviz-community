@@ -22,7 +22,10 @@ import { loadAnalysisMode, saveAnalysisMode } from '../../src/storage/analysis-m
 import { loadProviderConfig, saveProviderConfig } from '../../src/storage/provider-session';
 import { loadCloudConnection, type StoredCloudConnection } from '../../src/storage/cloud-connection-storage';
 import { cleanupLegacyCloudAnalysisStorage } from '../../src/storage/legacy-cloud-analysis-cleanup';
-import { createLatestPersistenceCoordinator } from '../../src/storage/latest-persistence';
+import {
+  createLatestPersistenceCoordinator,
+  type LatestPersistenceResult,
+} from '../../src/storage/latest-persistence';
 import { AnalysisError } from '../../src/ui/components/AnalysisError';
 import { AnalysisModeSettings } from '../../src/ui/components/AnalysisModeSettings';
 import { AnalysisProgress } from '../../src/ui/components/AnalysisProgress';
@@ -124,16 +127,33 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     return restorationAttempt.current;
   }, []);
 
+  const ownModePersistenceCompletion = useCallback((
+    completion: Promise<LatestPersistenceResult>,
+    attempt: number,
+  ) => {
+    void completion.then(
+      (result) => {
+        if (restorationAttempt.current === attempt && result === 'persisted') {
+          setModePersistenceError(null);
+        }
+      },
+      () => {
+        if (restorationAttempt.current === attempt) setModePersistenceError(attempt);
+      },
+    );
+  }, []);
+
   const beginRuntimeTransition = useCallback(() => {
     const transition = invalidateRestoration();
-    void modePersistence.supersedeWith(activeModeRef.current).catch(() => {
-      if (restorationAttempt.current === transition) setModePersistenceError(transition);
-    });
+    ownModePersistenceCompletion(
+      modePersistence.supersedeWith(activeModeRef.current),
+      transition,
+    );
     setRestoreError(null);
     setLoading(false);
     setCloudBusy(false);
     return transition;
-  }, [invalidateRestoration, modePersistence]);
+  }, [invalidateRestoration, modePersistence, ownModePersistenceCompletion]);
 
   const persistModeForTransition = useCallback(async (
     mode: AnalysisMode,
@@ -147,14 +167,8 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
 
   const retryModePersistence = useCallback(() => {
     const attempt = ++restorationAttempt.current;
-    void modePersistence.persist(activeModeRef.current).then((result) => {
-      if (result === 'persisted' && restorationAttempt.current === attempt) {
-        setModePersistenceError(null);
-      }
-    }).catch(() => {
-      if (restorationAttempt.current === attempt) setModePersistenceError(attempt);
-    });
-  }, [modePersistence]);
+    ownModePersistenceCompletion(modePersistence.persist(activeModeRef.current), attempt);
+  }, [modePersistence, ownModePersistenceCompletion]);
 
   const activateDirectTransition = useCallback(async (
     config: ProviderConfig,
