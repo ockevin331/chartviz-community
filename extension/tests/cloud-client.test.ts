@@ -200,6 +200,24 @@ describe('fixed-origin ChartViz Cloud client', () => {
     await expect(operation).rejects.not.toThrow(token);
   });
 
+  it('preserves the existing task ID from an active-analysis conflict', async () => {
+    const fetcher = vi.fn().mockResolvedValue(jsonResponse({
+      code: 'analysis_already_active',
+      message: 'An analysis is already pending or processing.',
+      params: { existingTaskId: 'c_20260828_existing' },
+    }, 409));
+
+    const operation = createCloudClient(fetcher).createTask(
+      `cv_live_${'a'.repeat(43)}`,
+      { captures: [capture], outputLanguage: 'en' },
+    );
+
+    await expect(operation).rejects.toMatchObject({
+      code: 'analysis_already_active',
+      params: { existingTaskId: 'c_20260828_existing' },
+    });
+  });
+
   it('rejects a non-Cloud token before making a network request', async () => {
     const fetcher = vi.fn();
 

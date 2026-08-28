@@ -151,6 +151,7 @@
               "subscription_required",
               "subscription_expired",
               "quota_exhausted",
+              "analysis_already_active",
               "multi_timeframe_requires_advance",
               "invalid_image",
               "invalid_chart_image",
@@ -164,6 +165,18 @@
             ],
             "title": "Code",
             "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Message"
           },
           "params": {
             "additionalProperties": {

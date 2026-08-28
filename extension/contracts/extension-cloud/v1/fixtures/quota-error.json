@@ -1,5 +1,6 @@
 {
   "code": "quota_exhausted",
+  "message": null,
   "params": {
     "remaining": 0,
     "required": 2

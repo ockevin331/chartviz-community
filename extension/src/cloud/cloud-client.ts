@@ -28,13 +28,15 @@ const maxCaptureBytes = 10 * 1024 * 1024;
 const errorCodeSchema = z.enum([
   'authentication_required', 'invalid_token', 'token_revoked', 'token_expired',
   'insufficient_scope', 'free_trial_exhausted', 'subscription_required',
-  'subscription_expired', 'quota_exhausted', 'multi_timeframe_requires_advance',
+  'subscription_expired', 'quota_exhausted', 'analysis_already_active',
+  'multi_timeframe_requires_advance',
   'invalid_image', 'invalid_chart_image', 'unsupported_timeframe', 'task_not_found',
   'task_failed', 'task_cancelled', 'incompatible_api_version',
   'incompatible_report_schema', 'service_unavailable',
 ]);
 const errorSchema = z.object({
   code: errorCodeSchema,
+  message: z.string().nullable().optional(),
   params: z.record(z.string(), z.union([
     z.string(), z.number(), z.boolean(), z.null(),
   ])).default({}),

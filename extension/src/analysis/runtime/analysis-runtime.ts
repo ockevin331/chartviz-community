@@ -56,6 +56,7 @@ export type AnalysisRuntimeErrorCode = AnalysisErrorCode
   | 'subscription_required'
   | 'subscription_expired'
   | 'quota_exhausted'
+  | 'analysis_already_active'
   | 'multi_timeframe_requires_advance'
   | 'invalid_chart_image'
   | 'unsupported_timeframe'

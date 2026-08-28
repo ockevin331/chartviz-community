@@ -8,7 +8,6 @@ import {
 import { outputLanguageSchema } from '../cloud/cloud-task-schema';
 
 const activeTaskKey = 'chartvizCloudActiveTask';
-const activeTaskLockName = 'chartviz-cloud-active-task';
 
 export type StoredCloudActiveTask = Readonly<{
   requestId: string;
@@ -21,14 +20,6 @@ export type CloudActiveTaskLocalStorageArea = Readonly<{
   get(key: string): Promise<Record<string, unknown>>;
   set(items: Record<string, unknown>): Promise<void>;
   remove(key: string): Promise<void>;
-}>;
-
-export type CloudActiveTaskLockManager = Readonly<{
-  request<T>(
-    name: string,
-    options: Readonly<{ mode: 'exclusive' }>,
-    operation: () => Promise<T>,
-  ): Promise<T>;
 }>;
 
 export type CloudActiveTaskStorage = Readonly<{
@@ -71,22 +62,20 @@ function invalidActiveTask(): TypeError {
   return new TypeError('Invalid ChartViz Cloud active task.');
 }
 
-function unavailableActiveTaskStorage(): Error {
-  return new Error('ChartViz Cloud active-task storage is unavailable.');
+let operationQueue: Promise<void> = Promise.resolve();
+
+function serializeOperation<T>(operation: () => Promise<T>): Promise<T> {
+  const result = operationQueue.then(operation);
+  operationQueue = result.then(() => undefined, () => undefined);
+  return result;
 }
 
 export function createCloudActiveTaskStorage(
   area: CloudActiveTaskLocalStorageArea,
-  lockManager: CloudActiveTaskLockManager,
 ): CloudActiveTaskStorage {
-  const withLock = <T>(operation: () => Promise<T>) => lockManager.request(
-    activeTaskLockName,
-    { mode: 'exclusive' },
-    operation,
-  );
   return Object.freeze({
     load(): Promise<StoredCloudActiveTask | null> {
-      return withLock(async () => {
+      return serializeOperation(async () => {
         const values = await area.get(activeTaskKey);
         const value = values[activeTaskKey];
         if (value === undefined) return null;
@@ -99,14 +88,14 @@ export function createCloudActiveTaskStorage(
       });
     },
     save(value: StoredCloudActiveTask): Promise<void> {
-      return withLock(async () => {
+      return serializeOperation(async () => {
         const parsed = storedCloudActiveTaskSchema.safeParse(value);
         if (!parsed.success) throw invalidActiveTask();
         await area.set({ [activeTaskKey]: parsed.data });
       });
     },
     clear(expectedRequestId?: string, ownsClear = () => true): Promise<void> {
-      return withLock(async () => {
+      return serializeOperation(async () => {
         if (!ownsClear()) return;
         if (expectedRequestId === undefined) {
           if (!ownsClear()) return;
@@ -120,10 +109,12 @@ export function createCloudActiveTaskStorage(
         const parsed = storedCloudActiveTaskSchema.safeParse(value);
         if (!ownsClear()) return;
         if (!parsed.success) {
+          if (!ownsClear()) return;
           await area.remove(activeTaskKey);
           throw invalidActiveTask();
         }
-        if (parsed.data.requestId === expectedRequestId && ownsClear()) {
+        if (parsed.data.requestId === expectedRequestId) {
+          if (!ownsClear()) return;
           await area.remove(activeTaskKey);
         }
       });
@@ -131,24 +122,11 @@ export function createCloudActiveTaskStorage(
   });
 }
 
-const productionLockManager: CloudActiveTaskLockManager = Object.freeze({
-  request<T>(
-    name: string,
-    options: Readonly<{ mode: 'exclusive' }>,
-    operation: () => Promise<T>,
-  ): Promise<T> {
-    if (typeof navigator === 'undefined' || !navigator.locks) {
-      return Promise.reject(unavailableActiveTaskStorage());
-    }
-    return navigator.locks.request(name, options, () => operation());
-  },
-});
-
 const defaultStorage = createCloudActiveTaskStorage({
   get: (key) => browser.storage.local.get(key),
   set: (items) => browser.storage.local.set(items),
   remove: (key) => browser.storage.local.remove(key),
-}, productionLockManager);
+});
 
 export function saveCloudActiveTask(value: StoredCloudActiveTask): Promise<void> {
   return defaultStorage.save(value);

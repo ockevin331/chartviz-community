@@ -14,11 +14,7 @@ import {
 } from '../src/cloud/cloud-client';
 import type { StoredCaptureDescriptor } from '../src/cloud/cloud-capture-descriptors';
 import { parseExtensionAnalysisTask } from '../src/cloud/cloud-task-schema';
-import {
-  createCloudActiveTaskStorage,
-  type CloudActiveTaskLockManager,
-  type StoredCloudActiveTask,
-} from '../src/storage/cloud-active-task-storage';
+import type { StoredCloudActiveTask } from '../src/storage/cloud-active-task-storage';
 import type { StoredCloudConnection } from '../src/storage/cloud-connection-storage';
 import { parsePresentationBundle } from '../src/presentation/report-presentation-model';
 import { adaptCloudPresentation } from '../src/presentation/cloud-presentation-adapter';
@@ -43,38 +39,6 @@ function deferred<T>() {
   let reject!: (reason?: unknown) => void;
   const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
   return { promise, reject, resolve };
-}
-
-class RuntimeSharedExclusiveLock implements CloudActiveTaskLockManager {
-  requests = 0;
-  private tail: Promise<void> = Promise.resolve();
-
-  request<T>(
-    _name: string,
-    _options: Readonly<{ mode: 'exclusive' }>,
-    operation: () => Promise<T>,
-  ): Promise<T> {
-    this.requests += 1;
-    const result = this.tail.then(operation);
-    this.tail = result.then(() => undefined, () => undefined);
-    return result;
-  }
-}
-
-function runtimeActiveTaskStorage(
-  initial: StoredCloudActiveTask,
-  lock: CloudActiveTaskLockManager,
-) {
-  const key = 'chartvizCloudActiveTask';
-  let value: unknown = structuredClone(initial);
-  const storage = createCloudActiveTaskStorage({
-    get: async (requestedKey) => value === undefined
-      ? {}
-      : { [requestedKey]: structuredClone(value) },
-    set: async (items) => { value = structuredClone(items[key]); },
-    remove: async () => { value = undefined; },
-  }, lock);
-  return storage;
 }
 
 const capture: AnalysisCapture = {
@@ -949,97 +913,6 @@ describe('CloudAnalysisRuntime', () => {
     expect(test.client.cancelTask).not.toHaveBeenCalled();
     expect(test.storage.clear).not.toHaveBeenCalled();
     expect(test.current()).toEqual(active);
-  });
-
-  it.each([
-    'terminal task',
-    'descriptor mismatch',
-    'invalid capture',
-    'task error',
-  ] as const)('preserves the descriptor when detach overtakes queued %s cleanup', async (path) => {
-    const active = {
-      requestId: `c_20260828_queued_${path.replaceAll(' ', '_')}`,
-      tokenFingerprint: fingerprint,
-      captures: [singleStoredCapture],
-      outputLanguage: 'en' as const,
-    };
-    const lock = new RuntimeSharedExclusiveLock();
-    const activeTask = runtimeActiveTaskStorage(active, lock);
-    const blockerEntered = deferred<void>();
-    const releaseBlocker = deferred<void>();
-    let blocker: Promise<void> | null = null;
-    const failedTask = parseExtensionAnalysisTask({
-      ...pending,
-      requestId: active.requestId,
-      status: 'failed',
-      error: { code: 'task_failed', params: {}, pricingUrl: null },
-    });
-    const mismatchedTask = parseExtensionAnalysisTask({
-      ...structuredClone(completed),
-      requestId: active.requestId,
-      report: {
-        ...structuredClone(completed.report),
-        context: {
-          ...structuredClone(completed.report?.context),
-          captures: completed.report!.context.captures.map((item) => ({
-            ...item,
-            timeframe: '30m',
-          })),
-        },
-      },
-    });
-    const processingTask = parseExtensionAnalysisTask({
-      ...processing,
-      requestId: active.requestId,
-    });
-    const task = vi.fn(async () => {
-      blocker = lock.request(
-        'chartviz-cloud-active-task',
-        { mode: 'exclusive' },
-        async () => {
-          blockerEntered.resolve();
-          await releaseBlocker.promise;
-        },
-      );
-      await blockerEntered.promise;
-      if (path === 'task error') throw new CloudConnectionError('task_not_found');
-      if (path === 'terminal task') return failedTask;
-      if (path === 'descriptor mismatch') return mismatchedTask;
-      return processingTask;
-    });
-    const cancelTask = vi.fn(async () => failedTask);
-    const runtime = new CloudAnalysisRuntime({
-      client: {
-        createTask: vi.fn(async () => processingTask),
-        task,
-        cancelTask,
-        capture: vi.fn(async () => path === 'invalid capture'
-          ? { mediaType: 'image/png' as const, bytes: Uint8Array.of(1, 2, 3).buffer }
-          : downloadedCapture('C01')),
-      },
-      connection: { load: async () => ({ token, account }) },
-      activeTask,
-      cleanupPending: {
-        load: async () => null,
-        save: async () => undefined,
-        clear: async () => undefined,
-      },
-      fingerprintGrant: async () => fingerprint,
-      sleep: async () => undefined,
-      adaptPresentation: () => parsePresentationBundle(structuredClone(validPresentationBundle)),
-      buildAnnotations: async () => presentationAnnotatedImages,
-    });
-    const restoration = runtime.restoreActiveAnalysis();
-    await blockerEntered.promise;
-    await vi.waitFor(() => expect(lock.requests).toBe(3));
-
-    runtime.detach();
-    releaseBlocker.resolve();
-    await blocker;
-
-    await expect(restoration).rejects.toMatchObject({ code: 'cancelled' });
-    expect(cancelTask).not.toHaveBeenCalled();
-    await expect(activeTask.load()).resolves.toEqual(active);
   });
 
   it('clears an account A active record before returning any captures to account B', async () => {
