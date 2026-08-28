@@ -13,9 +13,7 @@ export type AnalysisModeSettingsProps = {
   selectedMode: AnalysisMode;
   onSelectedModeChange(mode: AnalysisMode): void;
   initialDirectConfig: ProviderConfig | null;
-  saveDirectConfig(config: ProviderConfig): Promise<void>;
-  saveMode(mode: AnalysisMode): Promise<void>;
-  onDirectActivated(config: ProviderConfig): void;
+  activateDirect(config: ProviderConfig): Promise<boolean>;
   testConnection(config: ProviderConfig, signal: AbortSignal): Promise<void>;
   cloudConnection: CloudConnectionState;
   cloudBusy: boolean;
@@ -30,9 +28,7 @@ export function AnalysisModeSettings({
   selectedMode,
   onSelectedModeChange,
   initialDirectConfig,
-  saveDirectConfig,
-  saveMode,
-  onDirectActivated,
+  activateDirect,
   testConnection,
   cloudConnection,
   cloudBusy,
@@ -44,11 +40,6 @@ export function AnalysisModeSettings({
   const cloudTabId = useId();
   const directTabId = useId();
   const panelId = useId();
-
-  async function saveDirect(config: ProviderConfig) {
-    await saveDirectConfig(config);
-    await saveMode('direct');
-  }
 
   async function connectCloud() {
     const token = cloudToken.trim();
@@ -104,7 +95,7 @@ export function AnalysisModeSettings({
           </form>}
           <a href="https://www.chartviz.xyz/settings" target="_blank" rel="noreferrer">{t.cloudTokenWebsite}</a>
         </section>
-        : <ProviderSetup language={language} mode={variant} initialConfig={initialDirectConfig} saveConfig={saveDirect} onConfigured={onDirectActivated} testConnection={testConnection} />}
+        : <ProviderSetup language={language} mode={variant} initialConfig={initialDirectConfig} saveConfig={activateDirect} testConnection={testConnection} />}
     </div>
   </section>;
 }

@@ -17,12 +17,17 @@ const CUSTOM_MODEL_KEY = '__custom_openrouter_model__' as const;
 
 type Props = {
   language: Language;
-  onConfigured(config: ProviderConfig): void;
+  onConfigured?(config: ProviderConfig): void;
   initialConfig?: ProviderConfig | null;
   mode?: 'setup' | 'settings';
-  saveConfig?: (config: ProviderConfig) => Promise<void>;
+  saveConfig?: (config: ProviderConfig) => Promise<boolean>;
   testConnection(config: ProviderConfig, signal: AbortSignal): Promise<void>;
 };
+
+async function saveConfigAndContinue(config: ProviderConfig): Promise<boolean> {
+  await saveProviderConfig(config);
+  return true;
+}
 
 function localError(error: unknown, language: Language): string {
   const t = translations[language];
@@ -43,7 +48,7 @@ function LockIcon() {
   return <svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /><path d="M12 14v2" /></svg>;
 }
 
-export function ProviderSetup({ language, onConfigured, initialConfig = null, mode = 'setup', saveConfig = saveProviderConfig, testConnection }: Props) {
+export function ProviderSetup({ language, onConfigured, initialConfig = null, mode = 'setup', saveConfig = saveConfigAndContinue, testConnection }: Props) {
   const privacyTitleId = useId();
   const initialChoice = findModelChoiceForConfig(initialConfig);
   const [selectedModelKey, setSelectedModelKey] = useState(initialConfig?.customModel
@@ -112,7 +117,7 @@ export function ProviderSetup({ language, onConfigured, initialConfig = null, mo
 
   async function save() {
     if (!valid) return;
-    try { const value = config(); await saveConfig(value); onConfigured(value); }
+    try { const value = config(); if (await saveConfig(value)) onConfigured?.(value); }
     catch (error) { setMessage({ kind: 'error', text: localError(error, language) }); }
   }
 

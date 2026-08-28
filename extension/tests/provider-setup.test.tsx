@@ -10,7 +10,7 @@ afterEach(cleanup);
 
 describe('ProviderSetup', () => {
   it('presents key and screenshot handling as a prominent non-interactive privacy notice', () => {
-    render(<ProviderSetup language="en" saveConfig={async () => undefined} testConnection={async () => undefined} onConfigured={() => undefined} />);
+    render(<ProviderSetup language="en" saveConfig={async () => true} testConnection={async () => undefined} onConfigured={() => undefined} />);
 
     const notice = screen.getByRole('note', { name: 'Privacy & data' });
     expect(within(notice).getByText(/key stays in extension session storage/i)).toBeTruthy();
@@ -22,7 +22,7 @@ describe('ProviderSetup', () => {
 
   it('explains the three-request analysis boundary, defaults to the recommended OpenRouter model, and never exposes Provider', async () => {
     const user = userEvent.setup();
-    const saveConfig = vi.fn(async () => undefined);
+    const saveConfig = vi.fn(async () => true);
     const testConnection = vi.fn(async () => undefined);
     const onConfigured = vi.fn();
     render(<ProviderSetup language="en" saveConfig={saveConfig} testConnection={testConnection} onConfigured={onConfigured} />);
@@ -51,9 +51,22 @@ describe('ProviderSetup', () => {
     expect(document.querySelectorAll('a[href]')).toHaveLength(0);
   });
 
+  it('does not notify configuration when the owning save transition was invalidated', async () => {
+    const user = userEvent.setup();
+    const saveConfig = vi.fn(async () => false);
+    const onConfigured = vi.fn();
+    render(<ProviderSetup language="en" saveConfig={saveConfig} testConnection={async () => undefined} onConfigured={onConfigured} />);
+
+    await user.type(screen.getByLabelText('API key'), 'session-secret');
+    await user.click(screen.getByRole('button', { name: 'Save and continue' }));
+
+    await waitFor(() => expect(saveConfig).toHaveBeenCalledTimes(1));
+    expect(onConfigured).not.toHaveBeenCalled();
+  });
+
   it('routes OpenAI and Google models directly when OpenRouter is disabled', async () => {
     const user = userEvent.setup();
-    const saveConfig = vi.fn(async () => undefined);
+    const saveConfig = vi.fn(async () => true);
     render(<ProviderSetup language="en" saveConfig={saveConfig} testConnection={async () => undefined} onConfigured={() => undefined} />);
     await user.type(screen.getByLabelText('API key'), 'key');
     await user.click(screen.getByRole('checkbox', { name: 'Use OpenRouter' }));
@@ -72,7 +85,7 @@ describe('ProviderSetup', () => {
 
   it('groups every approved model by vendor and keeps Anthropic and Qwen on OpenRouter', async () => {
     const user = userEvent.setup();
-    render(<ProviderSetup language="en" saveConfig={async () => undefined} testConnection={async () => undefined} onConfigured={() => undefined} />);
+    render(<ProviderSetup language="en" saveConfig={async () => true} testConnection={async () => undefined} onConfigured={() => undefined} />);
 
     await user.click(screen.getByRole('combobox', { name: 'Model' }));
 
@@ -102,7 +115,7 @@ describe('ProviderSetup', () => {
 
   it('accepts a custom OpenRouter model without a confirmation checkbox', async () => {
     const user = userEvent.setup();
-    const saveConfig = vi.fn(async () => undefined);
+    const saveConfig = vi.fn(async () => true);
     render(<ProviderSetup language="en" saveConfig={saveConfig} testConnection={async () => undefined} onConfigured={() => undefined} />);
     await user.click(screen.getByRole('combobox', { name: 'Model' }));
     await user.click(screen.getByRole('option', { name: /custom model/i }));
@@ -141,7 +154,7 @@ describe('ProviderSetup', () => {
       true,
     ],
   ] as const)('restores an existing %s configuration', (_name, initialConfig, modelLabel, openRouter) => {
-    render(<ProviderSetup language="en" initialConfig={initialConfig as ProviderConfig} saveConfig={async () => undefined} testConnection={async () => undefined} onConfigured={() => undefined} />);
+    render(<ProviderSetup language="en" initialConfig={initialConfig as ProviderConfig} saveConfig={async () => true} testConnection={async () => undefined} onConfigured={() => undefined} />);
     expect(screen.getByRole('combobox', { name: 'Model' })).toHaveProperty('textContent', expect.stringContaining(modelLabel));
     expect(screen.getByRole('checkbox', { name: 'Use OpenRouter' })).toHaveProperty('checked', openRouter);
   });
@@ -150,7 +163,7 @@ describe('ProviderSetup', () => {
     const initialConfig: ProviderConfig = {
       provider: 'openrouter', apiKey: 'router-key', model: 'vendor/custom-vision', customModel: true,
     };
-    render(<ProviderSetup language="en" initialConfig={initialConfig} saveConfig={async () => undefined} testConnection={async () => undefined} onConfigured={() => undefined} />);
+    render(<ProviderSetup language="en" initialConfig={initialConfig} saveConfig={async () => true} testConnection={async () => undefined} onConfigured={() => undefined} />);
     expect(screen.getByRole('combobox', { name: 'Model' })).toHaveProperty('textContent', expect.stringContaining('Custom model'));
     expect(screen.getByLabelText('Custom model ID')).toHaveProperty('value', 'vendor/custom-vision');
     expect(screen.getByRole('checkbox', { name: 'Use OpenRouter' })).toHaveProperty('checked', true);
@@ -159,7 +172,7 @@ describe('ProviderSetup', () => {
   it('sends exactly one request when testing the connection and localizes provider errors', async () => {
     const user = userEvent.setup();
     const testConnection = vi.fn(async () => { throw new ProviderError('invalid_api_key'); });
-    render(<ProviderSetup language="zh-CN" saveConfig={async () => undefined} testConnection={testConnection} onConfigured={() => undefined} />);
+    render(<ProviderSetup language="zh-CN" saveConfig={async () => true} testConnection={testConnection} onConfigured={() => undefined} />);
     await user.type(screen.getByLabelText('API 密钥'), 'bad-key');
     expect(screen.getByText(/测试连接会向提供商发送 1 次请求/)).toBeTruthy();
     await user.click(screen.getByRole('button', { name: '测试连接' }));
@@ -168,7 +181,7 @@ describe('ProviderSetup', () => {
   });
 
   it('does not duplicate the header-owned language control', () => {
-    render(<ProviderSetup language="en" saveConfig={async () => undefined} testConnection={async () => undefined} onConfigured={() => undefined} />);
+    render(<ProviderSetup language="en" saveConfig={async () => true} testConnection={async () => undefined} onConfigured={() => undefined} />);
     expect(screen.queryByRole('button', { name: 'Language' })).toBeNull();
   });
 });

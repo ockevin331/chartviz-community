@@ -91,6 +91,11 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
   const lastContext = useRef<ChartContext | null>(null);
   const restorationRuntime = useRef<AnalysisRuntime | null>(null);
   const restorationAttempt = useRef(0);
+  const activeModeRef = useRef<AnalysisMode>('cloud');
+  const desiredStoredMode = useRef<{ attempt: number; mode: AnalysisMode }>({
+    attempt: 0,
+    mode: 'cloud',
+  });
   const dragPosition = useRef<{ x: number; y: number } | null>(null);
   const t = translations[language];
 
@@ -109,16 +114,91 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
 
   const beginRuntimeTransition = useCallback(() => {
     const transition = invalidateRestoration();
+    desiredStoredMode.current = { attempt: transition, mode: activeModeRef.current };
     setRestoreError(null);
     setLoading(false);
     setCloudBusy(false);
     return transition;
   }, [invalidateRestoration]);
 
-  const saveDirectConfig = useCallback(async (config: ProviderConfig): Promise<void> => {
-    beginRuntimeTransition();
-    await dependencies.saveConfig(config);
-  }, [beginRuntimeTransition, dependencies.saveConfig]);
+  const reconcileStoredMode = useCallback((completed: {
+    attempt: number;
+    mode: AnalysisMode;
+  }): void => {
+    async function reconcile(write: { attempt: number; mode: AnalysisMode }): Promise<void> {
+      const desired = desiredStoredMode.current;
+      if (desired.attempt === write.attempt && desired.mode === write.mode) return;
+      try {
+        await dependencies.saveMode(desired.mode);
+      } catch {
+        return;
+      }
+      await reconcile(desired);
+    }
+    void reconcile(completed);
+  }, [dependencies.saveMode]);
+
+  const persistModeForTransition = useCallback(async (
+    mode: AnalysisMode,
+    attempt: number,
+  ): Promise<boolean> => {
+    const write = { attempt, mode };
+    desiredStoredMode.current = write;
+    try {
+      await dependencies.saveMode(mode);
+    } catch (error) {
+      if (restorationAttempt.current !== attempt) return false;
+      throw error;
+    }
+    reconcileStoredMode(write);
+    return restorationAttempt.current === attempt;
+  }, [dependencies.saveMode, reconcileStoredMode]);
+
+  const activateDirectTransition = useCallback(async (
+    config: ProviderConfig,
+    closeSettings: boolean,
+  ): Promise<boolean> => {
+    const transition = beginRuntimeTransition();
+    try {
+      await dependencies.saveConfig(config);
+    } catch (error) {
+      if (restorationAttempt.current !== transition) return false;
+      throw error;
+    }
+    if (restorationAttempt.current !== transition) return false;
+    if (!await persistModeForTransition('direct', transition)) return false;
+    if (restorationAttempt.current !== transition) return false;
+
+    const wasDirect = activeModeRef.current === 'direct';
+    const runtime = dependencies.createDirectRuntime(config);
+    if (restorationAttempt.current !== transition) return false;
+    activeModeRef.current = 'direct';
+    setProviderConfig(config);
+    setActiveMode('direct');
+    if (closeSettings) setSettingsMode('direct');
+    else setSetupMode('direct');
+    setAnalysisCapabilities(runtime.capabilities());
+    if (wasDirect) controller.updateRuntime(runtime);
+    else controller.configure(runtime);
+    if (closeSettings) setSettingsOpen(false);
+    return true;
+  }, [
+    beginRuntimeTransition,
+    controller.configure,
+    controller.updateRuntime,
+    dependencies.createDirectRuntime,
+    dependencies.saveConfig,
+    persistModeForTransition,
+  ]);
+
+  const activateInitialDirect = useCallback(
+    (config: ProviderConfig) => activateDirectTransition(config, false),
+    [activateDirectTransition],
+  );
+  const activateSettingsDirect = useCallback(
+    (config: ProviderConfig) => activateDirectTransition(config, true),
+    [activateDirectTransition],
+  );
 
   const restoreCloudRuntime = useCallback(async (
     runtime: AnalysisRuntime,
@@ -164,6 +244,8 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
       if (!isCurrent()) return;
       setProviderConfig(config);
       setCloudConnection(connection);
+      activeModeRef.current = mode;
+      desiredStoredMode.current = { attempt: startupAttempt, mode };
       setActiveMode(mode);
       setSetupMode(mode);
       setSettingsMode(mode);
@@ -273,27 +355,6 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     }, language);
   }
 
-  function finishInitialSetup(config: ProviderConfig) {
-    beginRuntimeTransition();
-    setProviderConfig(config);
-    setActiveMode('direct');
-    setSetupMode('direct');
-    activateRuntime(dependencies.createDirectRuntime(config));
-  }
-
-  function finishSettings(config: ProviderConfig) {
-    beginRuntimeTransition();
-    const wasDirect = activeMode === 'direct';
-    setProviderConfig(config);
-    setActiveMode('direct');
-    setSettingsMode('direct');
-    const runtime = dependencies.createDirectRuntime(config);
-    setAnalysisCapabilities(runtime.capabilities());
-    if (wasDirect) controller.updateRuntime(runtime);
-    else controller.configure(runtime);
-    setSettingsOpen(false);
-  }
-
   async function connectCloud(token: string): Promise<boolean> {
     const transition = beginRuntimeTransition();
     setCloudBusy(true);
@@ -302,10 +363,12 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
       if (restorationAttempt.current !== transition) return false;
       setCloudConnection(connection);
       if (connection.status === 'connected') {
-        await dependencies.saveMode('cloud');
+        if (!await persistModeForTransition('cloud', transition)) return false;
         if (restorationAttempt.current !== transition) return false;
         const runtime = resolveCloudRuntime(dependencies.cloudGateway);
         if (!runtime) return false;
+        if (restorationAttempt.current !== transition) return false;
+        activeModeRef.current = 'cloud';
         setActiveMode('cloud');
         setSetupMode('cloud');
         setSettingsMode('cloud');
@@ -314,6 +377,9 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
         return true;
       }
       return false;
+    } catch (error) {
+      if (restorationAttempt.current !== transition) return false;
+      throw error;
     } finally {
       if (restorationAttempt.current === transition) setCloudBusy(false);
     }
@@ -363,11 +429,11 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     </header>
     {settingsOpen ? <section className="settings-view" role="dialog" aria-label={t.analysisSettings}>
       <button className="secondary settings-back" type="button" aria-label={t.backToChart} onClick={() => setSettingsOpen(false)}>← {t.backToChart}</button>
-      <AnalysisModeSettings language={language} variant="settings" activeMode={activeMode} selectedMode={settingsMode} onSelectedModeChange={setSettingsMode} initialDirectConfig={providerConfig} saveDirectConfig={saveDirectConfig} saveMode={dependencies.saveMode} onDirectActivated={finishSettings} testConnection={dependencies.testDirectConnection} cloudConnection={cloudConnection} cloudBusy={cloudBusy} onCloudConnect={connectCloud} onCloudDisconnect={disconnectCloud} />
+      <AnalysisModeSettings language={language} variant="settings" activeMode={activeMode} selectedMode={settingsMode} onSelectedModeChange={setSettingsMode} initialDirectConfig={providerConfig} activateDirect={activateSettingsDirect} testConnection={dependencies.testDirectConnection} cloudConnection={cloudConnection} cloudBusy={cloudBusy} onCloudConnect={connectCloud} onCloudDisconnect={disconnectCloud} />
     </section> : <>
       {loading && <section className="backend-loading" role="status">…</section>}
       {!loading && restoreError && <AnalysisError language={language} errorCode={restoreError.code} onBack={retryRestoration} />}
-      {!loading && !restoreError && state.status === 'setup' && <AnalysisModeSettings language={language} variant="setup" activeMode={activeMode} selectedMode={setupMode} onSelectedModeChange={setSetupMode} initialDirectConfig={providerConfig} saveDirectConfig={saveDirectConfig} saveMode={dependencies.saveMode} onDirectActivated={finishInitialSetup} testConnection={dependencies.testDirectConnection} cloudConnection={cloudConnection} cloudBusy={cloudBusy} onCloudConnect={connectCloud} onCloudDisconnect={disconnectCloud} />}
+      {!loading && !restoreError && state.status === 'setup' && <AnalysisModeSettings language={language} variant="setup" activeMode={activeMode} selectedMode={setupMode} onSelectedModeChange={setSetupMode} initialDirectConfig={providerConfig} activateDirect={activateInitialDirect} testConnection={dependencies.testDirectConnection} cloudConnection={cloudConnection} cloudBusy={cloudBusy} onCloudConnect={connectCloud} onCloudDisconnect={disconnectCloud} />}
       {!loading && !restoreError && state.status === 'source' && analysisCapabilities && <ChartCaptureSource key={contextRevision} language={language} capabilities={analysisCapabilities} inspect={dependencies.inspect} capture={dependencies.capture} captureMany={dependencies.captureMany} loadMultiTimeframes={loadMultiTimeframes} onCaptured={analyzeCaptured} onOpenCloudSettings={openCloudSettings} />}
       {state.status === 'preview' && state.image && <ImagePreview language={language} image={state.image} onZoom={setLightbox} onChange={captureAgain} onAnalyze={retryAnalysis} />}
       {state.status === 'analyzing' && state.image && <><ImagePreview language={language} image={state.image} analyzing onZoom={setLightbox} onChange={captureAgain} onAnalyze={() => undefined} /><AnalysisProgress language={language} progress={state.progress} onCancel={controller.cancel} /></>}

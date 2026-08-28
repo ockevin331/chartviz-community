@@ -1204,6 +1204,245 @@ describe('direct Community panel workflow', () => {
     expect(events).toEqual(['config', 'mode', 'runtime']);
   });
 
+  it('keeps a newer Cloud transition when an older Direct config save resolves late', async () => {
+    const user = userEvent.setup();
+    const configSave = deferred<void>();
+    let persistedMode: 'cloud' | 'direct' = 'direct';
+    const saveMode = vi.fn(async (mode: 'cloud' | 'direct') => { persistedMode = mode; });
+    const directRuntime = fakeRuntime();
+    const createDirectRuntime = vi.fn(() => directRuntime);
+    const cloudRuntime = fakeCloudRuntime();
+    const manager: CloudConnectionManager = {
+      ...disconnectedCloudManager,
+      connect: vi.fn(async () => connectedCloudManager().load()),
+    };
+
+    render(<App dependencies={{
+      loadConfig: async () => ({
+        provider: 'openrouter', apiKey: 'existing-key',
+        model: 'openai/gpt-5.6-terra', customModel: false,
+      }),
+      loadMode: async () => 'direct',
+      saveConfig: vi.fn(() => configSave.promise),
+      saveMode,
+      cloudGateway: {
+        availability: () => ({ available: true }),
+        runtime: () => cloudRuntime,
+      },
+      cloudConnectionManager: manager,
+      inspect,
+      capture,
+      createDirectRuntime,
+    }} />);
+
+    await screen.findByRole('heading', { name: 'Detected chart' });
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    await user.click(screen.getByRole('tab', { name: 'ChartViz Cloud' }));
+    await user.type(screen.getByLabelText('Cloud access token'), `cv_live_${'c'.repeat(43)}`);
+    await user.click(screen.getByRole('button', { name: 'Connect Cloud' }));
+    expect(await screen.findByRole('heading', { name: 'Detected chart' })).toBeTruthy();
+
+    await act(async () => {
+      configSave.resolve();
+      await configSave.promise;
+      await Promise.resolve();
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(screen.getByRole('tab', { name: 'ChartViz Cloud' }).getAttribute('aria-current')).toBe('true');
+    expect(persistedMode).toBe('cloud');
+    expect(saveMode).not.toHaveBeenCalledWith('direct');
+    expect(createDirectRuntime).toHaveBeenCalledTimes(1);
+    expect(directRuntime.analyze).not.toHaveBeenCalled();
+  });
+
+  it('keeps newer Cloud UI when an older Direct config save rejects late', async () => {
+    const user = userEvent.setup();
+    const configSave = deferred<void>();
+    let persistedMode: 'cloud' | 'direct' = 'direct';
+    const directRuntime = fakeRuntime();
+    const createDirectRuntime = vi.fn(() => directRuntime);
+    const cloudRuntime = fakeCloudRuntime();
+    const manager: CloudConnectionManager = {
+      ...disconnectedCloudManager,
+      connect: vi.fn(async () => connectedCloudManager().load()),
+    };
+
+    render(<App dependencies={{
+      loadConfig: async () => ({
+        provider: 'openrouter', apiKey: 'existing-key',
+        model: 'openai/gpt-5.6-terra', customModel: false,
+      }),
+      loadMode: async () => 'direct',
+      saveConfig: vi.fn(() => configSave.promise),
+      saveMode: async (mode) => { persistedMode = mode; },
+      cloudGateway: {
+        availability: () => ({ available: true }),
+        runtime: () => cloudRuntime,
+      },
+      cloudConnectionManager: manager,
+      inspect,
+      capture,
+      createDirectRuntime,
+    }} />);
+
+    await screen.findByRole('heading', { name: 'Detected chart' });
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    await user.click(screen.getByRole('tab', { name: 'ChartViz Cloud' }));
+    await user.type(screen.getByLabelText('Cloud access token'), `cv_live_${'e'.repeat(43)}`);
+    await user.click(screen.getByRole('button', { name: 'Connect Cloud' }));
+    expect(await screen.findByRole('heading', { name: 'Detected chart' })).toBeTruthy();
+
+    await act(async () => {
+      configSave.reject(new Error('old direct persistence failed'));
+      try {
+        await configSave.promise;
+      } catch {
+        // The invalidated Direct transition owns and sanitizes its rejection.
+      }
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Detected chart' })).toBeTruthy();
+    expect(persistedMode).toBe('cloud');
+    expect(createDirectRuntime).toHaveBeenCalledTimes(1);
+    expect(directRuntime.analyze).not.toHaveBeenCalled();
+    expect(cloudRuntime.analyze).not.toHaveBeenCalled();
+  });
+
+  it('restores newer Cloud persistence after an older Direct mode write resolves late', async () => {
+    const user = userEvent.setup();
+    const directModeSave = deferred<void>();
+    let persistedMode: 'cloud' | 'direct' = 'direct';
+    let firstDirectWrite = true;
+    const saveMode = vi.fn(async (mode: 'cloud' | 'direct') => {
+      if (mode === 'direct' && firstDirectWrite) {
+        firstDirectWrite = false;
+        await directModeSave.promise;
+      }
+      persistedMode = mode;
+    });
+    const directRuntime = fakeRuntime();
+    const createDirectRuntime = vi.fn(() => directRuntime);
+    const cloudRuntime = fakeCloudRuntime();
+    const manager: CloudConnectionManager = {
+      ...disconnectedCloudManager,
+      connect: vi.fn(async () => connectedCloudManager().load()),
+    };
+
+    render(<App dependencies={{
+      loadConfig: async () => ({
+        provider: 'openrouter', apiKey: 'existing-key',
+        model: 'openai/gpt-5.6-terra', customModel: false,
+      }),
+      loadMode: async () => 'direct',
+      saveConfig: async () => undefined,
+      saveMode,
+      cloudGateway: {
+        availability: () => ({ available: true }),
+        runtime: () => cloudRuntime,
+      },
+      cloudConnectionManager: manager,
+      inspect,
+      capture,
+      createDirectRuntime,
+    }} />);
+
+    await screen.findByRole('heading', { name: 'Detected chart' });
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(saveMode).toHaveBeenCalledWith('direct'));
+    await user.click(screen.getByRole('tab', { name: 'ChartViz Cloud' }));
+    await user.type(screen.getByLabelText('Cloud access token'), `cv_live_${'m'.repeat(43)}`);
+    await user.click(screen.getByRole('button', { name: 'Connect Cloud' }));
+    expect(await screen.findByRole('heading', { name: 'Detected chart' })).toBeTruthy();
+    expect(persistedMode).toBe('cloud');
+
+    await act(async () => {
+      directModeSave.resolve();
+      await directModeSave.promise;
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(persistedMode).toBe('cloud'));
+
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(screen.getByRole('tab', { name: 'ChartViz Cloud' }).getAttribute('aria-current')).toBe('true');
+    expect(saveMode.mock.calls.at(-1)?.[0]).toBe('cloud');
+    expect(createDirectRuntime).toHaveBeenCalledTimes(1);
+    expect(directRuntime.analyze).not.toHaveBeenCalled();
+  });
+
+  it('keeps a newer Direct transition and persistence when an older Cloud mode write resolves late', async () => {
+    const user = userEvent.setup();
+    const cloudModeSave = deferred<void>();
+    let persistedMode: 'cloud' | 'direct' = 'direct';
+    let firstCloudWrite = true;
+    const saveMode = vi.fn(async (mode: 'cloud' | 'direct') => {
+      if (mode === 'cloud' && firstCloudWrite) {
+        firstCloudWrite = false;
+        await cloudModeSave.promise;
+      }
+      persistedMode = mode;
+    });
+    const initialRuntime = fakeRuntime();
+    const latestRuntime = fakeRuntime();
+    const createDirectRuntime = vi.fn()
+      .mockReturnValueOnce(initialRuntime)
+      .mockReturnValueOnce(latestRuntime);
+    const cloudRuntime = fakeCloudRuntime();
+    const manager: CloudConnectionManager = {
+      ...disconnectedCloudManager,
+      connect: vi.fn(async () => connectedCloudManager().load()),
+    };
+
+    render(<App dependencies={{
+      loadConfig: async () => ({
+        provider: 'openrouter', apiKey: 'existing-key',
+        model: 'openai/gpt-5.6-terra', customModel: false,
+      }),
+      loadMode: async () => 'direct',
+      saveConfig: async () => undefined,
+      saveMode,
+      cloudGateway: {
+        availability: () => ({ available: true }),
+        runtime: () => cloudRuntime,
+      },
+      cloudConnectionManager: manager,
+      inspect,
+      capture,
+      createDirectRuntime,
+    }} />);
+
+    await screen.findByRole('heading', { name: 'Detected chart' });
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    await user.click(screen.getByRole('tab', { name: 'ChartViz Cloud' }));
+    await user.type(screen.getByLabelText('Cloud access token'), `cv_live_${'d'.repeat(43)}`);
+    await user.click(screen.getByRole('button', { name: 'Connect Cloud' }));
+    await waitFor(() => expect(saveMode).toHaveBeenCalledWith('cloud'));
+
+    await user.click(screen.getByRole('tab', { name: 'Direct model' }));
+    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(await screen.findByRole('heading', { name: 'Detected chart' })).toBeTruthy();
+    expect(persistedMode).toBe('direct');
+
+    await act(async () => {
+      cloudModeSave.resolve();
+      await cloudModeSave.promise;
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(persistedMode).toBe('direct'));
+
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(screen.getByRole('tab', { name: 'Direct model' }).getAttribute('aria-current')).toBe('true');
+    expect(saveMode.mock.calls.at(-1)?.[0]).toBe('direct');
+    expect(createDirectRuntime).toHaveBeenCalledTimes(2);
+    expect(cloudRuntime.analyze).not.toHaveBeenCalled();
+    expect(latestRuntime.analyze).not.toHaveBeenCalled();
+  });
+
   it('localizes a malformed runtime report without exposing validation or schema details', async () => {
     const user = userEvent.setup();
     const diagnostic: AnalysisDiagnostic = {

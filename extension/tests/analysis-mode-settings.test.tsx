@@ -17,9 +17,7 @@ function fixture(language: 'en' | 'zh-CN' = 'en') {
     selectedMode: 'cloud' as const,
     onSelectedModeChange: vi.fn(),
     initialDirectConfig: null,
-    saveDirectConfig: vi.fn(async () => { events.push('config'); }),
-    saveMode: vi.fn(async () => { events.push('mode'); }),
-    onDirectActivated: vi.fn(() => { events.push('activate'); }),
+    activateDirect: vi.fn(async () => { events.push('activate'); return true; }),
     testConnection: vi.fn(async () => undefined),
     cloudConnection: { status: 'disconnected', account: null, errorCode: null } as CloudConnectionState,
     cloudBusy: false,
@@ -118,12 +116,10 @@ describe('AnalysisModeSettings', () => {
     await user.click(screen.getByRole('tab', { name: 'Direct model' }));
 
     expect(props.onSelectedModeChange).toHaveBeenCalledWith('direct');
-    expect(props.saveDirectConfig).not.toHaveBeenCalled();
-    expect(props.saveMode).not.toHaveBeenCalled();
-    expect(props.onDirectActivated).not.toHaveBeenCalled();
+    expect(props.activateDirect).not.toHaveBeenCalled();
   });
 
-  it('retains the complete Direct setup and activates only after config and mode persistence', async () => {
+  it('retains the complete Direct setup and submits one typed activation request', async () => {
     const user = userEvent.setup();
     const { props, events } = fixture();
     render(<AnalysisModeSettings {...props} selectedMode="direct" />);
@@ -134,15 +130,14 @@ describe('AnalysisModeSettings', () => {
     await user.type(screen.getByLabelText('API key'), 'session-secret');
     await user.click(screen.getByRole('button', { name: 'Save and continue' }));
 
-    await waitFor(() => expect(props.onDirectActivated).toHaveBeenCalledTimes(1));
-    expect(props.saveDirectConfig).toHaveBeenCalledWith({
+    await waitFor(() => expect(props.activateDirect).toHaveBeenCalledTimes(1));
+    expect(props.activateDirect).toHaveBeenCalledWith({
       provider: 'openrouter',
       apiKey: 'session-secret',
       model: 'openai/gpt-5.6-terra',
       customModel: false,
     });
-    expect(props.saveMode).toHaveBeenCalledWith('direct');
-    expect(events).toEqual(['config', 'mode', 'activate']);
+    expect(events).toEqual(['activate']);
   });
 
   it('localizes the mode tabs and connection form in Simplified Chinese', () => {
