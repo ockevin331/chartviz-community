@@ -40,6 +40,15 @@ function errorCode(error: unknown): CloudConnectionErrorCode {
   return error instanceof CloudConnectionError ? error.code : 'service_unavailable';
 }
 
+function createRecoverableMutationSerializer() {
+  let tail: Promise<void> = Promise.resolve();
+  return function serialize<T>(mutation: () => Promise<T>): Promise<T> {
+    const result = tail.then(mutation);
+    tail = result.then(() => undefined, () => undefined);
+    return result;
+  };
+}
+
 export function createCloudConnectionManager(
   dependencies: CloudConnectionDependencies = {
     client: createCloudClient(),
@@ -50,6 +59,7 @@ export function createCloudConnectionManager(
     },
   },
 ): CloudConnectionManager {
+  const serializeMutation = createRecoverableMutationSerializer();
   return Object.freeze({
     async load(): Promise<CloudConnectionState> {
       let stored: StoredCloudConnection | null = null;
@@ -64,20 +74,24 @@ export function createCloudConnectionManager(
       }
     },
 
-    async connect(rawToken: string): Promise<CloudConnectionState> {
-      const token = rawToken.trim();
-      try {
-        const account = await dependencies.client.connect(token);
-        await dependencies.storage.save(token, account);
-        return { status: 'connected', account, errorCode: null };
-      } catch (error) {
-        return { status: 'error', account: null, errorCode: errorCode(error) };
-      }
+    connect(rawToken: string): Promise<CloudConnectionState> {
+      return serializeMutation(async () => {
+        const token = rawToken.trim();
+        try {
+          const account = await dependencies.client.connect(token);
+          await dependencies.storage.save(token, account);
+          return { status: 'connected', account, errorCode: null };
+        } catch (error) {
+          return { status: 'error', account: null, errorCode: errorCode(error) };
+        }
+      });
     },
 
-    async disconnect(): Promise<CloudConnectionState> {
-      await dependencies.storage.clear();
-      return { status: 'disconnected', account: null, errorCode: null };
+    disconnect(): Promise<CloudConnectionState> {
+      return serializeMutation(async () => {
+        await dependencies.storage.clear();
+        return { status: 'disconnected', account: null, errorCode: null };
+      });
     },
   });
 }

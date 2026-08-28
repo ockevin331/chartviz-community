@@ -101,6 +101,7 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
   const [cloudBusy, setCloudBusy] = useState(false);
   const [analysisCapabilities, setAnalysisCapabilities] = useState<AnalysisCapabilities | null>(null);
   const [restoreError, setRestoreError] = useState<AnalysisRuntimeFailure | null>(null);
+  const [modePersistenceError, setModePersistenceError] = useState<number | null>(null);
   const [contextRevision, setContextRevision] = useState(0);
   const [lightbox, setLightbox] = useState<LightboxImage | null>(null);
   const lastContext = useRef<ChartContext | null>(null);
@@ -125,7 +126,9 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
 
   const beginRuntimeTransition = useCallback(() => {
     const transition = invalidateRestoration();
-    modePersistence.supersedeWith(activeModeRef.current);
+    void modePersistence.supersedeWith(activeModeRef.current).catch(() => {
+      if (restorationAttempt.current === transition) setModePersistenceError(transition);
+    });
     setRestoreError(null);
     setLoading(false);
     setCloudBusy(false);
@@ -137,7 +140,20 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     attempt: number,
   ): Promise<boolean> => {
     const result = await modePersistence.persist(mode);
-    return result === 'persisted' && restorationAttempt.current === attempt;
+    const persisted = result === 'persisted' && restorationAttempt.current === attempt;
+    if (persisted) setModePersistenceError(null);
+    return persisted;
+  }, [modePersistence]);
+
+  const retryModePersistence = useCallback(() => {
+    const attempt = ++restorationAttempt.current;
+    void modePersistence.persist(activeModeRef.current).then((result) => {
+      if (result === 'persisted' && restorationAttempt.current === attempt) {
+        setModePersistenceError(null);
+      }
+    }).catch(() => {
+      if (restorationAttempt.current === attempt) setModePersistenceError(attempt);
+    });
   }, [modePersistence]);
 
   const activateDirectTransition = useCallback(async (
@@ -415,7 +431,9 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
       <div className="brand"><Logo /><div><h1>ChartViz</h1><p className="slogan">{t.slogan}</p></div></div>
       <div className="header-actions" onPointerDown={(event) => event.stopPropagation()}><LanguageMenu language={language} onChange={setLanguage} />{(providerConfig || cloudConnection.account) && <button className="toolbar-button settings-button" type="button" aria-label={t.settings} onClick={openSettings}><SettingsIcon /></button>}<button className="toolbar-button refresh-button" type="button" aria-label={t.refresh} onClick={refreshAll}><RefreshIcon /></button><button className="toolbar-button close-button" type="button" aria-label={t.close} onClick={() => window.parent.postMessage({ source: 'chartviz', type: 'panel-close' }, '*')}><CloseIcon /></button></div>
     </header>
-    {settingsOpen ? <section className="settings-view" role="dialog" aria-label={t.analysisSettings}>
+    {modePersistenceError !== null
+      ? <AnalysisError language={language} errorCode="service_unavailable" onBack={retryModePersistence} />
+      : settingsOpen ? <section className="settings-view" role="dialog" aria-label={t.analysisSettings}>
       <button className="secondary settings-back" type="button" aria-label={t.backToChart} onClick={() => setSettingsOpen(false)}>← {t.backToChart}</button>
       <AnalysisModeSettings language={language} variant="settings" activeMode={activeMode} selectedMode={settingsMode} onSelectedModeChange={setSettingsMode} initialDirectConfig={providerConfig} activateDirect={activateSettingsDirect} testConnection={dependencies.testDirectConnection} cloudConnection={cloudConnection} cloudBusy={cloudBusy} onCloudConnect={connectCloud} onCloudDisconnect={disconnectCloud} />
     </section> : <>

@@ -2,7 +2,7 @@ export type LatestPersistenceResult = 'persisted' | 'superseded';
 
 export type LatestPersistenceCoordinator<T> = Readonly<{
   persist(value: T): Promise<LatestPersistenceResult>;
-  supersedeWith(value: T): void;
+  supersedeWith(value: T): Promise<LatestPersistenceResult>;
 }>;
 
 type PersistenceRequest<T> = {
@@ -48,9 +48,9 @@ export function createLatestPersistenceCoordinator<T>(
     });
   }
 
-  function supersedeWith(value: T): void {
-    if (!draining && !pending) return;
-    void persist(value).catch(() => undefined);
+  function supersedeWith(value: T): Promise<LatestPersistenceResult> {
+    if (!draining && !pending) return Promise.resolve('superseded');
+    return persist(value);
   }
 
   return Object.freeze({ persist, supersedeWith });

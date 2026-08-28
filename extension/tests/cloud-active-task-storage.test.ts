@@ -16,20 +16,44 @@ vi.mock('wxt/browser', () => ({ browser: browserMock }));
 
 import {
   createCloudActiveTaskStorage,
+  loadCloudActiveTask,
+  type CloudActiveTaskLockManager,
   type StoredCloudActiveTask,
 } from '../src/storage/cloud-active-task-storage';
+
+class SharedFakeExclusiveLock implements CloudActiveTaskLockManager {
+  readonly requests: Array<{ name: string; mode: 'exclusive' }> = [];
+  private readonly tails = new Map<string, Promise<void>>();
+
+  request<T>(
+    name: string,
+    options: Readonly<{ mode: 'exclusive' }>,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    this.requests.push({ name, mode: options.mode });
+    const result = (this.tails.get(name) ?? Promise.resolve()).then(operation);
+    this.tails.set(name, result.then(() => undefined, () => undefined));
+    return result;
+  }
+}
 
 class MemoryStorageArea {
   readonly records = new Map<string, unknown>();
   removeStarted: Promise<void> | null = null;
   private resolveRemoveStarted: (() => void) | null = null;
   private releaseRemove: (() => void) | null = null;
+  private setFailure: Error | null = null;
 
   async get(key: string): Promise<Record<string, unknown>> {
     return this.records.has(key) ? { [key]: structuredClone(this.records.get(key)) } : {};
   }
 
   async set(items: Record<string, unknown>): Promise<void> {
+    if (this.setFailure) {
+      const error = this.setFailure;
+      this.setFailure = null;
+      throw error;
+    }
     for (const [key, value] of Object.entries(items)) {
       this.records.set(key, structuredClone(value));
     }
@@ -53,6 +77,10 @@ class MemoryStorageArea {
     this.releaseRemove?.();
     this.removeStarted = null;
     this.resolveRemoveStarted = null;
+  }
+
+  failNextSet(error = new Error('storage set failed')): void {
+    this.setFailure = error;
   }
 }
 
@@ -95,14 +123,16 @@ const activeTask: StoredCloudActiveTask = {
 
 describe('local Cloud active task storage', () => {
   let area: MemoryStorageArea;
+  let lock: SharedFakeExclusiveLock;
 
   beforeEach(() => {
     area = new MemoryStorageArea();
+    lock = new SharedFakeExclusiveLock();
     vi.clearAllMocks();
   });
 
   it('round-trips descriptors and clears the local active-task key idempotently', async () => {
-    const storage = createCloudActiveTaskStorage(area);
+    const storage = createCloudActiveTaskStorage(area, lock);
 
     await expect(storage.load()).resolves.toBeNull();
     await storage.save(activeTask);
@@ -114,6 +144,10 @@ describe('local Cloud active task storage', () => {
     await storage.clear();
     await storage.clear();
     await expect(storage.load()).resolves.toBeNull();
+    expect(lock.requests).toHaveLength(6);
+    expect(lock.requests).toEqual(lock.requests.map(() => ({
+      name: 'chartviz-cloud-active-task', mode: 'exclusive',
+    })));
   });
 
   it.each([
@@ -122,7 +156,7 @@ describe('local Cloud active task storage', () => {
     { ...activeTask, captures: [{ ...activeTask.captures[0], image: sourceImage }] },
     { ...activeTask, captures: [{ ...activeTask.captures[0], imageBase64: 'AAAA' }] },
   ])('rejects screenshot-bearing unknown fields before writing', async (value) => {
-    const storage = createCloudActiveTaskStorage(area);
+    const storage = createCloudActiveTaskStorage(area, lock);
 
     await expect(storage.save(value as never)).rejects.toBeInstanceOf(TypeError);
     expect(area.records.size).toBe(0);
@@ -134,7 +168,7 @@ describe('local Cloud active task storage', () => {
     { ...activeTask, captures: [{ ...activeTask.captures[0], image: sourceImage }] },
     { ...activeTask, captures: [{ ...activeTask.captures[0], imageBase64: 'AAAA' }] },
   ])('deletes screenshot-bearing malformed records before rejecting them', async (value) => {
-    const storage = createCloudActiveTaskStorage(area);
+    const storage = createCloudActiveTaskStorage(area, lock);
     area.records.set('chartvizCloudActiveTask', value);
 
     await expect(storage.load()).rejects.toBeInstanceOf(TypeError);
@@ -143,7 +177,7 @@ describe('local Cloud active task storage', () => {
   });
 
   it('deletes records with malformed descriptor values or unknown keys', async () => {
-    const storage = createCloudActiveTaskStorage(area);
+    const storage = createCloudActiveTaskStorage(area, lock);
     area.records.set('chartvizCloudActiveTask', {
       ...activeTask,
       captures: [{ ...activeTask.captures[0], captureId: 'C04', extra: true }],
@@ -194,7 +228,7 @@ describe('local Cloud active task storage', () => {
       ],
     },
   ])('deletes stored descriptors with $invariant', async ({ captures }) => {
-    const storage = createCloudActiveTaskStorage(area);
+    const storage = createCloudActiveTaskStorage(area, lock);
     area.records.set('chartvizCloudActiveTask', { ...activeTask, captures });
 
     await expect(storage.load()).rejects.toBeInstanceOf(TypeError);
@@ -203,7 +237,7 @@ describe('local Cloud active task storage', () => {
   });
 
   it('clears only the expected request ID', async () => {
-    const storage = createCloudActiveTaskStorage(area);
+    const storage = createCloudActiveTaskStorage(area, lock);
     await storage.save(activeTask);
 
     await storage.clear('c_20260828_stale');
@@ -214,21 +248,71 @@ describe('local Cloud active task storage', () => {
   });
 
   it('serializes an older conditional clear before a newer save', async () => {
-    const storage = createCloudActiveTaskStorage(area);
+    const panelA = createCloudActiveTaskStorage(area, lock);
+    const panelB = createCloudActiveTaskStorage(area, lock);
     const newerTask = { ...activeTask, requestId: 'c_20260828_newer' };
-    await storage.save(activeTask);
+    await panelA.save(activeTask);
     area.blockNextRemove();
 
-    const clearing = storage.clear(activeTask.requestId);
+    const clearing = panelA.clear(activeTask.requestId);
     await area.removeStarted;
-    const saving = storage.save(newerTask);
+    const saving = panelB.save(newerTask);
     await Promise.resolve();
 
     expect(area.records.get('chartvizCloudActiveTask')).toEqual(activeTask);
     area.allowRemove();
     await Promise.all([clearing, saving]);
 
-    await expect(storage.load()).resolves.toEqual(newerTask);
+    await expect(panelB.load()).resolves.toEqual(newerTask);
+    expect(lock.requests.length).toBeGreaterThan(0);
+  });
+
+  it('serializes malformed cleanup before a valid replacement from another panel', async () => {
+    const panelA = createCloudActiveTaskStorage(area, lock);
+    const panelB = createCloudActiveTaskStorage(area, lock);
+    area.records.set('chartvizCloudActiveTask', { ...activeTask, dataUrl: sourceImage.dataUrl });
+    area.blockNextRemove();
+
+    const cleaning = panelA.load();
+    await area.removeStarted;
+    const replacing = panelB.save(activeTask);
+    await Promise.resolve();
+
+    expect(area.records.get('chartvizCloudActiveTask')).toMatchObject({
+      requestId: activeTask.requestId,
+      dataUrl: sourceImage.dataUrl,
+    });
+    area.allowRemove();
+    await expect(cleaning).rejects.toBeInstanceOf(TypeError);
+    await replacing;
+
+    await expect(panelA.load()).resolves.toEqual(activeTask);
+    expect(JSON.stringify([...area.records.values()])).not.toMatch(/data:image|cv_live_/i);
+    expect(lock.requests.length).toBeGreaterThan(0);
+  });
+
+  it('releases the shared lock after rejection so every operation remains usable', async () => {
+    const panelA = createCloudActiveTaskStorage(area, lock);
+    const panelB = createCloudActiveTaskStorage(area, lock);
+    area.failNextSet();
+
+    await expect(panelA.save(activeTask)).rejects.toThrow('storage set failed');
+    await expect(panelB.save(activeTask)).resolves.toBeUndefined();
+    await expect(panelA.load()).resolves.toEqual(activeTask);
+    await expect(panelB.clear(activeTask.requestId)).resolves.toBeUndefined();
+    await expect(panelA.load()).resolves.toBeNull();
+  });
+
+  it('fails closed with a sanitized error when production Web Locks are unavailable', async () => {
+    vi.stubGlobal('navigator', {});
+    try {
+      await expect(loadCloudActiveTask()).rejects.toThrow(
+        'ChartViz Cloud active-task storage is unavailable.',
+      );
+      expect(browserMock.storage.local.get).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('contains no IndexedDB or image-payload implementation', () => {
