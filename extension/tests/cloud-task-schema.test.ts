@@ -62,4 +62,24 @@ describe('strict C4 extension task parser', () => {
       capture.role,
     ])).toEqual(expected);
   });
+
+  it.each([
+    ['levels', (value: Record<string, any>) => {
+      value.report.levels[1].id = value.report.levels[0].id;
+      value.report.drawings[1].refId = value.report.levels[0].id;
+    }],
+    ['tradeSignals', (value: Record<string, any>) => {
+      value.report.tradeSignals.push(structuredClone(value.report.tradeSignals[0]));
+    }],
+    ['patterns', (value: Record<string, any>) => {
+      value.report.patterns.push(structuredClone(value.report.patterns[0]));
+    }],
+    ['drawings', (value: Record<string, any>) => {
+      value.report.drawings[1].id = value.report.drawings[0].id;
+    }],
+  ])('rejects duplicate IDs in report.%s', (_collection, duplicate) => {
+    const value = fixture('multi-completed-task.json');
+    duplicate(value);
+    expect(() => parseExtensionAnalysisTask(value)).toThrow();
+  });
 });

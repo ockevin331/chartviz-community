@@ -232,6 +232,22 @@ const reportSchema = z.object({
       message: 'timeframe_view_capture_mismatch',
     });
   }
+  const identifiedCollections = [
+    ['levels', report.levels],
+    ['tradeSignals', report.tradeSignals],
+    ['patterns', report.patterns],
+    ['drawings', report.drawings],
+  ] as const;
+  for (const [collectionName, items] of identifiedCollections) {
+    const ids = items.map((item) => item.id);
+    if (new Set(ids).size !== ids.length) {
+      context.addIssue({
+        code: 'custom',
+        path: [collectionName],
+        message: 'duplicate_report_id',
+      });
+    }
+  }
   const references = new Map<string, { layer: string; captureId: string }>();
   for (const level of report.levels) {
     references.set(level.id, { layer: 'levels', captureId: level.captureId });
