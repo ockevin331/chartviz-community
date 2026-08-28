@@ -1,4 +1,5 @@
 import type { AnalysisRuntime } from '../analysis/runtime/analysis-runtime';
+import { CloudAnalysisRuntime } from '../analysis/runtime/cloud-analysis-runtime';
 
 export type CloudAvailability =
   | Readonly<{ available: false; code: 'cloud_not_available' }>
@@ -13,6 +14,20 @@ export const unavailableCloudGateway: CloudAnalysisGateway = Object.freeze({
   availability: (): CloudAvailability => ({ available: false, code: 'cloud_not_available' }),
   runtime: (): null => null,
 });
+
+export function createCloudAnalysisGateway(
+  runtime: AnalysisRuntime = new CloudAnalysisRuntime(),
+): CloudAnalysisGateway {
+  if (runtime.mode !== 'cloud') {
+    throw new TypeError('Cloud gateway requires a Cloud runtime.');
+  }
+  return Object.freeze({
+    availability: (): CloudAvailability => ({ available: true }),
+    runtime: (): AnalysisRuntime => runtime,
+  });
+}
+
+export const productionCloudGateway = createCloudAnalysisGateway();
 
 export function resolveCloudRuntime(
   gateway: CloudAnalysisGateway,

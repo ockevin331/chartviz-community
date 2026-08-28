@@ -40,20 +40,50 @@ export type AnalysisRuntimeOutcome = Readonly<{
 }>;
 
 export type AnalysisRuntimeErrorCode = AnalysisErrorCode
-  | 'multi_timeframe_requires_cloud';
+  | 'multi_timeframe_requires_cloud'
+  | 'authentication_required'
+  | 'invalid_token'
+  | 'token_revoked'
+  | 'token_expired'
+  | 'insufficient_scope'
+  | 'free_trial_exhausted'
+  | 'subscription_required'
+  | 'subscription_expired'
+  | 'quota_exhausted'
+  | 'multi_timeframe_requires_advance'
+  | 'invalid_chart_image'
+  | 'unsupported_timeframe'
+  | 'task_not_found'
+  | 'task_failed'
+  | 'incompatible_api_version'
+  | 'incompatible_report_schema'
+  | 'service_unavailable';
+
+export type AnalysisRuntimeErrorParams = Readonly<Record<
+  string,
+  string | number | boolean | null
+>>;
 
 export class AnalysisRuntimeFailure extends Error {
   readonly code: AnalysisRuntimeErrorCode | 'unknown';
   readonly diagnostic: AnalysisDiagnostic | null;
+  readonly params: AnalysisRuntimeErrorParams;
+  readonly pricingUrl: string | null;
 
   constructor(
     code: AnalysisRuntimeErrorCode | 'unknown',
     diagnostic: AnalysisDiagnostic | null = null,
+    options: Readonly<{
+      params?: AnalysisRuntimeErrorParams;
+      pricingUrl?: string | null;
+    }> = {},
   ) {
     super(code);
     this.name = 'AnalysisRuntimeFailure';
     this.code = code;
     this.diagnostic = diagnostic;
+    this.params = Object.freeze({ ...(options.params ?? {}) });
+    this.pricingUrl = options.pricingUrl ?? null;
   }
 }
 
@@ -62,4 +92,8 @@ export interface AnalysisRuntime {
   capabilities(): AnalysisCapabilities;
   analyze(input: AnalysisRuntimeInput): Promise<AnalysisRuntimeOutcome>;
   cancel(): void;
+  restoreActiveAnalysis?(): Promise<Readonly<{
+    captures: readonly AnalysisCapture[];
+    outputLanguage: OutputLanguage;
+  }> | null>;
 }
