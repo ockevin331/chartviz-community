@@ -12,6 +12,7 @@ const providerOrigins = [
   'https://api.openai.com/v1/*',
   'https://generativelanguage.googleapis.com/*',
 ];
+const cloudOrigins = ['https://www.chartviz.xyz/*'];
 const chartHosts = [
   'https://*.tradingview.com/*', 'https://*.binance.com/*', 'https://*.okx.com/*',
   'https://*.bybit.com/*', 'https://app.hyperliquid.xyz/*', 'https://*.coinbase.com/*',
@@ -37,13 +38,13 @@ for (const browser of browsers) {
     assert.equal(manifest.manifest_version, 3);
     assert.equal(manifest.name, 'ChartViz');
     assert.deepEqual(manifest.permissions, ['activeTab', 'storage', 'scripting', 'clipboardWrite']);
-    assert.deepEqual(manifest.host_permissions, [...providerOrigins, ...chartHosts]);
+    assert.deepEqual(manifest.host_permissions, [...providerOrigins, ...cloudOrigins, ...chartHosts]);
     assert.equal(manifest.optional_host_permissions, undefined);
     assert.deepEqual(manifest.content_scripts, [{ matches: contentMatches, js: ['content-scripts/content.js'] }]);
     assert.equal(manifest.action.default_popup, undefined);
     assert.equal(JSON.stringify(manifest).includes('<all_urls>'), false);
     assert.deepEqual(manifest.web_accessible_resources, [{
-      resources: ['panel.html'],
+      resources: ['panel.html', 'chunks/*', 'assets/*'],
       matches: ['http://*/*', 'https://*/*'],
       use_dynamic_url: true,
     }]);
@@ -51,8 +52,9 @@ for (const browser of browsers) {
 
     for (const entry of manifest.web_accessible_resources) {
       for (const resource of entry.resources) {
+        const packagedPath = resource.endsWith('/*') ? resource.slice(0, -2) : resource;
         assert.equal(
-          existsSync(path.join(browserOutputRoot, resource)),
+          existsSync(path.join(browserOutputRoot, packagedPath)),
           true,
           `${browser} is missing declared web-accessible resource ${resource}`,
         );

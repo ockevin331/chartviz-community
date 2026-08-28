@@ -50,6 +50,18 @@ function setup(runtime: AnalysisRuntime = fakeRuntime()) {
 }
 
 describe('useAnalysisController runtime boundary', () => {
+  it('unconfigures the active runtime and returns to setup without retaining captures', () => {
+    const runtime = fakeRuntime();
+    const { result } = setup(runtime);
+
+    act(() => result.current.unconfigure());
+
+    expect(runtime.cancel).toHaveBeenCalledTimes(1);
+    expect(result.current.state).toMatchObject({
+      status: 'setup', image: null, captures: [], report: null, annotations: null,
+    });
+  });
+
   it('submits a stored three-chart capture set unchanged to a capable runtime', async () => {
     const directRuntime = fakeRuntime();
     const runtime = {

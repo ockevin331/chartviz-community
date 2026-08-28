@@ -63,6 +63,21 @@ describe('Cloud connection lifecycle', () => {
     expect(JSON.stringify(result)).not.toContain(token);
   });
 
+  it('reports local storage failures as a stable service error', async () => {
+    const manager = createCloudConnectionManager({
+      client: { connect: vi.fn(), account: vi.fn() },
+      storage: {
+        load: vi.fn(async () => { throw new Error('storage unavailable'); }),
+        save: vi.fn(),
+        clear: vi.fn(),
+      },
+    });
+
+    await expect(manager.load()).resolves.toEqual({
+      status: 'error', account: null, errorCode: 'service_unavailable',
+    });
+  });
+
   it('disconnects locally without calling the service or revoking the website token', async () => {
     const clear = vi.fn(async () => undefined);
     const client = { connect: vi.fn(), account: vi.fn() };

@@ -12,6 +12,7 @@ const expectedProviderOrigins = [
   'https://api.openai.com/v1/*',
   'https://generativelanguage.googleapis.com/*',
 ];
+const expectedCloudOrigins = ['https://www.chartviz.xyz/*'];
 const expectedChartHosts = [
   'https://*.tradingview.com/*', 'https://*.binance.com/*', 'https://*.okx.com/*',
   'https://*.bybit.com/*', 'https://app.hyperliquid.xyz/*', 'https://*.coinbase.com/*',
@@ -272,7 +273,11 @@ function verifyManifest(entries, label) {
   assert.equal(manifest.name, 'ChartViz', `${label} has an unexpected name`);
   assert.equal(manifest.version, '1.0.0', `${label} has an unexpected version`);
   assert.deepEqual(manifest.permissions, expectedPermissions, `${label} has unexpected permissions`);
-  assert.deepEqual(manifest.host_permissions, [...expectedProviderOrigins, ...expectedChartHosts], `${label} has unexpected provider or chart origins`);
+  assert.deepEqual(
+    manifest.host_permissions,
+    [...expectedProviderOrigins, ...expectedCloudOrigins, ...expectedChartHosts],
+    `${label} has unexpected provider, Cloud, or chart origins`,
+  );
   assert.equal(manifest.optional_host_permissions, undefined, `${label} must not declare optional origins`);
   assert.equal(JSON.stringify(manifest).includes('<all_urls>'), false, `${label} must not declare broad <all_urls> access`);
   assert.deepEqual(

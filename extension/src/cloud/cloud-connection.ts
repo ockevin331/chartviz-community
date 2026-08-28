@@ -52,14 +52,15 @@ export function createCloudConnectionManager(
 ): CloudConnectionManager {
   return Object.freeze({
     async load(): Promise<CloudConnectionState> {
-      const stored = await dependencies.storage.load();
-      if (!stored) return { status: 'disconnected', account: null, errorCode: null };
+      let stored: StoredCloudConnection | null = null;
       try {
+        stored = await dependencies.storage.load();
+        if (!stored) return { status: 'disconnected', account: null, errorCode: null };
         const account = await dependencies.client.account(stored.token);
         await dependencies.storage.save(stored.token, account);
         return { status: 'connected', account, errorCode: null };
       } catch (error) {
-        return { status: 'error', account: stored.account, errorCode: errorCode(error) };
+        return { status: 'error', account: stored?.account ?? null, errorCode: errorCode(error) };
       }
     },
 

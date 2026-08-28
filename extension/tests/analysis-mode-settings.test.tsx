@@ -3,6 +3,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { unavailableCloudGateway } from '../src/cloud/cloud-gateway';
+import type { CloudConnectionState } from '../src/cloud/cloud-connection';
 import { AnalysisModeSettings } from '../src/ui/components/AnalysisModeSettings';
 
 afterEach(cleanup);
@@ -20,27 +21,90 @@ function fixture(language: 'en' | 'zh-CN' = 'en') {
     saveMode: vi.fn(async () => { events.push('mode'); }),
     onDirectActivated: vi.fn(() => { events.push('activate'); }),
     testConnection: vi.fn(async () => undefined),
-    cloudGateway: unavailableCloudGateway,
+    cloudConnection: { status: 'disconnected', account: null, errorCode: null } as CloudConnectionState,
+    cloudBusy: false,
+    onCloudConnect: vi.fn(async () => true),
+    onCloudDisconnect: vi.fn(async () => undefined),
   };
   return { props, events };
 }
 
 describe('AnalysisModeSettings', () => {
-  it('shows truthful unavailable Cloud guidance without accepting credentials or screenshots', () => {
+  it('shows the fixed-service Cloud token form without accepting screenshots', () => {
     const { props } = fixture();
     render(<AnalysisModeSettings {...props} />);
 
     expect(screen.getByRole('tab', { name: 'ChartViz Cloud' }).getAttribute('aria-selected')).toBe('true');
-    expect(screen.getByText('Cloud connection will be enabled in a later update.')).toBeTruthy();
+    expect(screen.getByLabelText('Cloud access token')).toHaveProperty('type', 'password');
     expect(screen.getByText('Multi-timeframe analysis is provided through ChartViz Cloud.')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Visit ChartViz' })).toHaveProperty(
+    expect(screen.getByRole('link', { name: 'Create or revoke tokens on ChartViz' })).toHaveProperty(
       'href',
-      'https://www.chartviz.xyz/',
+      'https://www.chartviz.xyz/settings',
     );
     expect(screen.queryByLabelText(/api key/i)).toBeNull();
-    expect(document.querySelector('input[type="password"]')).toBeNull();
-    expect(screen.queryByRole('button', { name: /connect|save|continue/i })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Connect Cloud' })).toBeTruthy();
     expect(document.querySelector('input[type="file"]')).toBeNull();
+  });
+
+  it('submits the token once, clears the input, and never renders the plaintext', async () => {
+    const user = userEvent.setup();
+    const { props } = fixture();
+    render(<AnalysisModeSettings {...props} />);
+
+    const token = `cv_live_${'x'.repeat(43)}`;
+    await user.type(screen.getByLabelText('Cloud access token'), token);
+    await user.click(screen.getByRole('button', { name: 'Connect Cloud' }));
+
+    await waitFor(() => expect(props.onCloudConnect).toHaveBeenCalledWith(token));
+    expect(screen.getByLabelText('Cloud access token')).toHaveProperty('value', '');
+    expect(document.body.textContent).not.toContain(token);
+  });
+
+  it('retains the token after a failed connection so the user can retry', async () => {
+    const user = userEvent.setup();
+    const { props } = fixture();
+    props.onCloudConnect.mockResolvedValue(false);
+    render(<AnalysisModeSettings {...props} />);
+
+    const token = `cv_live_${'x'.repeat(43)}`;
+    await user.type(screen.getByLabelText('Cloud access token'), token);
+    await user.click(screen.getByRole('button', { name: 'Connect Cloud' }));
+
+    await waitFor(() => expect(props.onCloudConnect).toHaveBeenCalledWith(token));
+    expect(screen.getByLabelText('Cloud access token')).toHaveProperty('value', token);
+  });
+
+  it('shows live connected account context and disconnect guidance', async () => {
+    const user = userEvent.setup();
+    const { props } = fixture();
+    render(<AnalysisModeSettings {...props} cloudConnection={{
+      status: 'connected', errorCode: null,
+      account: {
+        emailMasked: 'k***n@example.com', plan: 'advance',
+        currentPeriodEnd: '2026-09-28T00:00:00+00:00',
+        quota: { limit: null, used: 7, remaining: null, unlimited: true },
+        selectedModel: { id: 'openai/gpt-5.4', name: 'GPT-5.4', quotaCost: 2 },
+        entitlements: { multiTimeframe: true, maxCaptures: 3 },
+      },
+    }} />);
+
+    expect(screen.getByText('k***n@example.com')).toBeTruthy();
+    expect(screen.getByText('ADVANCE')).toBeTruthy();
+    expect(screen.getByText(/GPT-5.4/)).toBeTruthy();
+    expect(screen.getByText(/Unlimited/)).toBeTruthy();
+    expect(screen.getByText('Cloud analysis activation follows in the next stage.')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Disconnect' }));
+    expect(props.onCloudDisconnect).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('input[type="file"]')).toBeNull();
+  });
+
+  it('localizes a precise expired-token connection error', () => {
+    const { props } = fixture('zh-CN');
+    render(<AnalysisModeSettings {...props} cloudConnection={{
+      status: 'error', account: null, errorCode: 'token_expired',
+    }} />);
+
+    expect(screen.getByRole('alert').textContent).toContain('Cloud 访问令牌已过期');
   });
 
   it('switches the pending tab without saving or activating a mode', async () => {
@@ -78,14 +142,14 @@ describe('AnalysisModeSettings', () => {
     expect(events).toEqual(['config', 'mode', 'activate']);
   });
 
-  it('localizes the mode tabs and unavailable state in Simplified Chinese', () => {
+  it('localizes the mode tabs and connection form in Simplified Chinese', () => {
     const { props } = fixture('zh-CN');
     render(<AnalysisModeSettings {...props} />);
 
     expect(screen.getByRole('tab', { name: '直连模型' })).toBeTruthy();
     expect(screen.getByText('托管式图表分析')).toBeTruthy();
-    expect(screen.getByText('Cloud 连接将在后续版本开放。')).toBeTruthy();
-    expect(screen.getByRole('link', { name: '访问 ChartViz' })).toBeTruthy();
+    expect(screen.getByLabelText('Cloud 访问令牌')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '在 ChartViz 创建或撤销令牌' })).toBeTruthy();
   });
 
   it('uses a no-input unavailable Cloud gateway contract', () => {

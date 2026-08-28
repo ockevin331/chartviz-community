@@ -76,6 +76,16 @@ export function useAnalysisController() {
     runtimeRef.current = runtime;
   }, []);
 
+  const unconfigure = useCallback(() => {
+    const previousRuntime = runtimeRef.current;
+    const activeRuntime = invalidateOperation();
+    if (previousRuntime && previousRuntime !== activeRuntime) previousRuntime.cancel();
+    runtimeRef.current = null;
+    imageRef.current = null;
+    capturesRef.current = [];
+    setState(INITIAL_STATE);
+  }, [invalidateOperation]);
+
   const selectImage = useCallback((image: ProcessedImage) => {
     invalidateOperation();
     imageRef.current = image;
@@ -246,6 +256,7 @@ export function useAnalysisController() {
     state,
     configure,
     updateRuntime,
+    unconfigure,
     selectImage,
     selectCaptures,
     chooseAnotherImage,

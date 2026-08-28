@@ -4,6 +4,11 @@ import { DirectAnalysisRuntime } from '../../src/analysis/runtime/direct-analysi
 import type { AnalysisCapabilities, AnalysisRuntime } from '../../src/analysis/runtime/analysis-runtime';
 import { activeChartClient, type CapturedChart } from '../../src/capture/active-chart';
 import { resolveCloudRuntime, unavailableCloudGateway, type CloudAnalysisGateway } from '../../src/cloud/cloud-gateway';
+import {
+  createCloudConnectionManager,
+  type CloudConnectionManager,
+  type CloudConnectionState,
+} from '../../src/cloud/cloud-connection';
 import type { ChartContext } from '../../src/domain/chart-context';
 import type { SupportedCaptureTimeframe } from '../../src/domain/chart-messages';
 import { providerRegistry } from '../../src/providers/provider-registry';
@@ -26,6 +31,7 @@ export type AppDependencies = {
   loadMode(config: ProviderConfig | null): Promise<AnalysisMode>;
   saveMode(mode: AnalysisMode): Promise<void>;
   cloudGateway: CloudAnalysisGateway;
+  cloudConnectionManager: CloudConnectionManager;
   inspect(): Promise<ChartContext>;
   capture(signal: AbortSignal): Promise<CapturedChart>;
   captureMany(
@@ -42,6 +48,7 @@ const defaultDependencies: AppDependencies = {
   loadMode: loadAnalysisMode,
   saveMode: saveAnalysisMode,
   cloudGateway: unavailableCloudGateway,
+  cloudConnectionManager: createCloudConnectionManager(),
   inspect: () => activeChartClient.inspect(),
   capture: (signal) => activeChartClient.capture(signal),
   captureMany: (timeframes, signal) => activeChartClient.captureMany(timeframes, signal),
@@ -60,6 +67,10 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
   const [setupMode, setSetupMode] = useState<AnalysisMode>('cloud');
   const [settingsMode, setSettingsMode] = useState<AnalysisMode>('cloud');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [cloudConnection, setCloudConnection] = useState<CloudConnectionState>({
+    status: 'disconnected', account: null, errorCode: null,
+  });
+  const [cloudBusy, setCloudBusy] = useState(false);
   const [analysisCapabilities, setAnalysisCapabilities] = useState<AnalysisCapabilities | null>(null);
   const [contextRevision, setContextRevision] = useState(0);
   const [lightbox, setLightbox] = useState<LightboxImage | null>(null);
@@ -91,6 +102,14 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     })().finally(() => { if (current) setLoading(false); });
     return () => { current = false; };
   }, [dependencies.loadConfig, dependencies.loadMode, dependencies.createDirectRuntime, dependencies.cloudGateway, activateRuntime]);
+
+  useEffect(() => {
+    let current = true;
+    void dependencies.cloudConnectionManager.load().then((connection) => {
+      if (current) setCloudConnection(connection);
+    });
+    return () => { current = false; };
+  }, [dependencies.cloudConnectionManager]);
 
   const refreshAll = useCallback(() => {
     lastContext.current = null;
@@ -151,6 +170,37 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     setSettingsOpen(false);
   }
 
+  async function connectCloud(token: string): Promise<boolean> {
+    setCloudBusy(true);
+    try {
+      const connection = await dependencies.cloudConnectionManager.connect(token);
+      setCloudConnection(connection);
+      if (connection.status === 'connected') {
+        await dependencies.saveMode('cloud');
+        setActiveMode('cloud');
+        setSetupMode('cloud');
+        setSettingsMode('cloud');
+        setAnalysisCapabilities(null);
+        controller.unconfigure();
+        return true;
+      }
+      return false;
+    } finally {
+      setCloudBusy(false);
+    }
+  }
+
+  async function disconnectCloud() {
+    setCloudBusy(true);
+    try {
+      const connection = await dependencies.cloudConnectionManager.disconnect();
+      setCloudConnection(connection);
+      if (activeMode === 'cloud') controller.unconfigure();
+    } finally {
+      setCloudBusy(false);
+    }
+  }
+
   function openSettings() {
     setSettingsMode(activeMode);
     setSettingsOpen(true);
@@ -178,14 +228,14 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
   return <main>
     <header className="drag-handle" data-testid="drag-handle" onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={() => { dragPosition.current = null; }} onPointerCancel={() => { dragPosition.current = null; }}>
       <div className="brand"><Logo /><div><h1>ChartViz</h1><p className="slogan">{t.slogan}</p></div></div>
-      <div className="header-actions" onPointerDown={(event) => event.stopPropagation()}><LanguageMenu language={language} onChange={setLanguage} />{providerConfig && <button className="toolbar-button settings-button" type="button" aria-label={t.settings} onClick={openSettings}><SettingsIcon /></button>}<button className="toolbar-button refresh-button" type="button" aria-label={t.refresh} onClick={refreshAll}><RefreshIcon /></button><button className="toolbar-button close-button" type="button" aria-label={t.close} onClick={() => window.parent.postMessage({ source: 'chartviz', type: 'panel-close' }, '*')}><CloseIcon /></button></div>
+      <div className="header-actions" onPointerDown={(event) => event.stopPropagation()}><LanguageMenu language={language} onChange={setLanguage} />{(providerConfig || cloudConnection.account) && <button className="toolbar-button settings-button" type="button" aria-label={t.settings} onClick={openSettings}><SettingsIcon /></button>}<button className="toolbar-button refresh-button" type="button" aria-label={t.refresh} onClick={refreshAll}><RefreshIcon /></button><button className="toolbar-button close-button" type="button" aria-label={t.close} onClick={() => window.parent.postMessage({ source: 'chartviz', type: 'panel-close' }, '*')}><CloseIcon /></button></div>
     </header>
-    {settingsOpen && providerConfig ? <section className="settings-view" role="dialog" aria-label={t.analysisSettings}>
+    {settingsOpen ? <section className="settings-view" role="dialog" aria-label={t.analysisSettings}>
       <button className="secondary settings-back" type="button" aria-label={t.backToChart} onClick={() => setSettingsOpen(false)}>← {t.backToChart}</button>
-      <AnalysisModeSettings language={language} variant="settings" activeMode={activeMode} selectedMode={settingsMode} onSelectedModeChange={setSettingsMode} initialDirectConfig={providerConfig} saveDirectConfig={dependencies.saveConfig} saveMode={dependencies.saveMode} onDirectActivated={finishSettings} testConnection={dependencies.testDirectConnection} cloudGateway={dependencies.cloudGateway} />
+      <AnalysisModeSettings language={language} variant="settings" activeMode={activeMode} selectedMode={settingsMode} onSelectedModeChange={setSettingsMode} initialDirectConfig={providerConfig} saveDirectConfig={dependencies.saveConfig} saveMode={dependencies.saveMode} onDirectActivated={finishSettings} testConnection={dependencies.testDirectConnection} cloudConnection={cloudConnection} cloudBusy={cloudBusy} onCloudConnect={connectCloud} onCloudDisconnect={disconnectCloud} />
     </section> : <>
       {loading && <section className="backend-loading" role="status">…</section>}
-      {!loading && state.status === 'setup' && <AnalysisModeSettings language={language} variant="setup" activeMode={activeMode} selectedMode={setupMode} onSelectedModeChange={setSetupMode} initialDirectConfig={providerConfig} saveDirectConfig={dependencies.saveConfig} saveMode={dependencies.saveMode} onDirectActivated={finishInitialSetup} testConnection={dependencies.testDirectConnection} cloudGateway={dependencies.cloudGateway} />}
+      {!loading && state.status === 'setup' && <AnalysisModeSettings language={language} variant="setup" activeMode={activeMode} selectedMode={setupMode} onSelectedModeChange={setSetupMode} initialDirectConfig={providerConfig} saveDirectConfig={dependencies.saveConfig} saveMode={dependencies.saveMode} onDirectActivated={finishInitialSetup} testConnection={dependencies.testDirectConnection} cloudConnection={cloudConnection} cloudBusy={cloudBusy} onCloudConnect={connectCloud} onCloudDisconnect={disconnectCloud} />}
       {!loading && state.status === 'source' && analysisCapabilities && <ChartCaptureSource key={contextRevision} language={language} capabilities={analysisCapabilities} inspect={dependencies.inspect} capture={dependencies.capture} captureMany={dependencies.captureMany} onCaptured={analyzeCaptured} onOpenCloudSettings={openCloudSettings} />}
       {state.status === 'preview' && state.image && <ImagePreview language={language} image={state.image} onZoom={setLightbox} onChange={captureAgain} onAnalyze={retryAnalysis} />}
       {state.status === 'analyzing' && state.image && <><ImagePreview language={language} image={state.image} analyzing onZoom={setLightbox} onChange={captureAgain} onAnalyze={() => undefined} /><AnalysisProgress language={language} progress={state.progress} onCancel={controller.cancel} /></>}

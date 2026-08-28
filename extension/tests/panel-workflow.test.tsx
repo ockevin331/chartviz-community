@@ -12,6 +12,7 @@ import {
 import { ChartAvailabilityError } from '../src/capture/active-chart';
 import { unavailableCloudGateway } from '../src/cloud/cloud-gateway';
 import type { CloudAnalysisGateway } from '../src/cloud/cloud-gateway';
+import type { CloudConnectionManager } from '../src/cloud/cloud-connection';
 import type { ChartContext } from '../src/domain/chart-context';
 import type { AnalysisDiagnostic } from '../src/providers/provider-diagnostics';
 import { annotatedImages, communityReport, processedImage } from './community-ui-fixtures';
@@ -33,6 +34,11 @@ const multiCaptures = (['4h', '1h', '15m'] as const).map((timeframe, index) => (
   context: { ...chartContext, timeframe },
 }));
 const outcome: AnalysisRuntimeOutcome = { report: communityReport, annotations: annotatedImages };
+const disconnectedCloudManager: CloudConnectionManager = {
+  load: async () => ({ status: 'disconnected', account: null, errorCode: null }),
+  connect: async () => ({ status: 'disconnected', account: null, errorCode: null }),
+  disconnect: async () => ({ status: 'disconnected', account: null, errorCode: null }),
+};
 
 function fakeRuntime(
   analyzeImplementation: (input: AnalysisRuntimeInput) => Promise<AnalysisRuntimeOutcome>
@@ -65,10 +71,11 @@ const directModeDependencies = {
   loadMode: async () => 'direct' as const,
   saveMode: async () => undefined,
   cloudGateway: unavailableCloudGateway,
+  cloudConnectionManager: disconnectedCloudManager,
   testDirectConnection: async () => undefined,
 };
 describe('direct Community panel workflow', () => {
-  it('defaults a new installation to the unavailable Cloud tab without inspecting the page', async () => {
+  it('defaults a new installation to Cloud connection setup without inspecting the page', async () => {
     const inspectPage = vi.fn(inspect);
     const createDirectRuntime = vi.fn(() => fakeRuntime());
     render(<App dependencies={{
@@ -76,15 +83,88 @@ describe('direct Community panel workflow', () => {
       loadMode: async () => 'cloud',
       saveMode: async () => undefined,
       cloudGateway: unavailableCloudGateway,
+      cloudConnectionManager: disconnectedCloudManager,
       createDirectRuntime,
       inspect: inspectPage,
     }} />);
 
     expect(await screen.findByRole('tab', { name: 'ChartViz Cloud' })).toHaveProperty('ariaSelected', 'true');
-    expect(screen.getByText('Cloud connection will be enabled in a later update.')).toBeTruthy();
+    expect(screen.getByLabelText('Cloud access token')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Connect Cloud' })).toBeTruthy();
     expect(screen.queryByLabelText('API key')).toBeNull();
     expect(inspectPage).not.toHaveBeenCalled();
     expect(createDirectRuntime).not.toHaveBeenCalled();
+  });
+
+  it('connects Cloud, saves the mode, and keeps capture unavailable during C1', async () => {
+    const user = userEvent.setup();
+    const saveMode = vi.fn(async () => undefined);
+    const connect = vi.fn(async () => ({
+      status: 'connected' as const, errorCode: null,
+      account: {
+        emailMasked: 'k***n@example.com', plan: 'pro' as const,
+        currentPeriodEnd: '2026-09-28T00:00:00+00:00',
+        quota: { limit: 50, used: 2, remaining: 48, unlimited: false },
+        selectedModel: { id: 'openai/gpt-5.6-terra', name: 'GPT-5.6 Terra', quotaCost: 1 },
+        entitlements: { multiTimeframe: false, maxCaptures: 1 },
+      },
+    }));
+    const manager: CloudConnectionManager = {
+      load: disconnectedCloudManager.load,
+      connect,
+      disconnect: disconnectedCloudManager.disconnect,
+    };
+    const inspectPage = vi.fn(inspect);
+    render(<App dependencies={{
+      loadConfig: async () => null,
+      loadMode: async () => 'cloud',
+      saveMode,
+      cloudGateway: unavailableCloudGateway,
+      cloudConnectionManager: manager,
+      inspect: inspectPage,
+    }} />);
+
+    const token = `cv_live_${'x'.repeat(43)}`;
+    await user.type(await screen.findByLabelText('Cloud access token'), token);
+    await user.click(screen.getByRole('button', { name: 'Connect Cloud' }));
+
+    await screen.findByText('k***n@example.com');
+    expect(connect).toHaveBeenCalledWith(token);
+    expect(saveMode).toHaveBeenCalledWith('cloud');
+    expect(inspectPage).not.toHaveBeenCalled();
+    expect(screen.queryByRole('heading', { name: 'Detected chart' })).toBeNull();
+    expect(document.querySelector('input[type="file"]')).toBeNull();
+  });
+
+  it('refreshes a stored Cloud account without instantiating an analysis runtime', async () => {
+    const createDirectRuntime = vi.fn(() => fakeRuntime());
+    const manager: CloudConnectionManager = {
+      load: vi.fn(async () => ({
+        status: 'connected' as const, errorCode: null,
+        account: {
+          emailMasked: 'a***z@example.com', plan: 'free' as const,
+          currentPeriodEnd: null,
+          quota: { limit: 1, used: 0, remaining: 1, unlimited: false },
+          selectedModel: { id: 'openai/gpt-5.6-terra', name: 'GPT-5.6 Terra', quotaCost: 1 },
+          entitlements: { multiTimeframe: false, maxCaptures: 1 },
+        },
+      })),
+      connect: disconnectedCloudManager.connect,
+      disconnect: disconnectedCloudManager.disconnect,
+    };
+    render(<App dependencies={{
+      loadConfig: async () => null,
+      loadMode: async () => 'cloud',
+      saveMode: async () => undefined,
+      cloudGateway: unavailableCloudGateway,
+      cloudConnectionManager: manager,
+      createDirectRuntime,
+    }} />);
+
+    expect(await screen.findByText('a***z@example.com')).toBeTruthy();
+    expect(manager.load).toHaveBeenCalledTimes(1);
+    expect(createDirectRuntime).not.toHaveBeenCalled();
+    expect(screen.queryByRole('heading', { name: 'Detected chart' })).toBeNull();
   });
 
   it('keeps Direct single-frame and opens Cloud settings from multi-timeframe guidance', async () => {
@@ -349,7 +429,8 @@ describe('direct Community panel workflow', () => {
     await user.click(screen.getByRole('button', { name: 'Settings' }));
     expect(screen.getByRole('tab', { name: 'Direct model' })).toHaveProperty('ariaSelected', 'true');
     await user.click(screen.getByRole('tab', { name: 'ChartViz Cloud' }));
-    expect(screen.getByText('Cloud connection will be enabled in a later update.')).toBeTruthy();
+    expect(screen.getByLabelText('Cloud access token')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Create or revoke tokens on ChartViz' })).toBeTruthy();
     expect(saveConfig).not.toHaveBeenCalled();
     expect(saveMode).not.toHaveBeenCalled();
 

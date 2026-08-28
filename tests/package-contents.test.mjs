@@ -15,6 +15,7 @@ const expectedProviderOrigins = [
   'https://api.openai.com/v1/*',
   'https://generativelanguage.googleapis.com/*',
 ];
+const expectedCloudOrigins = ['https://www.chartviz.xyz/*'];
 const expectedChartHosts = [
   'https://*.tradingview.com/*', 'https://*.binance.com/*', 'https://*.okx.com/*',
   'https://*.bybit.com/*', 'https://app.hyperliquid.xyz/*', 'https://*.coinbase.com/*',
@@ -47,7 +48,7 @@ function expectedManifest() {
     version: '1.0.0',
     icons: expectedIcons,
     permissions: expectedPermissions,
-    host_permissions: [...expectedProviderOrigins, ...expectedChartHosts],
+    host_permissions: [...expectedProviderOrigins, ...expectedCloudOrigins, ...expectedChartHosts],
     action: { default_icon: expectedIcons },
     web_accessible_resources: [{
       resources: ['panel.html', 'chunks/*', 'assets/*'],
@@ -151,7 +152,11 @@ function assertManifestContract(browser) {
   assert.equal(manifest.name, 'ChartViz');
   assert.equal(manifest.version, '1.0.0');
   assert.deepEqual(manifest.permissions, expectedPermissions);
-  assert.deepEqual(manifest.host_permissions, [...expectedProviderOrigins, ...expectedChartHosts]);
+  assert.deepEqual(manifest.host_permissions, [
+    ...expectedProviderOrigins,
+    ...expectedCloudOrigins,
+    ...expectedChartHosts,
+  ]);
   assert.equal(manifest.optional_host_permissions, undefined);
   assert.deepEqual(manifest.content_scripts, [{ matches: expectedContentMatches, js: ['content-scripts/content.js'] }]);
   assert.deepEqual(manifest.content_security_policy, { extension_pages: expectedCsp });
