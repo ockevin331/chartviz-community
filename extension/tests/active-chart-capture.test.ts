@@ -179,6 +179,23 @@ function backgroundFixture(initialTimeframe = '5m') {
 }
 
 describe('multi-timeframe background capture', () => {
+  it('rejects an unsupported original timeframe before the first switch', async () => {
+    const { dependencies, handlers, sendTabMessage } = backgroundFixture('30m');
+
+    const response = await handlers.onMessage({
+      type: 'chartviz/active-chart/capture',
+      timeframes: ['4h', '1h', '15m'],
+    });
+
+    expect(response).toEqual({
+      ok: false,
+      error: 'The current chart timeframe cannot be restored after capture.',
+    });
+    expect(sendTabMessage.mock.calls.some(([, message]) =>
+      message.type === 'chartviz/chart/timeframe')).toBe(false);
+    expect(dependencies.captureVisibleTab).not.toHaveBeenCalled();
+  });
+
   it('captures three timeframes in requested order and restores the original timeframe', async () => {
     const { dependencies, handlers, sendTabMessage } = backgroundFixture('5m');
 
@@ -203,6 +220,46 @@ describe('multi-timeframe background capture', () => {
     expect(sendTabMessage.mock.calls
       .filter(([, message]) => message.type === 'chartviz/panel/visibility')
       .map(([, message]) => 'visible' in message ? message.visible : null)).toEqual([false, true, false, true, false, true]);
+  });
+
+  it('discards completed captures when original-timeframe restoration rejects', async () => {
+    const { dependencies, handlers, sendTabMessage } = backgroundFixture('5m');
+    const defaultSend = sendTabMessage.getMockImplementation()!;
+    sendTabMessage.mockImplementation(async (tabId, message) => {
+      if (message.type === 'chartviz/chart/timeframe' && message.timeframe === '5m') {
+        throw new Error('Restore transport failed.');
+      }
+      return defaultSend(tabId, message);
+    });
+
+    const response = await handlers.onMessage({
+      type: 'chartviz/active-chart/capture',
+      timeframes: ['4h', '1h', '15m'],
+    });
+
+    expect(response).toEqual({ ok: false, error: 'Restore transport failed.' });
+    expect(response).not.toHaveProperty('captures');
+    expect(dependencies.captureVisibleTab).toHaveBeenCalledTimes(3);
+  });
+
+  it('discards completed captures when original-timeframe restoration returns ok false', async () => {
+    const { dependencies, handlers, sendTabMessage } = backgroundFixture('5m');
+    const defaultSend = sendTabMessage.getMockImplementation()!;
+    sendTabMessage.mockImplementation(async (tabId, message) => {
+      if (message.type === 'chartviz/chart/timeframe' && message.timeframe === '5m') {
+        return { ok: false, error: 'Restore was rejected.' };
+      }
+      return defaultSend(tabId, message);
+    });
+
+    const response = await handlers.onMessage({
+      type: 'chartviz/active-chart/capture',
+      timeframes: ['4h', '1h', '15m'],
+    });
+
+    expect(response).toEqual({ ok: false, error: 'Restore was rejected.' });
+    expect(response).not.toHaveProperty('captures');
+    expect(dependencies.captureVisibleTab).toHaveBeenCalledTimes(3);
   });
 
   it('returns no partial captures and restores the original timeframe after a failed switch', async () => {

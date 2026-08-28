@@ -69,6 +69,7 @@ function capture(timeframe: string, suffix: string): AnalysisCapture {
 
 const activeTask: StoredCloudActiveTask = {
   requestId: 'c_20260828_active',
+  tokenFingerprint: 'a'.repeat(64),
   outputLanguage: 'en',
   captures: [
     capture('4h', 'AAAA'),
@@ -98,6 +99,7 @@ describe('IndexedDB Cloud active task repository', () => {
     { ...activeTask, captures: [] },
     { ...activeTask, captures: [...activeTask.captures, capture('5m', 'DDDD')] },
     { ...activeTask, outputLanguage: 'fr' },
+    { ...activeTask, tokenFingerprint: 'not-a-sha256-fingerprint' },
     { ...activeTask, token: `cv_live_${'x'.repeat(43)}` },
     {
       ...activeTask,

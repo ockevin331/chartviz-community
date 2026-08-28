@@ -156,11 +156,15 @@ export function createBackgroundHandlers(dependencies: BackgroundDependencies) {
       const original = SUPPORTED_CAPTURE_TIMEFRAMES.has(originalTimeframe as SupportedCaptureTimeframe)
         ? originalTimeframe as SupportedCaptureTimeframe
         : null;
-      let currentTimeframe = original;
+      if (!original) {
+        return {
+          ok: false,
+          error: 'The current chart timeframe cannot be restored after capture.',
+        };
+      }
       const captures: NonNullable<Extract<CaptureResponse, { ok: true }>['captures']> = [];
       try {
         for (const timeframe of timeframes) {
-          currentTimeframe = timeframe;
           const switched = await dependencies.sendTabMessage(tab.id, {
             type: 'chartviz/chart/timeframe',
             timeframe,
@@ -188,11 +192,12 @@ export function createBackgroundHandlers(dependencies: BackgroundDependencies) {
           captures,
         };
       } finally {
-        if (original && original !== currentTimeframe) {
-          await dependencies.sendTabMessage(tab.id, {
-            type: 'chartviz/chart/timeframe',
-            timeframe: original,
-          }).catch(() => undefined);
+        const restored = await dependencies.sendTabMessage(tab.id, {
+          type: 'chartviz/chart/timeframe',
+          timeframe: original,
+        }) as ChartContextResponse | null | undefined;
+        if (!restored?.ok) {
+          throw new Error(restored?.error ?? `Unable to restore the ${original} timeframe.`);
         }
       }
     } catch (error) {

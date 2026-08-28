@@ -12,6 +12,9 @@ import { presentationAnnotatedImages } from './community-ui-fixtures';
 import { validPresentationBundle } from './presentation-fixtures';
 
 const token = `cv_live_${'x'.repeat(43)}`;
+const rotatedToken = `cv_live_${'y'.repeat(43)}`;
+const fingerprint = 'a'.repeat(64);
+const rotatedFingerprint = 'b'.repeat(64);
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -102,12 +105,15 @@ const processing = parseExtensionAnalysisTask({
 
 function dependencies(options: {
   active?: StoredCloudActiveTask | null;
+  cleanup?: { requestId: string; tokenFingerprint: string } | null;
+  connectionToken?: string;
   tasks?: typeof completed[];
   cancelTask?: CloudClient['cancelTask'];
   presentation?: ReturnType<typeof parsePresentationBundle>;
   adaptPresentation?: typeof adaptCloudPresentation;
 } = {}) {
   let active = options.active ?? null;
+  let cleanup = options.cleanup ?? null;
   const tasks = [...(options.tasks ?? [processing, completed])];
   const client = {
     createTask: vi.fn(async () => pending),
@@ -121,19 +127,43 @@ function dependencies(options: {
     save: vi.fn(async (value: StoredCloudActiveTask) => { active = value; }),
     clear: vi.fn(async () => { active = null; }),
   };
+  const cleanupStorage = {
+    load: vi.fn(async () => cleanup),
+    save: vi.fn(async (value: { requestId: string; tokenFingerprint: string }) => { cleanup = value; }),
+    clear: vi.fn(async () => { cleanup = null; }),
+  };
+  const connectionToken = options.connectionToken ?? token;
+  const fingerprintGrant = vi.fn(async (value: string) =>
+    value === rotatedToken ? rotatedFingerprint : fingerprint);
   const sleep = vi.fn(async (_delay: number, _signal: AbortSignal): Promise<void> => undefined);
   const adaptPresentation = vi.fn(options.adaptPresentation ?? (() => options.presentation
     ?? parsePresentationBundle(structuredClone(validPresentationBundle))));
   const buildAnnotations = vi.fn(async () => presentationAnnotatedImages);
-  const runtime = new CloudAnalysisRuntime({
+  const runtimeDependencies = {
     client,
-    connection: { load: vi.fn(async () => ({ token, account: {} as never })) },
+    connection: { load: vi.fn(async () => ({ token: connectionToken, account: {} as never })) },
     activeTask: storage,
+    cleanupPending: cleanupStorage,
+    fingerprintGrant,
     sleep,
     adaptPresentation,
     buildAnnotations,
-  });
-  return { runtime, client, storage, sleep, adaptPresentation, buildAnnotations, current: () => active };
+  };
+  const createRuntime = () => new CloudAnalysisRuntime(runtimeDependencies as never);
+  const runtime = createRuntime();
+  return {
+    runtime,
+    recreateRuntime: createRuntime,
+    client,
+    storage,
+    cleanupStorage,
+    fingerprintGrant,
+    sleep,
+    adaptPresentation,
+    buildAnnotations,
+    current: () => active,
+    currentCleanup: () => cleanup,
+  };
 }
 
 describe('CloudAnalysisRuntime', () => {
@@ -177,6 +207,7 @@ describe('CloudAnalysisRuntime', () => {
     });
     expect(test.storage.save).toHaveBeenCalledWith({
       requestId: pending.requestId,
+      tokenFingerprint: fingerprint,
       captures,
       outputLanguage: 'en',
     });
@@ -220,7 +251,10 @@ describe('CloudAnalysisRuntime', () => {
   });
 
   it('restores locally without a network call and resumes without duplicate creation', async () => {
-    const active = { requestId: 'c_20260828_active', captures, outputLanguage: 'zh-CN' as const };
+    const active = {
+      requestId: 'c_20260828_active', tokenFingerprint: fingerprint,
+      captures, outputLanguage: 'zh-CN' as const,
+    };
     const test = dependencies({
       active,
       tasks: [multiCompletedTask()],
@@ -230,6 +264,7 @@ describe('CloudAnalysisRuntime', () => {
     await expect(test.runtime.restoreActiveAnalysis()).resolves.toEqual({
       captures, outputLanguage: 'zh-CN',
     });
+    expect(test.fingerprintGrant).toHaveBeenCalledWith(token);
     expect(test.client.task).not.toHaveBeenCalled();
     expect(test.storage.clear).not.toHaveBeenCalled();
 
@@ -237,6 +272,62 @@ describe('CloudAnalysisRuntime', () => {
     expect(outcome.captures).toEqual(captures);
     expect(test.client.createTask).not.toHaveBeenCalled();
     expect(test.client.task).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears an account A active record before returning any captures to account B', async () => {
+    const accountACapture = {
+      ...capture,
+      image: { ...capture.image, dataUrl: 'data:image/png;base64,ACCOUNT_A' },
+    };
+    const active = {
+      requestId: 'c_20260828_account_a', tokenFingerprint: fingerprint,
+      captures: [accountACapture], outputLanguage: 'en' as const,
+    };
+    const test = dependencies({ active, connectionToken: rotatedToken });
+
+    const restored = await test.runtime.restoreActiveAnalysis();
+
+    expect(restored).toBeNull();
+    expect(JSON.stringify(restored)).not.toContain(accountACapture.image.dataUrl);
+    expect(test.storage.clear).toHaveBeenCalledTimes(1);
+    expect(test.current()).toBeNull();
+  });
+
+  it('clears account A sources and analyzes only account B input after token rotation', async () => {
+    const accountACapture = {
+      ...capture,
+      image: { ...capture.image, dataUrl: 'data:image/png;base64,ACCOUNT_A' },
+    };
+    const accountBCapture = {
+      ...capture,
+      image: { ...capture.image, dataUrl: 'data:image/png;base64,ACCOUNT_B' },
+    };
+    const active = {
+      requestId: 'c_20260828_account_a', tokenFingerprint: fingerprint,
+      captures: [accountACapture], outputLanguage: 'en' as const,
+    };
+    const test = dependencies({
+      active,
+      connectionToken: rotatedToken,
+      tasks: [completed],
+    });
+
+    const outcome = await test.runtime.analyze({ captures: [accountBCapture], outputLanguage: 'en' });
+
+    expect(outcome.captures).toEqual([accountBCapture]);
+    expect(test.client.createTask).toHaveBeenCalledWith(rotatedToken, {
+      captures: [accountBCapture],
+      outputLanguage: 'en',
+    });
+    expect(test.client.task).not.toHaveBeenCalledWith(
+      rotatedToken,
+      active.requestId,
+      expect.any(AbortSignal),
+    );
+    expect(test.buildAnnotations).toHaveBeenCalledWith(
+      [{ captureId: 'C01', image: accountBCapture.image }],
+      expect.any(Array),
+    );
   });
 
   it('rejects and clears a completed report whose capture count differs from stored sources', async () => {
@@ -280,7 +371,10 @@ describe('CloudAnalysisRuntime', () => {
     'incompatible_report_schema',
     'incompatible_api_version',
   ] as const)('clears an unrestorable active task after %s', async (code) => {
-    const active = { requestId: 'c_20260828_active', captures: [capture], outputLanguage: 'en' as const };
+    const active = {
+      requestId: 'c_20260828_active', tokenFingerprint: fingerprint,
+      captures: [capture], outputLanguage: 'en' as const,
+    };
     const test = dependencies({ active });
     test.client.task.mockRejectedValue(new CloudConnectionError(code));
 
@@ -324,7 +418,8 @@ describe('CloudAnalysisRuntime', () => {
     await expect(operation).rejects.toMatchObject({ code: 'cancelled' });
     expect(test.storage.clear).not.toHaveBeenCalled();
     expect(test.current()).toEqual({
-      requestId: pending.requestId, captures: [capture], outputLanguage: 'en',
+      requestId: pending.requestId, tokenFingerprint: fingerprint,
+      captures: [capture], outputLanguage: 'en',
     });
   });
 
@@ -355,9 +450,51 @@ describe('CloudAnalysisRuntime', () => {
     expect(test.client.cancelTask).toHaveBeenCalledWith(token, pending.requestId);
     expect(test.client.createTask).toHaveBeenCalledTimes(1);
     expect(test.client.task).not.toHaveBeenCalled();
+    expect(test.currentCleanup()).toBeNull();
   });
 
-  it('does not create a duplicate while save-failure cleanup cancellation keeps rejecting', async () => {
+  it('clears a different-grant cleanup tombstone without cancelling it', async () => {
+    const test = dependencies({
+      cleanup: {
+        requestId: 'c_20260828_account_a_cleanup',
+        tokenFingerprint: fingerprint,
+      },
+      connectionToken: rotatedToken,
+      tasks: [completed],
+    });
+
+    await test.runtime.analyze({ captures: [capture], outputLanguage: 'en' });
+
+    expect(test.cleanupStorage.clear).toHaveBeenCalledTimes(1);
+    expect(test.currentCleanup()).toBeNull();
+    expect(test.client.cancelTask).not.toHaveBeenCalledWith(
+      rotatedToken,
+      'c_20260828_account_a_cleanup',
+    );
+    expect(test.client.createTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears a same-grant cleanup tombstone after task_not_found and then creates safely', async () => {
+    const test = dependencies({
+      cleanup: {
+        requestId: 'c_20260828_missing_cleanup',
+        tokenFingerprint: fingerprint,
+      },
+      cancelTask: async () => {
+        throw new CloudConnectionError('task_not_found');
+      },
+      tasks: [completed],
+    });
+
+    await test.runtime.analyze({ captures: [capture], outputLanguage: 'en' });
+
+    expect(test.cleanupStorage.clear).toHaveBeenCalledTimes(1);
+    expect(test.currentCleanup()).toBeNull();
+    expect(test.client.cancelTask).toHaveBeenCalledWith(token, 'c_20260828_missing_cleanup');
+    expect(test.client.createTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not create a duplicate after runtime recreation while cleanup cancellation keeps rejecting', async () => {
     const test = dependencies({ cancelTask: async () => {
       throw new CloudConnectionError('service_unavailable');
     } });
@@ -365,16 +502,21 @@ describe('CloudAnalysisRuntime', () => {
 
     await expect(test.runtime.analyze({ captures: [capture], outputLanguage: 'en' }))
       .rejects.toMatchObject({ code: 'service_unavailable' });
-    await expect(test.runtime.analyze({ captures: [capture], outputLanguage: 'en' }))
+    const reloadedRuntime = test.recreateRuntime();
+    await expect(reloadedRuntime.analyze({ captures: [capture], outputLanguage: 'en' }))
       .rejects.toMatchObject({ code: 'service_unavailable' });
 
     expect(test.client.createTask).toHaveBeenCalledTimes(1);
     expect(test.client.cancelTask).toHaveBeenCalledTimes(2);
     expect(test.client.cancelTask).toHaveBeenNthCalledWith(2, token, pending.requestId);
     expect(test.client.task).not.toHaveBeenCalled();
+    expect(test.currentCleanup()).toEqual({
+      requestId: pending.requestId,
+      tokenFingerprint: fingerprint,
+    });
   });
 
-  it('does not create a duplicate while save-failure cleanup remains cancel_requested', async () => {
+  it('does not create a duplicate after runtime recreation while cleanup remains cancel_requested', async () => {
     const test = dependencies({ cancelTask: async () => ({
       ...pending, status: 'cancel_requested' as const,
     }) });
@@ -382,13 +524,18 @@ describe('CloudAnalysisRuntime', () => {
 
     await expect(test.runtime.analyze({ captures: [capture], outputLanguage: 'en' }))
       .rejects.toMatchObject({ code: 'service_unavailable' });
-    await expect(test.runtime.analyze({ captures: [capture], outputLanguage: 'en' }))
+    const reloadedRuntime = test.recreateRuntime();
+    await expect(reloadedRuntime.analyze({ captures: [capture], outputLanguage: 'en' }))
       .rejects.toMatchObject({ code: 'service_unavailable' });
 
     expect(test.client.createTask).toHaveBeenCalledTimes(1);
     expect(test.client.cancelTask).toHaveBeenCalledTimes(2);
     expect(test.client.cancelTask).toHaveBeenNthCalledWith(2, token, pending.requestId);
     expect(test.client.task).not.toHaveBeenCalled();
+    expect(test.currentCleanup()).toEqual({
+      requestId: pending.requestId,
+      tokenFingerprint: fingerprint,
+    });
   });
 
   it('observes cancellation rejection immediately while active-task save is pending', async () => {

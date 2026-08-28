@@ -13,6 +13,7 @@ const activeTaskKey = 'chartvizCloudActiveTask';
 
 export type StoredCloudActiveTask = Readonly<{
   requestId: string;
+  tokenFingerprint: string;
   captures: readonly AnalysisCapture[];
   outputLanguage: OutputLanguage;
 }>;
@@ -31,6 +32,7 @@ export type CloudActiveTaskStorage = Readonly<{
 
 const storedCloudActiveTaskSchema: z.ZodType<StoredCloudActiveTask> = z.object({
   requestId: z.string().min(1).max(80),
+  tokenFingerprint: z.string().regex(/^[0-9a-f]{64}$/),
   captures: z.array(analysisCaptureSchema).min(1).max(3),
   outputLanguage: outputLanguageSchema,
 }).strict();

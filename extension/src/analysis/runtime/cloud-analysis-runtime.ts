@@ -12,7 +12,15 @@ import type { ExtensionAnalysisTask } from '../../cloud/contracts/extension-clou
 import type { ExtensionReport } from '../../cloud/contracts/extension-cloud-v1';
 import { adaptCloudPresentation } from '../../presentation/cloud-presentation-adapter';
 import type { PresentationBundle, PresentationDrawing } from '../../presentation/report-presentation-model';
-import { loadCloudConnection, type StoredCloudConnection } from '../../storage/cloud-connection-storage';
+import {
+  clearCloudCleanupPending,
+  cloudGrantFingerprint,
+  loadCloudCleanupPending,
+  loadCloudConnection,
+  saveCloudCleanupPending,
+  type CloudCleanupPendingStorage,
+  type StoredCloudConnection,
+} from '../../storage/cloud-connection-storage';
 import {
   clearCloudActiveTask,
   loadCloudActiveTask,
@@ -34,15 +42,12 @@ type ActiveTaskStorage = Readonly<{
   clear(): Promise<void>;
 }>;
 
-type CleanupPendingRequest = Readonly<{
-  requestId: string;
-  token: string;
-}>;
-
 export type CloudAnalysisRuntimeDependencies = Readonly<{
   client: Pick<CloudClient, 'createTask' | 'task' | 'cancelTask'>;
   connection: Readonly<{ load(): Promise<StoredCloudConnection | null> }>;
   activeTask: ActiveTaskStorage;
+  cleanupPending: CloudCleanupPendingStorage;
+  fingerprintGrant(token: string): Promise<string>;
   sleep(delayMs: number, signal: AbortSignal): Promise<void>;
   adaptPresentation(report: ExtensionReport): PresentationBundle;
   buildAnnotations(
@@ -73,6 +78,12 @@ const defaultDependencies: CloudAnalysisRuntimeDependencies = {
     save: saveCloudActiveTask,
     clear: clearCloudActiveTask,
   },
+  cleanupPending: {
+    load: loadCloudCleanupPending,
+    save: saveCloudCleanupPending,
+    clear: clearCloudCleanupPending,
+  },
+  fingerprintGrant: cloudGrantFingerprint,
   sleep: abortableSleep,
   adaptPresentation: adaptCloudPresentation,
   buildAnnotations: buildPresentationAnnotations,
@@ -109,7 +120,6 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
   private activeToken: string | null = null;
   private cancelRequested = false;
   private cancelResponse: Promise<ExtensionAnalysisTask> | null = null;
-  private cleanupPendingRequest: CleanupPendingRequest | null = null;
 
   constructor(dependencies: Partial<CloudAnalysisRuntimeDependencies> = {}) {
     this.dependencies = { ...defaultDependencies, ...dependencies };
@@ -123,7 +133,14 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
     captures: readonly AnalysisCapture[];
     outputLanguage: 'en' | 'zh-CN';
   }> | null> {
+    const connection = await this.dependencies.connection.load();
+    if (!connection) return null;
+    const tokenFingerprint = await this.dependencies.fingerprintGrant(connection.token);
     const active = await this.dependencies.activeTask.load();
+    if (active && active.tokenFingerprint !== tokenFingerprint) {
+      await this.dependencies.activeTask.clear();
+      return null;
+    }
     return active
       ? { captures: active.captures, outputLanguage: active.outputLanguage }
       : null;
@@ -153,13 +170,20 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
     return response;
   }
 
-  private async settleCleanupPendingRequest(): Promise<void> {
-    const pendingRequest = this.cleanupPendingRequest;
+  private async settleCleanupPendingRequest(
+    token: string,
+    tokenFingerprint: string,
+  ): Promise<void> {
+    const pendingRequest = await this.dependencies.cleanupPending.load();
     if (!pendingRequest) return;
+    if (pendingRequest.tokenFingerprint !== tokenFingerprint) {
+      await this.dependencies.cleanupPending.clear();
+      return;
+    }
     let task: ExtensionAnalysisTask;
     try {
       task = await this.dependencies.client.cancelTask(
-        pendingRequest.token,
+        token,
         pendingRequest.requestId,
       );
     } catch (error) {
@@ -167,13 +191,13 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
         error instanceof CloudConnectionError
         && error.code === 'task_not_found'
       ) {
-        this.cleanupPendingRequest = null;
+        await this.dependencies.cleanupPending.clear();
         return;
       }
       throw new AnalysisRuntimeFailure('service_unavailable');
     }
     if (['completed', 'failed', 'cancelled'].includes(task.status)) {
-      this.cleanupPendingRequest = null;
+      await this.dependencies.cleanupPending.clear();
       return;
     }
     throw new AnalysisRuntimeFailure('service_unavailable');
@@ -260,7 +284,12 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
       const connection = await this.dependencies.connection.load();
       if (!connection) throw new AnalysisRuntimeFailure('authentication_required');
       this.activeToken = connection.token;
-      const stored = await this.dependencies.activeTask.load();
+      const tokenFingerprint = await this.dependencies.fingerprintGrant(connection.token);
+      let stored = await this.dependencies.activeTask.load();
+      if (stored && stored.tokenFingerprint !== tokenFingerprint) {
+        await this.dependencies.activeTask.clear();
+        stored = null;
+      }
       let task: ExtensionAnalysisTask;
       if (stored) {
         captures = stored.captures;
@@ -271,7 +300,7 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
           controller.signal,
         );
       } else {
-        await this.settleCleanupPendingRequest();
+        await this.settleCleanupPendingRequest(connection.token, tokenFingerprint);
         task = await this.dependencies.client.createTask(connection.token, {
           captures,
           outputLanguage: input.outputLanguage,
@@ -280,18 +309,29 @@ export class CloudAnalysisRuntime implements AnalysisRuntime {
         try {
           await this.dependencies.activeTask.save({
             requestId: task.requestId,
+            tokenFingerprint,
             captures,
             outputLanguage: input.outputLanguage,
           });
         } catch {
-          this.cleanupPendingRequest = {
+          const pendingCleanup = {
             requestId: task.requestId,
-            token: connection.token,
+            tokenFingerprint,
           };
           try {
-            await this.settleCleanupPendingRequest();
+            await this.dependencies.cleanupPending.save(pendingCleanup);
           } catch {
-            // Retain the request in memory and block duplicate creation until cleanup is terminal.
+            try {
+              await this.dependencies.client.cancelTask(connection.token, task.requestId);
+            } catch {
+              // The stable failure below remains diagnosable when both local stores are unavailable.
+            }
+            throw new AnalysisRuntimeFailure('service_unavailable');
+          }
+          try {
+            await this.settleCleanupPendingRequest(connection.token, tokenFingerprint);
+          } catch {
+            // The persisted tombstone blocks duplicate creation until cleanup is terminal.
           }
           throw new AnalysisRuntimeFailure('service_unavailable');
         }
