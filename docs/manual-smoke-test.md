@@ -1,4 +1,4 @@
-# ChartViz 1.0.0 manual smoke test
+# ChartViz 1.0.1 manual smoke test
 
 Run this checklist after `bash scripts/verify-release.sh` passes. Stage 6 page checks require no provider key, paid request, or working Cloud API. Keep evidence limited to `PASS`, `FAIL`, or `PENDING`, browser/version, extension commit, and a short secret-free note.
 

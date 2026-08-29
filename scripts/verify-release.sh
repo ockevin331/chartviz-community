@@ -8,7 +8,7 @@ cd -- "$repo_root"
 pnpm --dir extension install --frozen-lockfile
 pnpm --dir extension contracts:check
 node --test tests/repository-structure.test.mjs tests/release-docs.test.mjs \
-  tests/cloud-contract-release-gate.test.mjs
+  tests/cloud-contract-release-gate.test.mjs tests/release-automation.test.mjs
 pnpm --dir extension test
 pnpm --dir extension compile
 pnpm --dir extension build

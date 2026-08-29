@@ -4,11 +4,11 @@ Report vulnerabilities privately to the maintainers. Do not include API keys, au
 
 ## Product and data boundary
 
-ChartViz 1.0.0 is an open-source browser extension with no bundled account service, backend, website runtime, analytics, history, news, exchange-data feed, billing, or local-model runtime.
+ChartViz 1.0.1 is an open-source browser extension with no bundled account service, backend, website runtime, analytics, history, news, exchange-data feed, billing, or local-model runtime.
 
 Direct analysis uses one processed screenshot and three sequential provider requests. The screenshot is sent directly to the selected OpenRouter, OpenAI, or Gemini endpoint in the first two requests; normalized evidence rather than the image is sent in the third. Provider credentials are held only in `browser.storage.session` and must never reach page scripts, URLs, logs, telemetry, reports, downloads, copied diagnostics, local storage, or sync storage.
 
-Multi-timeframe capture is capability-gated for ChartViz Cloud. The production 1.0.0 unavailable Cloud gateway has no credential, connection, upload, capture, analyze, fetch, or screenshot input; therefore it accepts no token and sends no screenshot. Tests may inject a fake in-memory gateway to verify the one-to-three-image runtime contract without a network service.
+Multi-timeframe capture is capability-gated for ChartViz Cloud. The production 1.0.1 unavailable Cloud gateway has no credential, connection, upload, capture, analyze, fetch, or screenshot input; therefore it accepts no token and sends no screenshot. Tests may inject a fake in-memory gateway to verify the one-to-three-image runtime contract without a network service.
 
 The extension validates chart inputs, provider HTTP/response envelopes, staged evidence, and final report JSON. MV3 CSP limits executable code to the package. Manifest access is limited to `activeTab`, `storage`, `scripting`, supported chart hosts, and the three reviewed provider origins. There is no optional host access, broad `<all_urls>` access, remote executable code, or custom provider origin.
 

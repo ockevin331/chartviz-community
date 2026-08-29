@@ -5,7 +5,7 @@ Keep each change focused and write a failing behavior test before implementation
 The accepted runtime boundary is:
 
 - Direct analysis is single-timeframe and uses one captured screenshot plus three sequential requests to the selected provider.
-- Multi-timeframe capture belongs only to a runtime advertising the ChartViz Cloud capability; production 1.0.0 Cloud is unavailable and must accept no token or screenshot.
+- Multi-timeframe capture belongs only to a runtime advertising the ChartViz Cloud capability; production 1.0.1 Cloud is unavailable and must accept no token or screenshot.
 - Direct provider keys remain in `browser.storage.session` and never enter content scripts, URLs, logs, reports, downloads, copied diagnostics, local storage, or sync storage.
 - Runtime origins are fixed to reviewed OpenRouter, OpenAI, and Gemini endpoints; custom model IDs never imply custom API origins.
 - MV3 code is packaged locally, permissions remain minimal, supported-site content matches come from the public site registry, and no `<all_urls>`, optional host access, or remote code is allowed.
