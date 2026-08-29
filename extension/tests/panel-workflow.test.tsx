@@ -76,8 +76,8 @@ function connectedCloudManager(): CloudConnectionManager {
         emailMasked: 'a***z@example.com', plan: 'pro' as const,
         currentPeriodEnd: '2026-09-28T00:00:00+00:00',
         quota: { limit: 50, used: 1, remaining: 49, unlimited: false },
-        selectedModel: { id: 'openai/gpt-5.4', name: 'GPT-5.4', quotaCost: 2 },
-        entitlements: { multiTimeframe: false, maxCaptures: 1 },
+        selectedModel: { id: 'openai/gpt-5.4', name: 'GPT-5.4', quotaCost: 1 },
+        entitlements: { multiTimeframe: true, maxCaptures: 3 },
       },
     })),
     connect: disconnectedCloudManager.connect,
@@ -120,6 +120,31 @@ const directModeDependencies = {
   testDirectConnection: async () => undefined,
 };
 describe('direct Community panel workflow', () => {
+  it('restores the selected language after the panel is reopened', async () => {
+    const user = userEvent.setup();
+    let storedLanguage: 'en' | 'zh-CN' = 'en';
+    const dependencies = {
+      loadConfig: async () => null,
+      loadMode: async () => 'cloud' as const,
+      saveMode: async () => undefined,
+      loadLanguage: async () => storedLanguage,
+      saveLanguage: async (language: 'en' | 'zh-CN') => { storedLanguage = language; },
+      cloudGateway: unavailableCloudGateway,
+      cloudConnectionManager: disconnectedCloudManager,
+    };
+    const first = render(<App dependencies={dependencies} />);
+
+    await screen.findByLabelText('Cloud access token');
+    await user.click(screen.getByRole('button', { name: 'Language' }));
+    await user.click(screen.getByRole('menuitemradio', { name: '🇨🇳 CN 简体中文' }));
+    expect(await screen.findByLabelText('Cloud 访问令牌')).toBeTruthy();
+
+    first.unmount();
+    render(<App dependencies={dependencies} />);
+
+    expect(await screen.findByLabelText('Cloud 访问令牌')).toBeTruthy();
+  });
+
   it('defaults a new installation to Cloud connection setup without inspecting the page', async () => {
     const inspectPage = vi.fn(inspect);
     const createDirectRuntime = vi.fn(() => fakeRuntime());
@@ -135,7 +160,7 @@ describe('direct Community panel workflow', () => {
 
     expect(await screen.findByRole('tab', { name: 'ChartViz Cloud' })).toHaveProperty('ariaSelected', 'true');
     expect(screen.getByLabelText('Cloud access token')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Connect Cloud' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Connect and set as default' })).toBeTruthy();
     expect(screen.queryByLabelText('API key')).toBeNull();
     expect(inspectPage).not.toHaveBeenCalled();
     expect(createDirectRuntime).not.toHaveBeenCalled();
@@ -149,9 +174,9 @@ describe('direct Community panel workflow', () => {
       account: {
         emailMasked: 'k***n@example.com', plan: 'pro' as const,
         currentPeriodEnd: '2026-09-28T00:00:00+00:00',
-        quota: { limit: 50, used: 2, remaining: 48, unlimited: false },
-        selectedModel: { id: 'openai/gpt-5.6-terra', name: 'GPT-5.6 Terra', quotaCost: 1 },
-        entitlements: { multiTimeframe: false, maxCaptures: 1 },
+          quota: { limit: 50, used: 2, remaining: 48, unlimited: false },
+          selectedModel: { id: 'openai/gpt-5.6-terra', name: 'GPT-5.6 Terra', quotaCost: 1 },
+          entitlements: { multiTimeframe: true, maxCaptures: 3 },
       },
     }));
     const manager: CloudConnectionManager = {
@@ -176,7 +201,7 @@ describe('direct Community panel workflow', () => {
 
     const token = `cv_live_${'x'.repeat(43)}`;
     await user.type(await screen.findByLabelText('Cloud access token'), token);
-    await user.click(screen.getByRole('button', { name: 'Connect Cloud' }));
+    await user.click(screen.getByRole('button', { name: 'Connect and set as default' }));
 
     expect(connect).toHaveBeenCalledWith(token);
     expect(saveMode).toHaveBeenCalledWith('cloud');
@@ -220,6 +245,57 @@ describe('direct Community panel workflow', () => {
     expect(createDirectRuntime).not.toHaveBeenCalled();
     expect(runtime.analyze).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();
+  });
+
+  it('shows a connected Cloud account menu whose navigation opens the website', async () => {
+    const user = userEvent.setup();
+    const runtime = fakeCloudRuntime();
+    render(<App dependencies={{
+      loadConfig: async () => null,
+      loadMode: async () => 'cloud',
+      saveMode: async () => undefined,
+      cloudGateway: {
+        availability: () => ({ available: true }),
+        runtime: () => runtime,
+      },
+      cloudConnectionManager: connectedCloudManager(),
+      inspect,
+    }} />);
+
+    await screen.findByRole('heading', { name: 'Detected chart' });
+    await user.click(screen.getByRole('button', { name: 'Account' }));
+
+    const menu = screen.getByRole('menu', { name: 'Account' });
+    expect(within(menu).getByText('a***z@example.com')).toBeTruthy();
+    expect(within(menu).getByText('Pro')).toBeTruthy();
+    expect(within(menu).getByText('49 / 50')).toBeTruthy();
+    expect(within(menu).getByRole('menuitem', { name: 'Analysis list' })).toHaveProperty(
+      'href', 'https://www.chartviz.xyz/analyzers',
+    );
+    expect(within(menu).getByRole('menuitem', { name: 'Profile' })).toHaveProperty(
+      'href', 'https://www.chartviz.xyz/profile',
+    );
+    expect(within(menu).getByRole('menuitem', { name: 'Cloud settings' })).toHaveProperty(
+      'href', 'https://www.chartviz.xyz/settings',
+    );
+  });
+
+  it('does not show the Cloud account menu while Direct model is active', async () => {
+    render(<App dependencies={{
+      loadConfig: async () => ({
+        provider: 'openrouter', apiKey: 'key',
+        model: 'google/gemini-3.7-flash', customModel: false,
+      }),
+      loadMode: async () => 'direct',
+      saveMode: async () => undefined,
+      cloudGateway: unavailableCloudGateway,
+      cloudConnectionManager: connectedCloudManager(),
+      createDirectRuntime: () => fakeRuntime(),
+      inspect,
+    }} />);
+
+    await screen.findByRole('heading', { name: 'Detected chart' });
+    expect(screen.queryByRole('button', { name: 'Account' })).toBeNull();
   });
 
   it('keeps Direct single-frame and opens Cloud settings from multi-timeframe guidance', async () => {
@@ -500,7 +576,7 @@ describe('direct Community panel workflow', () => {
 
     await user.click(screen.getByRole('combobox', { name: 'Model' }));
     await user.click(screen.getByRole('option', { name: /qwen\/qwen3\.7-plus/i }));
-    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
 
     await waitFor(() => expect(saveConfig).toHaveBeenCalledWith({
       provider: 'openrouter', apiKey: 'existing-key', model: 'qwen/qwen3.7-plus', customModel: false,
@@ -564,7 +640,7 @@ describe('direct Community panel workflow', () => {
 
     await user.click(screen.getByRole('tab', { name: 'Direct model' }));
     await user.type(screen.getByLabelText('API key'), 'session-secret');
-    await user.click(screen.getByRole('button', { name: 'Save and continue' }));
+    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
 
     await screen.findByRole('heading', { name: 'Detected chart' });
     expect(events).toEqual(['config', 'mode', 'runtime']);
@@ -612,14 +688,14 @@ describe('direct Community panel workflow', () => {
     await user.click(screen.getByRole('button', { name: 'Settings' }));
     await user.click(screen.getByRole('combobox', { name: 'Model' }));
     await user.click(screen.getByRole('option', { name: /qwen\/qwen3\.7-plus/i }));
-    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
     await waitFor(() => expect(saveConfig).toHaveBeenCalledTimes(1));
 
     await user.click(screen.getByRole('tab', { name: 'ChartViz Cloud' }));
     await user.click(screen.getByRole('tab', { name: 'Direct model' }));
     await user.click(screen.getByRole('combobox', { name: 'Model' }));
     await user.click(screen.getByRole('option', { name: /anthropic\/claude-sonnet-5/i }));
-    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
 
     expect(saveConfig).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('dialog', { name: 'Analysis settings' })).toBeTruthy();
@@ -704,14 +780,14 @@ describe('direct Community panel workflow', () => {
     await user.click(screen.getByRole('button', { name: 'Settings' }));
     await user.click(screen.getByRole('combobox', { name: 'Model' }));
     await user.click(screen.getByRole('option', { name: /qwen\/qwen3\.7-plus/i }));
-    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
     await waitFor(() => expect(saveConfig).toHaveBeenCalledTimes(1));
 
     await user.click(screen.getByRole('tab', { name: 'ChartViz Cloud' }));
     await user.click(screen.getByRole('tab', { name: 'Direct model' }));
     await user.click(screen.getByRole('combobox', { name: 'Model' }));
     await user.click(screen.getByRole('option', { name: /anthropic\/claude-sonnet-5/i }));
-    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
 
     expect(saveConfig).toHaveBeenCalledTimes(1);
     await act(async () => {
@@ -775,10 +851,10 @@ describe('direct Community panel workflow', () => {
 
     await screen.findByRole('heading', { name: 'Detected chart' });
     await user.click(screen.getByRole('button', { name: 'Settings' }));
-    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
     await user.click(screen.getByRole('tab', { name: 'ChartViz Cloud' }));
     await user.type(screen.getByLabelText('Cloud access token'), `cv_live_${'c'.repeat(43)}`);
-    await user.click(screen.getByRole('button', { name: 'Connect Cloud' }));
+    await user.click(screen.getByRole('button', { name: 'Connect and set as default' }));
     expect(await screen.findByRole('heading', { name: 'Detected chart' })).toBeTruthy();
 
     await act(async () => {
@@ -827,10 +903,10 @@ describe('direct Community panel workflow', () => {
 
     await screen.findByRole('heading', { name: 'Detected chart' });
     await user.click(screen.getByRole('button', { name: 'Settings' }));
-    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
     await user.click(screen.getByRole('tab', { name: 'ChartViz Cloud' }));
     await user.type(screen.getByLabelText('Cloud access token'), `cv_live_${'e'.repeat(43)}`);
-    await user.click(screen.getByRole('button', { name: 'Connect Cloud' }));
+    await user.click(screen.getByRole('button', { name: 'Connect and set as default' }));
     expect(await screen.findByRole('heading', { name: 'Detected chart' })).toBeTruthy();
 
     await act(async () => {
@@ -889,11 +965,11 @@ describe('direct Community panel workflow', () => {
 
     await screen.findByRole('heading', { name: 'Detected chart' });
     await user.click(screen.getByRole('button', { name: 'Settings' }));
-    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
     await waitFor(() => expect(saveMode).toHaveBeenCalledWith('direct'));
     await user.click(screen.getByRole('tab', { name: 'ChartViz Cloud' }));
     await user.type(screen.getByLabelText('Cloud access token'), `cv_live_${'m'.repeat(43)}`);
-    await user.click(screen.getByRole('button', { name: 'Connect Cloud' }));
+    await user.click(screen.getByRole('button', { name: 'Connect and set as default' }));
     await waitFor(() => expect(manager.connect).toHaveBeenCalledTimes(1));
 
     expect(saveMode.mock.calls.map(([mode]) => mode)).toEqual(['direct']);
@@ -968,11 +1044,11 @@ describe('direct Community panel workflow', () => {
     await user.click(screen.getByRole('button', { name: 'Settings' }));
     await user.click(screen.getByRole('tab', { name: 'ChartViz Cloud' }));
     await user.type(screen.getByLabelText('Cloud access token'), `cv_live_${'d'.repeat(43)}`);
-    await user.click(screen.getByRole('button', { name: 'Connect Cloud' }));
+    await user.click(screen.getByRole('button', { name: 'Connect and set as default' }));
     await waitFor(() => expect(saveMode).toHaveBeenCalledWith('cloud'));
 
     await user.click(screen.getByRole('tab', { name: 'Direct model' }));
-    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
 
     expect(saveMode.mock.calls.map(([mode]) => mode)).toEqual(['cloud']);
     expect(screen.getByRole('dialog', { name: 'Analysis settings' })).toBeTruthy();
@@ -1039,11 +1115,11 @@ describe('direct Community panel workflow', () => {
 
     await screen.findByRole('heading', { name: 'Detected chart' });
     await user.click(screen.getByRole('button', { name: 'Settings' }));
-    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
     await waitFor(() => expect(saveMode).toHaveBeenCalledWith('direct'));
     await user.click(screen.getByRole('tab', { name: 'ChartViz Cloud' }));
     await user.type(screen.getByLabelText('Cloud access token'), `cv_live_${'r'.repeat(43)}`);
-    await user.click(screen.getByRole('button', { name: 'Connect Cloud' }));
+    await user.click(screen.getByRole('button', { name: 'Connect and set as default' }));
     await waitFor(() => expect(manager.connect).toHaveBeenCalledTimes(1));
 
     expect(saveMode.mock.calls.map(([mode]) => mode)).toEqual(['direct']);
@@ -1102,7 +1178,7 @@ describe('direct Community panel workflow', () => {
     await screen.findByRole('heading', { name: 'Detected chart' });
     await user.click(screen.getByRole('button', { name: 'Settings' }));
     await user.click(screen.getByRole('tab', { name: 'Direct model' }));
-    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
     await waitFor(() => expect(saveMode).toHaveBeenCalledWith('direct'));
     await user.click(screen.getByRole('button', { name: 'Refresh' }));
 
@@ -1179,7 +1255,7 @@ describe('direct Community panel workflow', () => {
     await screen.findByRole('heading', { name: 'Detected chart' });
     await user.click(screen.getByRole('button', { name: 'Settings' }));
     await user.click(screen.getByRole('tab', { name: 'Direct model' }));
-    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
     await waitFor(() => expect(saveMode).toHaveBeenCalledTimes(1));
     await user.click(screen.getByRole('button', { name: 'Refresh' }));
 
@@ -1260,7 +1336,7 @@ describe('direct Community panel workflow', () => {
     await screen.findByRole('heading', { name: 'Detected chart' });
     await user.click(screen.getByRole('button', { name: 'Settings' }));
     await user.click(screen.getByRole('tab', { name: 'Direct model' }));
-    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
     await waitFor(() => expect(saveMode).toHaveBeenCalledTimes(1));
     await user.click(screen.getByRole('button', { name: 'Refresh' }));
 
@@ -1349,7 +1425,7 @@ describe('direct Community panel workflow', () => {
     await screen.findByRole('heading', { name: 'Detected chart' });
     await user.click(screen.getByRole('button', { name: 'Settings' }));
     await user.click(screen.getByRole('tab', { name: 'Direct model' }));
-    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
     await waitFor(() => expect(saveMode).toHaveBeenCalledWith('direct'));
     await user.click(screen.getByRole('button', { name: 'Refresh' }));
 
@@ -1358,7 +1434,7 @@ describe('direct Community panel workflow', () => {
       await staleDirectSave.promise;
     });
     await waitFor(() => expect(saveMode).toHaveBeenCalledTimes(2));
-    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
 
     await act(async () => {
       supersededCompensation.reject(new Error('superseded compensation failed'));
@@ -1423,7 +1499,7 @@ describe('direct Community panel workflow', () => {
       await user.click(screen.getByRole('tab', { name: 'ChartViz Cloud' }));
       const token = `cv_live_${'f'.repeat(43)}`;
       await user.type(screen.getByLabelText('Cloud access token'), token);
-      await user.click(screen.getByRole('button', { name: 'Connect Cloud' }));
+      await user.click(screen.getByRole('button', { name: 'Connect and set as default' }));
       await waitFor(() => expect(saveMode).toHaveBeenCalledTimes(1));
 
       expect(persistedMode).toBe('direct');
@@ -1451,7 +1527,7 @@ describe('direct Community panel workflow', () => {
       expect(gatewayRuntime).not.toHaveBeenCalled();
       expect(persistedMode).toBe('direct');
 
-      await user.click(screen.getByRole('button', { name: 'Connect Cloud' }));
+      await user.click(screen.getByRole('button', { name: 'Connect and set as default' }));
 
       expect(await screen.findByRole('heading', { name: 'Detected chart' })).toBeTruthy();
       expect(connect).toHaveBeenCalledTimes(2);

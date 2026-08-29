@@ -57,15 +57,18 @@ export function ReportView({ language, presentation: report, captures, annotatio
   return <div className="report-view">
     <section className="original-screenshot">
       <div className="section-heading"><h2>{t.original}</h2><button className="secondary copy-report" type="button" onClick={async () => { await copyReport(reportToText(report, language)); setCopied(true); }}>{copied ? t.copied : t.copyReport}</button></div>
-      {captureSources.map(({ metadata, source }) => {
-        const title = multipleCaptures
-          ? `${t.original} · ${metadata.timeframe ?? metadata.captureId}`
-          : t.original;
-        return <div key={metadata.captureId} data-original-capture-id={metadata.captureId}>
-          <AnnotatedImage language={language} image={{ dataUrl: source.image.dataUrl, title }} filename={multipleCaptures ? `chartviz-original-${metadata.captureId}.png` : 'chartviz-original.png'} onZoom={zoom} downloadImage={downloadImage} />
-          <dl className="metadata"><div><dt>{t.instrument}</dt><dd>{report.context.instrument ?? metadata.instrument ?? t.none}</dd></div><div><dt>{t.timeframe}</dt><dd>{metadata.timeframe ?? t.none}</dd></div></dl>
-        </div>;
-      })}
+      <div className={`original-capture-grid${multipleCaptures ? ' multi' : ''}`}>
+        {captureSources.map(({ metadata, source }) => {
+          const title = multipleCaptures
+            ? `${t.original} · ${metadata.timeframe ?? metadata.captureId}`
+            : t.original;
+          return <div className="original-capture-card" key={metadata.captureId} data-original-capture-id={metadata.captureId}>
+            {multipleCaptures && <strong className="original-capture-timeframe">{metadata.timeframe ?? metadata.captureId}</strong>}
+            <AnnotatedImage language={language} image={{ dataUrl: source.image.dataUrl, title }} filename={multipleCaptures ? `chartviz-original-${metadata.captureId}.png` : 'chartviz-original.png'} onZoom={zoom} downloadImage={downloadImage} />
+            <dl className="metadata"><div><dt>{t.instrument}</dt><dd>{report.context.instrument ?? metadata.instrument ?? t.none}</dd></div><div><dt>{t.timeframe}</dt><dd>{metadata.timeframe ?? t.none}</dd></div></dl>
+          </div>;
+        })}
+      </div>
     </section>
 
     <section className={`decision decision-${directionClass}`} data-report-section="conclusion">

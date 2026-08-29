@@ -140,6 +140,9 @@ describe('ReportView presentation-1.0 visible structure', () => {
     };
     const { container } = render(<ReportView language="en" presentation={presentation} captures={captures} annotations={annotations} />);
 
+    const originalGrid = container.querySelector('.original-capture-grid');
+    expect(originalGrid?.classList.contains('multi')).toBe(true);
+    expect(originalGrid?.querySelectorAll(':scope > [data-original-capture-id]')).toHaveLength(3);
     expect(Array.from(container.querySelectorAll('[data-original-capture-id]')).map((node) => (
       node.getAttribute('data-original-capture-id')
     ))).toEqual(['C01', 'C02', 'C03']);

@@ -6,8 +6,8 @@ import type { ExtensionAccount } from '../src/cloud/contracts/extension-cloud-v1
 const account: ExtensionAccount = {
   emailMasked: 'k***n@example.com', plan: 'advance' as const,
   currentPeriodEnd: '2026-09-28T00:00:00+00:00',
-  quota: { limit: null, used: 7, remaining: null, unlimited: true },
-  selectedModel: { id: 'openai/gpt-5.4', name: 'GPT-5.4', quotaCost: 2 },
+  quota: { limit: 150, used: 7, remaining: 143, unlimited: false },
+  selectedModel: { id: 'openai/gpt-5.4', name: 'GPT-5.4', quotaCost: 1 },
   entitlements: { multiTimeframe: true, maxCaptures: 3 },
 };
 
@@ -42,7 +42,12 @@ describe('Cloud connection lifecycle', () => {
 
   it('refreshes a stored account and updates the cache before reporting connected', async () => {
     const token = `cv_live_${'x'.repeat(43)}`;
-    const refreshed = { ...account, plan: 'pro' as const, entitlements: { multiTimeframe: false, maxCaptures: 1 } };
+    const refreshed = {
+      ...account,
+      plan: 'pro' as const,
+      quota: { limit: 50, used: 7, remaining: 43, unlimited: false },
+      entitlements: { multiTimeframe: true, maxCaptures: 3 },
+    };
     const save = vi.fn(async () => undefined);
     const manager = createCloudConnectionManager({
       client: { connect: vi.fn(), account: vi.fn(async () => refreshed) },

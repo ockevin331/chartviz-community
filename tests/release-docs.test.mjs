@@ -16,7 +16,7 @@ test('release documentation describes the approved Cloud and Direct boundary', (
   const security = read('SECURITY.md');
 
   assert.match(readme, /new installation.+ChartViz Cloud/is);
-  assert.match(readme, /Cloud connection.+later update/is);
+  assert.match(readme, /revocable access token/is);
   assert.match(readme, /Direct.+three sequential requests/is);
   assert.match(readme, /Context.+4h.+Setup.+1h.+Trigger.+15m/is);
   assert.doesNotMatch(readme, /accepts one uploaded image|manual upload/i);
@@ -26,7 +26,7 @@ test('release documentation describes the approved Cloud and Direct boundary', (
   assert.doesNotMatch(contributing, /do not add.+multi-timeframe behavior/is);
 
   assert.match(security, /three sequential provider requests/i);
-  assert.match(security, /unavailable Cloud gateway.+no.+screenshot/is);
+  assert.match(security, /Cloud client validates.+task.+report/is);
 });
 
 test('manual smoke checklist covers supported and unsupported page guidance', () => {

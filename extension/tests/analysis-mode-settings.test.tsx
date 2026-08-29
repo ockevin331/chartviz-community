@@ -22,6 +22,7 @@ function fixture(language: 'en' | 'zh-CN' = 'en') {
     cloudConnection: { status: 'disconnected', account: null, errorCode: null } as CloudConnectionState,
     cloudBusy: false,
     onCloudConnect: vi.fn(async () => true),
+    onCloudActivate: vi.fn(async () => true),
     onCloudDisconnect: vi.fn(async () => undefined),
   };
   return { props, events };
@@ -38,13 +39,29 @@ describe('AnalysisModeSettings', () => {
     expect(apiUrl).toHaveProperty('value', 'https://www.chartviz.xyz/api');
     expect(apiUrl).toHaveProperty('readOnly', true);
     expect(apiUrl).toHaveProperty('disabled', false);
-    expect(screen.getByRole('link', { name: 'Create or revoke tokens on ChartViz' })).toHaveProperty(
+    const tokenInput = screen.getByLabelText('Cloud access token');
+    const tokenLink = screen.getByRole('link', { name: 'Create or revoke tokens on ChartViz' });
+    expect(tokenLink).toHaveProperty(
       'href',
       'https://www.chartviz.xyz/settings',
     );
+    expect(tokenLink.closest('form')).toBe(tokenInput.closest('form'));
+    expect(tokenInput.compareDocumentPosition(tokenLink) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     expect(screen.queryByLabelText(/api key/i)).toBeNull();
-    expect(screen.getByRole('button', { name: 'Connect Cloud' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Connect and set as default' })).toBeTruthy();
     expect(document.querySelector('input[type="file"]')).toBeNull();
+  });
+
+  it('closes the floating panel before opening token settings', async () => {
+    const user = userEvent.setup();
+    const postMessage = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => undefined);
+    const { props } = fixture();
+    render(<AnalysisModeSettings {...props} />);
+
+    await user.click(screen.getByRole('link', { name: 'Create or revoke tokens on ChartViz' }));
+
+    expect(postMessage).toHaveBeenCalledWith({ source: 'chartviz', type: 'panel-close' }, '*');
+    postMessage.mockRestore();
   });
 
   it('submits the token once, clears the input, and never renders the plaintext', async () => {
@@ -54,7 +71,7 @@ describe('AnalysisModeSettings', () => {
 
     const token = `cv_live_${'x'.repeat(43)}`;
     await user.type(screen.getByLabelText('Cloud access token'), token);
-    await user.click(screen.getByRole('button', { name: 'Connect Cloud' }));
+    await user.click(screen.getByRole('button', { name: 'Connect and set as default' }));
 
     await waitFor(() => expect(props.onCloudConnect).toHaveBeenCalledWith(token));
     expect(screen.getByLabelText('Cloud access token')).toHaveProperty('value', '');
@@ -69,7 +86,7 @@ describe('AnalysisModeSettings', () => {
 
     const token = `cv_live_${'x'.repeat(43)}`;
     await user.type(screen.getByLabelText('Cloud access token'), token);
-    await user.click(screen.getByRole('button', { name: 'Connect Cloud' }));
+    await user.click(screen.getByRole('button', { name: 'Connect and set as default' }));
 
     await waitFor(() => expect(props.onCloudConnect).toHaveBeenCalledWith(token));
     expect(screen.getByLabelText('Cloud access token')).toHaveProperty('value', token);
@@ -83,8 +100,8 @@ describe('AnalysisModeSettings', () => {
       account: {
         emailMasked: 'k***n@example.com', plan: 'advance',
         currentPeriodEnd: '2026-09-28T00:00:00+00:00',
-        quota: { limit: null, used: 7, remaining: null, unlimited: true },
-        selectedModel: { id: 'openai/gpt-5.4', name: 'GPT-5.4', quotaCost: 2 },
+        quota: { limit: 150, used: 7, remaining: 143, unlimited: false },
+        selectedModel: { id: 'openai/gpt-5.4', name: 'GPT-5.4', quotaCost: 1 },
         entitlements: { multiTimeframe: true, maxCaptures: 3 },
       },
     }} />);
@@ -92,11 +109,32 @@ describe('AnalysisModeSettings', () => {
     expect(screen.getByText('k***n@example.com')).toBeTruthy();
     expect(screen.getByText('ADVANCE')).toBeTruthy();
     expect(screen.getByText(/GPT-5.4/)).toBeTruthy();
-    expect(screen.getByText(/Unlimited/)).toBeTruthy();
+    expect(screen.getByText(/143 \/ 150/)).toBeTruthy();
     expect(screen.queryByText('Cloud analysis activation follows in the next stage.')).toBeNull();
+    expect(screen.getByText('Current default')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Set Cloud as default' })).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Disconnect' }));
     expect(props.onCloudDisconnect).toHaveBeenCalledTimes(1);
     expect(document.querySelector('input[type="file"]')).toBeNull();
+  });
+
+  it('activates an already connected Cloud account only from an explicit default action', async () => {
+    const user = userEvent.setup();
+    const { props } = fixture();
+    render(<AnalysisModeSettings {...props} activeMode="direct" cloudConnection={{
+      status: 'connected', errorCode: null,
+      account: {
+        emailMasked: 'k***n@example.com', plan: 'pro',
+        currentPeriodEnd: '2026-09-28T00:00:00+00:00',
+        quota: { limit: 50, used: 4, remaining: 46, unlimited: false },
+        selectedModel: { id: 'openai/gpt-5.4', name: 'GPT-5.4', quotaCost: 1 },
+        entitlements: { multiTimeframe: true, maxCaptures: 3 },
+      },
+    }} />);
+
+    expect(props.onCloudActivate).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Set Cloud as default' }));
+    expect(props.onCloudActivate).toHaveBeenCalledTimes(1);
   });
 
   it('localizes a precise expired-token connection error', () => {
@@ -128,7 +166,7 @@ describe('AnalysisModeSettings', () => {
     expect(screen.getByRole('checkbox', { name: 'Use OpenRouter' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Test connection' })).toBeTruthy();
     await user.type(screen.getByLabelText('API key'), 'session-secret');
-    await user.click(screen.getByRole('button', { name: 'Save and continue' }));
+    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
 
     await waitFor(() => expect(props.activateDirect).toHaveBeenCalledTimes(1));
     expect(props.activateDirect).toHaveBeenCalledWith({

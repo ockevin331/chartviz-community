@@ -2,7 +2,7 @@
   "contractVersion": "extension-report-1.0",
   "files": {
     "extension-report-1.0.schema.json": "aa002c37b6c8edd570f855a53a690f834bff6d46302ab145452d29d50e33ee0f",
-    "fixtures/account.json": "1ec213e6709d884c895bfbb61dc02d4e1272196dfef459de9e0c7644eb2ac46f",
+    "fixtures/account.json": "7c33995ab2c0adfa8d933c92845e9612d29089fad4339cf64d8db34acdd8af26",
     "fixtures/capabilities.json": "b1a4fd15516faba89c181e48608c7c3c96d98522a5ff550263fe227a9e3f299a",
     "fixtures/capture-settings.json": "9f8c5c3986464c3652b89c6792513ebc4314bc18fb0f98a65360553a9defba2e",
     "fixtures/multi-completed-task.json": "c0ed465308f7a1aba5b7bde1812a2311f35cb457e0a8c2386b16e48ab1c4aeb2",

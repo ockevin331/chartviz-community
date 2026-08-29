@@ -207,7 +207,7 @@ describe('ChartCaptureSource', () => {
     expect(capture).not.toHaveBeenCalled();
   });
 
-  it('shows localized Advance guidance and preserves its pricing URL when settings reject before capture', async () => {
+  it('shows localized paid-plan guidance and preserves its pricing URL when settings reject before capture', async () => {
     const user = userEvent.setup();
     const captureMany = vi.fn(async () => [captured]);
     render(<ChartCaptureSource
@@ -231,7 +231,7 @@ describe('ChartCaptureSource', () => {
     await user.click(screen.getByRole('button', { name: /Multi-timeframe/ }));
     await user.click(screen.getByRole('button', { name: 'Capture and analyze' }));
 
-    expect((await screen.findByRole('alert')).textContent).toContain('Multi-timeframe analysis requires the Advance plan.');
+    expect((await screen.findByRole('alert')).textContent).toContain('An active ChartViz plan is required for multi-timeframe analysis.');
     expect(screen.getByRole('link', { name: 'View plans' })).toHaveProperty(
       'href',
       'https://www.chartviz.xyz/#pricing',

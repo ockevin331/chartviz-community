@@ -18,6 +18,7 @@ import type { SupportedCaptureTimeframe } from '../../src/domain/chart-messages'
 import { providerRegistry } from '../../src/providers/provider-registry';
 import type { ProviderConfig } from '../../src/providers/provider-types';
 import { loadAnalysisMode, saveAnalysisMode } from '../../src/storage/analysis-mode-storage';
+import { loadLanguage, saveLanguage } from '../../src/storage/language-storage';
 import { loadProviderConfig, saveProviderConfig } from '../../src/storage/provider-session';
 import { loadCloudConnection, type StoredCloudConnection } from '../../src/storage/cloud-connection-storage';
 import {
@@ -25,6 +26,7 @@ import {
   type LatestPersistenceResult,
 } from '../../src/storage/latest-persistence';
 import { AnalysisError } from '../../src/ui/components/AnalysisError';
+import { AnalysisCapturePreview } from '../../src/ui/components/AnalysisCapturePreview';
 import { AnalysisModeSettings } from '../../src/ui/components/AnalysisModeSettings';
 import { AnalysisProgress } from '../../src/ui/components/AnalysisProgress';
 import { ChartCaptureSource } from '../../src/ui/components/ChartCaptureSource';
@@ -39,6 +41,8 @@ export type AppDependencies = {
   saveConfig(config: ProviderConfig): Promise<void>;
   loadMode(config: ProviderConfig | null): Promise<AnalysisMode>;
   saveMode(mode: AnalysisMode): Promise<void>;
+  loadLanguage(): Promise<Language>;
+  saveLanguage(language: Language): Promise<void>;
   cloudGateway: CloudAnalysisGateway;
   cloudConnectionManager: CloudConnectionManager;
   cloudClient: Pick<CloudClient, 'captureSettings'>;
@@ -58,6 +62,8 @@ const defaultDependencies: AppDependencies = {
   saveConfig: saveProviderConfig,
   loadMode: loadAnalysisMode,
   saveMode: saveAnalysisMode,
+  loadLanguage,
+  saveLanguage,
   cloudGateway: productionCloudGateway,
   cloudConnectionManager: createCloudConnectionManager(),
   cloudClient: createCloudClient(),
@@ -94,6 +100,7 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
   const [setupMode, setSetupMode] = useState<AnalysisMode>('cloud');
   const [settingsMode, setSettingsMode] = useState<AnalysisMode>('cloud');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [cloudConnection, setCloudConnection] = useState<CloudConnectionState>({
     status: 'disconnected', account: null, errorCode: null,
   });
@@ -207,15 +214,17 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     const startupAttempt = ++transitionAttempt.current;
     const isCurrent = () => current && transitionAttempt.current === startupAttempt;
     void (async () => {
-      const [config, connection] = await Promise.all([
+      const [config, connection, storedLanguage] = await Promise.all([
         dependencies.loadConfig(),
         dependencies.cloudConnectionManager.load(),
+        dependencies.loadLanguage(),
       ]);
       if (!isCurrent()) return;
       const mode = await dependencies.loadMode(config);
       if (!isCurrent()) return;
       setProviderConfig(config);
       setCloudConnection(connection);
+      setLanguage(storedLanguage);
       activeModeRef.current = mode;
       setActiveMode(mode);
       setSetupMode(mode);
@@ -238,6 +247,7 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
   }, [
     dependencies.loadConfig,
     dependencies.loadMode,
+    dependencies.loadLanguage,
     dependencies.createDirectRuntime,
     dependencies.cloudGateway,
     dependencies.cloudConnectionManager,
@@ -340,12 +350,33 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     }
   }
 
+  async function activateCloud(): Promise<boolean> {
+    const transition = beginRuntimeTransition();
+    setCloudBusy(true);
+    try {
+      if (cloudConnection.status !== 'connected') return false;
+      if (!await persistModeForTransition('cloud', transition)) return false;
+      if (transitionAttempt.current !== transition) return false;
+      const runtime = resolveCloudRuntime(dependencies.cloudGateway);
+      if (!runtime) return false;
+      activeModeRef.current = 'cloud';
+      setActiveMode('cloud');
+      setSetupMode('cloud');
+      setSettingsMode('cloud');
+      activateRuntime(runtime);
+      return true;
+    } finally {
+      if (transitionAttempt.current === transition) setCloudBusy(false);
+    }
+  }
+
   async function disconnectCloud() {
     const transition = beginRuntimeTransition();
     setCloudBusy(true);
     try {
       const connection = await dependencies.cloudConnectionManager.disconnect();
       if (transitionAttempt.current !== transition) return;
+      setAccountMenuOpen(false);
       setCloudConnection(connection);
       if (activeMode === 'cloud') controller.unconfigure();
     } finally {
@@ -356,6 +387,11 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
   function openSettings() {
     setSettingsMode(activeMode);
     setSettingsOpen(true);
+  }
+
+  function changeLanguage(value: Language) {
+    setLanguage(value);
+    void dependencies.saveLanguage(value).catch(() => undefined);
   }
 
   function openCloudSettings() {
@@ -377,22 +413,58 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     window.parent.postMessage({ source: 'chartviz', type: 'panel-drag', dx, dy }, '*');
   }
   const state = controller.state;
+  const connectedCloudAccount = activeMode === 'cloud' && cloudConnection.status === 'connected'
+    ? cloudConnection.account
+    : null;
+  const cloudAccountExpiration = connectedCloudAccount?.currentPeriodEnd
+    ? new Intl.DateTimeFormat(language === 'zh-CN' ? 'zh-CN' : 'en-US', {
+      dateStyle: 'medium',
+    }).format(new Date(connectedCloudAccount.currentPeriodEnd))
+    : null;
+  const cloudAccountQuota = connectedCloudAccount?.quota.unlimited
+    ? t.cloudUnlimited
+    : `${connectedCloudAccount?.quota.remaining ?? 0} / ${connectedCloudAccount?.quota.limit ?? 0}`;
   return <main>
     <header className="drag-handle" data-testid="drag-handle" onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={() => { dragPosition.current = null; }} onPointerCancel={() => { dragPosition.current = null; }}>
       <div className="brand"><Logo /><div><h1>ChartViz</h1><p className="slogan">{t.slogan}</p></div></div>
-      <div className="header-actions" onPointerDown={(event) => event.stopPropagation()}><LanguageMenu language={language} onChange={setLanguage} />{(providerConfig || cloudConnection.account) && <button className="toolbar-button settings-button" type="button" aria-label={t.settings} onClick={openSettings}><SettingsIcon /></button>}<button className="toolbar-button refresh-button" type="button" aria-label={t.refresh} onClick={refreshAll}><RefreshIcon /></button><button className="toolbar-button close-button" type="button" aria-label={t.close} onClick={() => window.parent.postMessage({ source: 'chartviz', type: 'panel-close' }, '*')}><CloseIcon /></button></div>
+      <div className="header-actions" onPointerDown={(event) => event.stopPropagation()}>
+        <LanguageMenu language={language} onChange={changeLanguage} />
+        {(providerConfig || cloudConnection.account) && <button className="toolbar-button settings-button" type="button" aria-label={t.settings} onClick={openSettings}><SettingsIcon /></button>}
+        <button className="toolbar-button refresh-button" type="button" aria-label={t.refresh} onClick={refreshAll}><RefreshIcon /></button>
+        {connectedCloudAccount && <div className="cloud-account-picker">
+          <button className="toolbar-button cloud-account-button" type="button" aria-label={t.account} aria-haspopup="menu" aria-expanded={accountMenuOpen} title={connectedCloudAccount.emailMasked} onClick={() => setAccountMenuOpen((open) => !open)}>{(connectedCloudAccount.emailMasked[0] || 'U').toUpperCase()}</button>
+          {accountMenuOpen && <div className="cloud-account-menu" role="menu" aria-label={t.account}>
+            <div className="cloud-account-identity">
+              <span>{t.signedInAs}</span>
+              <strong title={connectedCloudAccount.emailMasked}>{connectedCloudAccount.emailMasked}</strong>
+              <dl>
+                <div><dt>{t.cloudPlan}</dt><dd>{connectedCloudAccount.plan[0]?.toUpperCase()}{connectedCloudAccount.plan.slice(1)}</dd></div>
+                {connectedCloudAccount.plan !== 'free' && cloudAccountExpiration && <div><dt>{t.cloudPlanExpires}</dt><dd>{cloudAccountExpiration}</dd></div>}
+                <div><dt>{t.cloudQuota}</dt><dd>{cloudAccountQuota}</dd></div>
+              </dl>
+            </div>
+            <nav>
+              <a href="https://www.chartviz.xyz/analyzers" target="_blank" rel="noopener noreferrer" role="menuitem" aria-label={t.analysisList}><HistoryIcon /><span>{t.analysisList}</span><i>›</i></a>
+              <a href="https://www.chartviz.xyz/profile" target="_blank" rel="noopener noreferrer" role="menuitem" aria-label={t.profile}><ProfileIcon /><span>{t.profile}</span><i>›</i></a>
+              <a href="https://www.chartviz.xyz/settings" target="_blank" rel="noopener noreferrer" role="menuitem" aria-label={t.cloudSettings}><SettingsIcon /><span>{t.cloudSettings}</span><i>›</i></a>
+            </nav>
+            <button className="cloud-account-disconnect" type="button" role="menuitem" disabled={cloudBusy} onClick={() => void disconnectCloud()}><DisconnectIcon /><span>{t.disconnectCloud}</span></button>
+          </div>}
+        </div>}
+        <button className="toolbar-button close-button" type="button" aria-label={t.close} onClick={() => window.parent.postMessage({ source: 'chartviz', type: 'panel-close' }, '*')}><CloseIcon /></button>
+      </div>
     </header>
     {modePersistenceError !== null
       ? <AnalysisError language={language} errorCode="service_unavailable" onBack={retryModePersistence} />
       : settingsOpen ? <section className="settings-view" role="dialog" aria-label={t.analysisSettings}>
       <button className="secondary settings-back" type="button" aria-label={t.backToChart} onClick={() => setSettingsOpen(false)}>← {t.backToChart}</button>
-      <AnalysisModeSettings language={language} variant="settings" activeMode={activeMode} selectedMode={settingsMode} onSelectedModeChange={setSettingsMode} initialDirectConfig={providerConfig} activateDirect={activateSettingsDirect} testConnection={dependencies.testDirectConnection} cloudConnection={cloudConnection} cloudBusy={cloudBusy} onCloudConnect={connectCloud} onCloudDisconnect={disconnectCloud} />
+      <AnalysisModeSettings language={language} variant="settings" activeMode={activeMode} selectedMode={settingsMode} onSelectedModeChange={setSettingsMode} initialDirectConfig={providerConfig} activateDirect={activateSettingsDirect} testConnection={dependencies.testDirectConnection} cloudConnection={cloudConnection} cloudBusy={cloudBusy} onCloudConnect={connectCloud} onCloudActivate={activateCloud} onCloudDisconnect={disconnectCloud} />
     </section> : <>
       {loading && <section className="backend-loading" role="status">…</section>}
-      {!loading && state.status === 'setup' && <AnalysisModeSettings language={language} variant="setup" activeMode={activeMode} selectedMode={setupMode} onSelectedModeChange={setSetupMode} initialDirectConfig={providerConfig} activateDirect={activateInitialDirect} testConnection={dependencies.testDirectConnection} cloudConnection={cloudConnection} cloudBusy={cloudBusy} onCloudConnect={connectCloud} onCloudDisconnect={disconnectCloud} />}
+      {!loading && state.status === 'setup' && <AnalysisModeSettings language={language} variant="setup" activeMode={activeMode} selectedMode={setupMode} onSelectedModeChange={setSetupMode} initialDirectConfig={providerConfig} activateDirect={activateInitialDirect} testConnection={dependencies.testDirectConnection} cloudConnection={cloudConnection} cloudBusy={cloudBusy} onCloudConnect={connectCloud} onCloudActivate={activateCloud} onCloudDisconnect={disconnectCloud} />}
       {!loading && state.status === 'source' && analysisCapabilities && <ChartCaptureSource key={contextRevision} language={language} capabilities={analysisCapabilities} inspect={dependencies.inspect} capture={dependencies.capture} captureMany={dependencies.captureMany} loadMultiTimeframes={loadMultiTimeframes} onCaptured={analyzeCaptured} onOpenCloudSettings={openCloudSettings} />}
       {state.status === 'preview' && state.image && <ImagePreview language={language} image={state.image} onZoom={setLightbox} onChange={captureAgain} onAnalyze={retryAnalysis} />}
-      {state.status === 'analyzing' && state.image && <><ImagePreview language={language} image={state.image} analyzing onZoom={setLightbox} onChange={captureAgain} onAnalyze={() => undefined} /><AnalysisProgress language={language} progress={state.progress} onCancel={controller.cancel} /></>}
+      {state.status === 'analyzing' && state.captures.length > 0 && <><AnalysisCapturePreview language={language} captures={state.captures} analyzing onZoom={setLightbox} /><AnalysisProgress language={language} progress={state.progress} onCancel={controller.cancel} /></>}
       {state.status === 'failed' && <AnalysisError language={language} errorCode={state.errorCode} diagnostic={state.diagnostic} params={state.errorParams} pricingUrl={state.pricingUrl} onBack={retryAnalysis} />}
       {state.status === 'cancelled' && <AnalysisError language={language} cancelled onBack={controller.returnToPreview} />}
       {state.status === 'completed' && state.image && state.presentation && state.annotations && <ReportView language={language} captures={state.captures} presentation={state.presentation} annotations={state.annotations} />}
@@ -404,4 +476,7 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
 function Logo() { return <svg className="logo" viewBox="0 0 40 40" role="img" aria-label="ChartViz logo"><rect width="40" height="40" rx="10" fill="currentColor" opacity=".16" /><path d="M10 27l7-8 5 4 8-11M10 31h20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /><circle cx="30" cy="12" r="2.5" fill="currentColor" /></svg>; }
 function RefreshIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 8a8 8 0 1 0 1 6M19 4v4h-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
 function SettingsIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M19.2 13.2a7.5 7.5 0 0 0 0-2.4l2-1.5-2-3.4-2.4 1a8.5 8.5 0 0 0-2.1-1.2L14.4 3h-4.8l-.3 2.7a8.5 8.5 0 0 0-2.1 1.2l-2.4-1-2 3.4 2 1.5a7.5 7.5 0 0 0 0 2.4l-2 1.5 2 3.4 2.4-1a8.5 8.5 0 0 0 2.1 1.2l.3 2.7h4.8l.3-2.7a8.5 8.5 0 0 0 2.1-1.2l2.4 1 2-3.4-2-1.5Z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>; }
+function HistoryIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.5M4 4v4.5h4.5M12 7v5l3 2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
+function ProfileIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M4.5 21a7.5 7.5 0 0 1 15 0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>; }
+function DisconnectIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H5v14h5M14 8l4 4-4 4M8 12h10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
 function CloseIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>; }

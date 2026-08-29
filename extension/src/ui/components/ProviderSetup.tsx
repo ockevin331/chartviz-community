@@ -160,7 +160,7 @@ export function ProviderSetup({ language, onConfigured, initialConfig = null, mo
       <p className="cost-notice">{t.analysisRequestNotice}</p>
       <p className="cost-notice">{t.connectionCost}</p>
       {message && <p className={message.kind === 'error' ? 'setup-error' : 'setup-success'} role={message.kind === 'error' ? 'alert' : 'status'}>{message.text}</p>}
-      <div className="provider-actions"><button className="secondary" type="button" disabled={!valid || testing} onClick={() => void connect()}>{testing ? t.testingConnection : t.testConnection}</button><button className="primary" type="submit" disabled={!valid || saving}>{mode === 'settings' ? t.saveSettings : t.saveContinue}</button></div>
+      <div className="provider-actions"><button className="secondary" type="button" disabled={!valid || testing} onClick={() => void connect()}>{testing ? t.testingConnection : t.testConnection}</button><button className="primary" type="submit" disabled={!valid || saving}>{t.saveAndSetDefault}</button></div>
     </form>
   </section>;
 }

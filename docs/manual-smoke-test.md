@@ -1,6 +1,6 @@
-# ChartViz 1.0.1 manual smoke test
+# ChartViz 1.0.2 manual smoke test
 
-Run this checklist after `bash scripts/verify-release.sh` passes. Stage 6 page checks require no provider key, paid request, or working Cloud API. Keep evidence limited to `PASS`, `FAIL`, or `PENDING`, browser/version, extension commit, and a short secret-free note.
+Run this checklist after `bash scripts/verify-release.sh` passes. Page-guidance checks require no provider key or paid request. Cloud connection checks require a maintainer-owned revocable test token. Keep evidence limited to `PASS`, `FAIL`, or `PENDING`, browser/version, extension commit, and a short secret-free note.
 
 ## Test URLs
 
@@ -13,20 +13,21 @@ Run this checklist after `bash scripts/verify-release.sh` passes. Stage 6 page c
 
 - [ ] `PENDING` — Open `chrome://extensions`, enable Developer mode, load `extension/.output/chrome-mv3`, and record the Chrome version and tested commit.
 - [ ] `PENDING` — Confirm the extension is named **ChartViz**, the icon opens a full-height floating panel, Close hides it, and the toolbar icon reopens it.
-- [ ] `PENDING` — With no saved mode/configuration, confirm **ChartViz Cloud** opens first, says Cloud will be enabled later, has no token/connect field, and links to ChartViz.
+- [ ] `PENDING` — With no saved mode/configuration, confirm **ChartViz Cloud** opens first, shows the fixed Cloud URL and token/connect field, and links to ChartViz token settings.
+- [ ] `PENDING` — Connect with a revocable test token; confirm the masked account, plan, expiry when applicable, quota, and model appear, then confirm the header account menu links to the website analysis list, profile, and settings.
 - [ ] `PENDING` — Open **Direct model** and confirm the curated model selector, OpenRouter option, masked API-key field, language selector, test action, and save action are present.
 - [ ] `PENDING` — On the supported TradingView `/chart/` URL, confirm detected instrument/exchange/timeframe and the single/multi screenshot cards appear.
 - [ ] `PENDING` — In Direct mode, select multi-timeframe and confirm it does not capture; it explains that multi-timeframe analysis requires ChartViz Cloud.
 - [ ] `PENDING` — On the TradingView `/symbols/` URL, confirm the primary alert says the page is not a supported chart page and exactly one clickable TradingView BTC chart example is shown.
 - [ ] `PENDING` — On `gmgn.ai`, confirm the neutral unsupported-site guidance includes a prominent ChartViz website link plus green supported-site links, with no in-panel file picker.
 - [ ] `PENDING` — On `chartviz.xyz`, confirm the link copy tells the user to use the screenshot upload area on the current page.
-- [ ] `PENDING` — Confirm the browser console contains no Cloud network request, provider credential, screenshot payload, or uncaught panel error during these checks.
+- [ ] `PENDING` — Confirm the browser console contains no Cloud request before connection or analysis, no provider credential, no screenshot payload outside an explicit analysis, and no uncaught panel error during these checks.
 
 ## Edge release smoke
 
 - [ ] `PENDING` — Open `edge://extensions`, enable Developer mode, load `extension/.output/edge-mv3`, and record the Edge version and tested commit.
-- [ ] `PENDING` — Repeat the open/close, Cloud-default, Direct-settings, supported TradingView `/chart/`, TradingView `/symbols/`, `gmgn.ai`, and `chartviz.xyz` checks.
-- [ ] `PENDING` — Confirm the Edge behavior and generated manifest match Chrome and no Cloud/provider request occurs during page-guidance checks.
+- [ ] `PENDING` — Repeat the open/close, Cloud-default/connection, Direct-settings, supported TradingView `/chart/`, TradingView `/symbols/`, `gmgn.ai`, and `chartviz.xyz` checks.
+- [ ] `PENDING` — Confirm the Edge behavior and generated manifest match Chrome and no Cloud/provider request occurs before an explicit connection or analysis action.
 
 ## Optional provider smoke before publishing
 

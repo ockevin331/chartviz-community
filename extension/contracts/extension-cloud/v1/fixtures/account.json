@@ -7,9 +7,9 @@
   },
   "plan": "advance",
   "quota": {
-    "limit": null,
-    "remaining": null,
-    "unlimited": true,
+    "limit": 150,
+    "remaining": 138,
+    "unlimited": false,
     "used": 12
   },
   "selectedModel": {

@@ -53,7 +53,7 @@ describe('ProviderSetup', () => {
     await user.click(screen.getByRole('button', { name: 'Show API key' }));
     expect(screen.getByLabelText('API key')).toHaveProperty('type', 'text');
     expect(screen.getByRole('button', { name: 'Hide API key' }).querySelector('svg')).toBeTruthy();
-    await user.click(screen.getByRole('button', { name: 'Save and continue' }));
+    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
 
     await waitFor(() => expect(saveConfig).toHaveBeenCalledWith({ provider: 'openrouter', apiKey: 'session-secret', model: 'openai/gpt-5.6-terra', customModel: false }));
     expect(onConfigured).toHaveBeenCalledTimes(1);
@@ -68,7 +68,7 @@ describe('ProviderSetup', () => {
     render(<ProviderSetup language="en" saveConfig={saveConfig} testConnection={async () => undefined} onConfigured={onConfigured} />);
 
     await user.type(screen.getByLabelText('API key'), 'session-secret');
-    await user.click(screen.getByRole('button', { name: 'Save and continue' }));
+    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
 
     await waitFor(() => expect(saveConfig).toHaveBeenCalledTimes(1));
     expect(onConfigured).not.toHaveBeenCalled();
@@ -81,7 +81,7 @@ describe('ProviderSetup', () => {
     render(<ProviderSetup language="en" saveConfig={saveConfig} testConnection={async () => undefined} />);
 
     await user.type(screen.getByLabelText('API key'), 'session-secret');
-    const save = screen.getByRole('button', { name: 'Save and continue' });
+    const save = screen.getByRole('button', { name: 'Save and set as default' });
     await user.click(save);
 
     await waitFor(() => expect(saveConfig).toHaveBeenCalledTimes(1));
@@ -100,14 +100,14 @@ describe('ProviderSetup', () => {
     render(<ProviderSetup language="en" saveConfig={saveConfig} testConnection={async () => undefined} onConfigured={() => undefined} />);
     await user.type(screen.getByLabelText('API key'), 'key');
     await user.click(screen.getByRole('checkbox', { name: 'Use OpenRouter' }));
-    await user.click(screen.getByRole('button', { name: 'Save and continue' }));
+    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
     await waitFor(() => expect(saveConfig).toHaveBeenLastCalledWith({
       provider: 'openai', apiKey: 'key', model: 'gpt-5.6-terra', customModel: false,
     }));
 
     await user.click(screen.getByRole('combobox', { name: 'Model' }));
     await user.click(screen.getByRole('option', { name: /google\/gemini-3\.7-flash/i }));
-    await user.click(screen.getByRole('button', { name: 'Save and continue' }));
+    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
     await waitFor(() => expect(saveConfig).toHaveBeenLastCalledWith({
       provider: 'gemini', apiKey: 'key', model: 'gemini-3.7-flash', customModel: false,
     }));
@@ -156,9 +156,9 @@ describe('ProviderSetup', () => {
     expect(screen.queryByText(/I confirm this model supports image input/i)).toBeNull();
     expect(screen.getByRole('checkbox', { name: 'Use OpenRouter' })).toHaveProperty('checked', true);
     expect(screen.getByRole('checkbox', { name: 'Use OpenRouter' })).toHaveProperty('disabled', true);
-    expect(screen.getByRole('button', { name: 'Save and continue' })).toHaveProperty('disabled', false);
+    expect(screen.getByRole('button', { name: 'Save and set as default' })).toHaveProperty('disabled', false);
 
-    await user.click(screen.getByRole('button', { name: 'Save and continue' }));
+    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
     await waitFor(() => expect(saveConfig).toHaveBeenCalledWith({
       provider: 'openrouter', apiKey: 'key', model: 'vendor/vision-model', customModel: true,
     }));

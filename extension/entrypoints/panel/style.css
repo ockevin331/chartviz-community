@@ -20,13 +20,29 @@ button, input { font: inherit; }
 .slogan { margin: 3px 0 0; color: #8f96a3; font-size: 10px; line-height: 1.4; }
 .header-actions { display: flex; min-width: 0; flex: 0 0 auto; gap: 5px; }
 .toolbar-button { display: grid; width: 42px; height: 42px; padding: 0; place-items: center; border: 1px solid #353b48; border-radius: 10px; color: #d7dbe4; background: #20242c; font-size: 15px; font-weight: 700; line-height: 1; cursor: pointer; }
-.language-picker { position: relative; }
+.language-picker, .cloud-account-picker { position: relative; }
 .language-button { grid-template-columns: 20px 1fr 12px; gap: 5px; width: 94px; padding: 0 9px; }
 .language-button > span:nth-child(2) { color: #eef0f5; font-size: 13px; }
 .language-chevron { color: #969ca8; font-size: 15px; transform: translateY(-2px); }
 .language-menu { position: absolute; z-index: 20; top: 48px; right: 0; display: grid; width: 112px; padding: 5px; border: 1px solid #353b48; border-radius: 10px; background: #20242c; box-shadow: 0 12px 30px rgb(0 0 0 / 35%); }
 .language-menu button { display: grid; grid-template-columns: 22px 1fr 18px; gap: 8px; padding: 9px 10px; border: 0; border-radius: 7px; color: #c7ccd6; background: transparent; text-align: left; cursor: pointer; }
 .language-menu button:hover, .language-menu button.selected { color: #fff; background: #2b3040; }
+.cloud-account-button { border-radius: 50%; color: #fff; background: linear-gradient(145deg, #5968f2, #39459f); font-weight: 850; }
+.cloud-account-menu { position: absolute; z-index: 24; top: 48px; right: 0; display: grid; width: 244px; padding: 9px; border: 1px solid #353b48; border-radius: 12px; background: #20242c; box-shadow: 0 16px 36px rgb(0 0 0 / 42%); }
+.cloud-account-identity { display: grid; min-width: 0; gap: 4px; padding: 4px 5px 11px; border-bottom: 1px solid #353b48; }
+.cloud-account-identity > span { color: #858d9b; font-size: 8px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.cloud-account-identity > strong { overflow: hidden; color: #f0f2f7; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.cloud-account-identity dl { display: grid; gap: 6px; margin: 8px 0 0; padding: 8px; border: 1px solid rgb(104 119 236 / 20%); border-radius: 8px; background: rgb(104 119 236 / 7%); }
+.cloud-account-identity dl div { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.cloud-account-identity dt { color: #858d9b; font-size: 8px; }
+.cloud-account-identity dd { overflow: hidden; margin: 0; color: #dce1ff; font-size: 8px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.cloud-account-menu nav { display: grid; gap: 3px; padding: 9px 0; border-bottom: 1px solid #353b48; }
+.cloud-account-menu nav a, .cloud-account-disconnect { display: grid; grid-template-columns: 18px minmax(0, 1fr) 10px; align-items: center; gap: 8px; width: 100%; padding: 9px 8px; border: 0; border-radius: 8px; color: #cbd1dc; background: transparent; font: inherit; font-size: 10px; font-weight: 750; text-align: left; text-decoration: none; cursor: pointer; }
+.cloud-account-menu nav a:hover { color: #fff; background: #2a3040; }
+.cloud-account-menu nav svg, .cloud-account-disconnect svg { width: 17px; height: 17px; }
+.cloud-account-menu nav i { color: #7f8898; font-size: 16px; font-style: normal; text-align: right; }
+.cloud-account-disconnect { grid-template-columns: 18px minmax(0, 1fr); margin-top: 8px; color: #ff969e; }
+.cloud-account-disconnect:hover { color: #ffb4ba; background: rgb(239 68 68 / 10%); }
 .language-check { color: #8be0b0; text-align: center; }
 .close-button { flex: 0 0 42px; }
 .close-button svg, .refresh-button svg, .settings-button svg { width: 24px; height: 24px; }
@@ -148,6 +164,12 @@ button, input { font: inherit; }
 .preview { display: block; width: 100%; border-radius: 8px; }
 .download-image { width: 100%; margin-top: 10px; }
 .preview-actions { margin-top: 12px; }
+.capture-preview-list { display: grid; gap: 10px; }
+.capture-preview-list.multi { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.capture-preview-item { min-width: 0; }
+.capture-preview-item > strong { display: block; overflow: hidden; margin-bottom: 5px; color: #cbd2df; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.capture-preview-list.multi .preview { aspect-ratio: 16 / 10; object-fit: cover; }
+.current-default { justify-self: start; padding: 3px 7px; border: 1px solid rgb(72 201 133 / 28%); border-radius: 999px; color: #9cdeb9; background: rgb(32 117 73 / 10%); font-size: 9px; font-weight: 750; }
 .is-analyzing { position: relative; }
 .is-analyzing .preview { filter: saturate(.75) brightness(.72); }
 .analysis-mask { position: absolute; inset: 0; overflow: hidden; border: 1px solid rgb(111 127 255 / 55%); border-radius: 8px; background: linear-gradient(180deg, rgb(8 11 19 / 42%), rgb(21 27 48 / 58%)); pointer-events: none; }
@@ -181,6 +203,17 @@ button, input { font: inherit; }
 .diagnostic-panel .diagnostic-copy-status.failure { color: #f1a5ad; }
 .report-view { display: grid; gap: 16px; }
 .copy-report { padding: 7px 10px; font-size: 10px; }
+.original-capture-grid { display: grid; gap: 10px; }
+.original-capture-grid.multi { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.original-capture-card { min-width: 0; }
+.original-capture-timeframe { display: block; overflow: hidden; margin-bottom: 5px; color: #d5dbe7; font-size: 10px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.original-capture-grid.multi .preview { aspect-ratio: 16 / 10; object-fit: cover; }
+.original-capture-grid.multi .download-image { margin-top: 6px; padding: 6px 4px; font-size: 9px; }
+.original-capture-grid.multi .metadata { margin-top: 6px; }
+.original-capture-grid.multi .metadata div { display: block; padding: 4px 0; text-align: center; }
+.original-capture-grid.multi .metadata div:last-child { display: none; }
+.original-capture-grid.multi .metadata dt { display: none; }
+.original-capture-grid.multi .metadata dd { overflow: hidden; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .metadata { margin: 12px 0 0; }
 .metadata div { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 8px; padding: 6px 0; border-top: 1px solid #252a33; }
 .metadata dt { color: #8f96a3; font-size: 11px; }

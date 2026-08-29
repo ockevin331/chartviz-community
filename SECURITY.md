@@ -4,11 +4,11 @@ Report vulnerabilities privately to the maintainers. Do not include API keys, au
 
 ## Product and data boundary
 
-ChartViz 1.0.1 is an open-source browser extension with no bundled account service, backend, website runtime, analytics, history, news, exchange-data feed, billing, or local-model runtime.
+ChartViz 1.0.2 is an open-source browser extension with no bundled account service, backend, website runtime, analytics, history, news, exchange-data feed, billing, or local-model runtime. Its optional Cloud mode talks only to the fixed ChartViz service origin and uses a user-created revocable access token.
 
 Direct analysis uses one processed screenshot and three sequential provider requests. The screenshot is sent directly to the selected OpenRouter, OpenAI, or Gemini endpoint in the first two requests; normalized evidence rather than the image is sent in the third. Provider credentials are held only in `browser.storage.session` and must never reach page scripts, URLs, logs, telemetry, reports, downloads, copied diagnostics, local storage, or sync storage.
 
-Multi-timeframe capture is capability-gated for ChartViz Cloud. The production 1.0.1 unavailable Cloud gateway has no credential, connection, upload, capture, analyze, fetch, or screenshot input; therefore it accepts no token and sends no screenshot. Tests may inject a fake in-memory gateway to verify the one-to-three-image runtime contract without a network service.
+Multi-timeframe capture is capability-gated for ChartViz Cloud. The Cloud client validates account, capability, capture-setting, task, and report envelopes before use. It accepts one to three captured images, submits them only after an explicit analysis action, and stores the Cloud token in extension local storage so the connection survives browser restarts. Users can disconnect locally or revoke the token on the website.
 
 The extension validates chart inputs, provider HTTP/response envelopes, staged evidence, and final report JSON. MV3 CSP limits executable code to the package. Manifest access is limited to `activeTab`, `storage`, `scripting`, supported chart hosts, and the three reviewed provider origins. There is no optional host access, broad `<all_urls>` access, remote executable code, or custom provider origin.
 
@@ -18,7 +18,7 @@ Reviewed source, the frozen `pnpm-lock.yaml` graph, WXT/TypeScript output, brows
 
 Release gates include focused behavior tests, TypeScript compilation, Chrome/Edge builds, exact parsed-manifest parity checks, package allow/deny listing, documentation consistency checks, and manual browser smoke tests. Package verification parses manifests, paths, and ZIP metadata; it does not prove arbitrary JavaScript semantics.
 
-Block a release for credential exposure or persistence beyond the session boundary, an undeclared runtime endpoint or permission, invalid untrusted-input handling, remote executable code, package/repository leakage, unintended Direct multi-timeframe behavior, screenshot submission to unavailable Cloud, or a real build/install/user-flow failure.
+Block a release for Direct-provider credential exposure or persistence beyond the session boundary, Cloud-token exposure outside the dedicated connection store and authorization header, an undeclared runtime endpoint or permission, invalid untrusted-input handling, remote executable code, package/repository leakage, unintended Direct multi-timeframe behavior, or a real build/install/user-flow failure.
 
 ## Reporting guidance
 

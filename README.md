@@ -1,10 +1,10 @@
 # ChartViz
 
-ChartViz 1.0.1 is an open-source Chrome and Edge extension that helps people read candlestick charts. It detects a supported chart page, captures the visible chart, and presents evidence-based price-action analysis with separate annotated images. It is an educational chart-reading tool, not financial advice.
+ChartViz 1.0.2 is an open-source Chrome and Edge extension that helps people read candlestick charts. It detects a supported chart page, captures the visible chart, and presents evidence-based price-action analysis with separate annotated images. It is an educational chart-reading tool, not financial advice.
 
 The extension contains two explicit analysis modes:
 
-- **ChartViz Cloud** is the default tab for a new installation. The open-source 1.0.1 build states that the Cloud connection will be enabled in a later update; it has no token field and sends no screenshot to an unavailable endpoint.
+- **ChartViz Cloud** is the default tab for a new installation. Create a revocable access token in ChartViz website Settings, paste it into the extension, and use the managed analysis service without placing a model-provider key in the extension.
 - **Direct model** sends the captured chart from the browser to a user-selected OpenRouter, OpenAI, or Gemini model. Existing usable Direct configurations remain in Direct mode after an upgrade.
 
 There is no bundled backend, account/login flow, analytics, report history, news search, exchange-data API, billing flow, or local-model runtime.
@@ -30,9 +30,9 @@ Pin ChartViz if desired. Click its toolbar icon to open the full-height floating
 
 ### ChartViz Cloud
 
-The Cloud tab explains the future managed analysis path and owns the multi-timeframe product capability. In this release it is intentionally unavailable: there is no connect button, credential input, production transport, or screenshot submission. The runtime boundary is injectable in tests so the extension can prove the capture contract before the private service is implemented.
+The Cloud tab connects to the fixed ChartViz Cloud service at `https://www.chartviz.xyz`. A revocable `cv_live_*` access token identifies the ChartViz account and lets the extension read account, plan, quota, model, and capture settings; submit analysis tasks; poll or cancel them; and render the validated result. Disconnecting removes the token from this extension only. Token creation and revocation remain on the website.
 
-When a capable Cloud runtime is injected, multi-timeframe capture uses three ordered roles: Context `4h`, Setup `1h`, and Trigger `15m`. The chart may briefly flicker while ChartViz switches timeframes. A failed switch stops the sequence, attempts to restore the original timeframe, and submits no partial result. Sites can explicitly disable this capability; 10jqka does.
+Multi-timeframe capture uses the ordered timeframes returned by the account's Cloud settings, up to three roles. The default fixture maps Context to `4h`, Setup to `1h`, and Trigger to `15m`. The chart may briefly flicker while ChartViz switches timeframes. A failed switch stops the sequence, attempts to restore the original timeframe, and submits no partial result. Sites can explicitly disable this capability; 10jqka does.
 
 ### Direct model
 
@@ -59,7 +59,7 @@ The original screenshot and generated annotation images can be zoomed and downlo
 
 ## Privacy and permissions
 
-In Direct mode, the screenshot is sent to the selected provider in the first two requests. The third request contains normalized chart evidence, requested output language, and the final reasoning prompt. The provider's retention, billing, and privacy terms apply. Avoid charts containing account details, personal data, or private indicators.
+In Cloud mode, captured screenshots and task metadata are sent only to the fixed ChartViz Cloud service. In Direct mode, the screenshot is sent to the selected provider in the first two requests. The third request contains normalized chart evidence, requested output language, and the final reasoning prompt. The applicable service or provider retention, billing, and privacy terms apply. Avoid charts containing account details, personal data, or private indicators.
 
 Manifest permissions are limited to `activeTab`, `storage`, `scripting`, and `clipboardWrite`; supported chart hosts; and the three fixed Direct provider origins. Clipboard access is used only when the user explicitly copies diagnostic information. There is no `<all_urls>`, optional host access, remote executable code, or custom API origin. See [SECURITY.md](SECURITY.md) for the exact boundary and [docs/manual-smoke-test.md](docs/manual-smoke-test.md) for the release checklist.
 

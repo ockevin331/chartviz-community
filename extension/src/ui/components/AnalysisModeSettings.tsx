@@ -18,6 +18,7 @@ export type AnalysisModeSettingsProps = {
   cloudConnection: CloudConnectionState;
   cloudBusy: boolean;
   onCloudConnect(token: string): Promise<boolean>;
+  onCloudActivate(): Promise<boolean>;
   onCloudDisconnect(): Promise<void>;
 };
 
@@ -33,6 +34,7 @@ export function AnalysisModeSettings({
   cloudConnection,
   cloudBusy,
   onCloudConnect,
+  onCloudActivate,
   onCloudDisconnect,
 }: AnalysisModeSettingsProps) {
   const t = translations[language];
@@ -45,6 +47,10 @@ export function AnalysisModeSettings({
     const token = cloudToken.trim();
     if (!token || cloudBusy) return;
     if (await onCloudConnect(token)) setCloudToken('');
+  }
+
+  function closePanelForWebsite() {
+    window.parent.postMessage({ source: 'chartviz', type: 'panel-close' }, '*');
   }
 
   const cloudError = cloudConnection.status === 'error'
@@ -78,6 +84,7 @@ export function AnalysisModeSettings({
           {cloudAccount ? <>
             <section className="cloud-account-summary">
               <header><strong>{t.cloudConnected}</strong><span>{cloudAccount.emailMasked}</span></header>
+              {activeMode === 'cloud' && <span className="current-default">{t.currentDefault}</span>}
               <dl>
                 <div><dt>{t.cloudPlan}</dt><dd>{cloudAccount.plan.toUpperCase()}</dd></div>
                 {expiry && <div><dt>{t.cloudPlanExpires}</dt><dd>{expiry}</dd></div>}
@@ -86,14 +93,16 @@ export function AnalysisModeSettings({
               </dl>
               <p>{t.cloudMultiDisabled}</p>
             </section>
+            {activeMode !== 'cloud' && <button className="primary" type="button" disabled={cloudBusy} onClick={() => void onCloudActivate()}>{t.setCloudDefault}</button>}
             <button className="secondary" type="button" disabled={cloudBusy} onClick={() => void onCloudDisconnect()}>{t.cloudDisconnect}</button>
             <small className="cloud-disconnect-help">{t.cloudDisconnectHelp}</small>
+            <a href="https://www.chartviz.xyz/settings" target="_blank" rel="noreferrer" onClick={closePanelForWebsite}>{t.cloudTokenWebsite}</a>
           </> : <form className="cloud-token-form" onSubmit={(event) => { event.preventDefault(); void connectCloud(); }}>
             <label><span>{t.cloudToken}</span><input type="password" autoComplete="off" value={cloudToken} disabled={cloudBusy} onChange={(event) => setCloudToken(event.target.value)} /></label>
             <small>{t.cloudTokenHelp}</small>
+            <a href="https://www.chartviz.xyz/settings" target="_blank" rel="noreferrer" onClick={closePanelForWebsite}>{t.cloudTokenWebsite}</a>
             <button className="primary" type="submit" disabled={cloudBusy || !cloudToken.trim()}>{cloudBusy ? t.cloudConnecting : t.cloudConnect}</button>
           </form>}
-          <a href="https://www.chartviz.xyz/settings" target="_blank" rel="noreferrer">{t.cloudTokenWebsite}</a>
         </section>
         : <ProviderSetup language={language} mode={variant} initialConfig={initialDirectConfig} saveConfig={activateDirect} testConnection={testConnection} />}
     </div>
