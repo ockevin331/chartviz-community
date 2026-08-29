@@ -3,3 +3,4 @@ extension/.wxt/
 extension/node_modules/
 extension/dist/
 extension/.vite/
+.superpowers/
