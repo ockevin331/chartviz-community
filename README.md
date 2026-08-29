@@ -2,6 +2,8 @@
 
 ChartViz 1.0.2 is an open-source Chrome and Edge extension that helps people read candlestick charts. It detects a supported chart page, captures the visible chart, and presents evidence-based price-action analysis with separate annotated images. It is an educational chart-reading tool, not financial advice.
 
+For the hosted ChartViz Cloud experience, visit [chartviz.xyz](https://www.chartviz.xyz).
+
 The extension contains two explicit analysis modes:
 
 - **ChartViz Cloud** is the default tab for a new installation. Create a revocable access token in ChartViz website Settings, paste it into the extension, and use the managed analysis service without placing a model-provider key in the extension.
