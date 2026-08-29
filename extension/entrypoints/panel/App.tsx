@@ -101,6 +101,7 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
   const [settingsMode, setSettingsMode] = useState<AnalysisMode>('cloud');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const [cloudConnection, setCloudConnection] = useState<CloudConnectionState>({
     status: 'disconnected', account: null, errorCode: null,
   });
@@ -114,6 +115,24 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
   const activeModeRef = useRef<AnalysisMode>('cloud');
   const dragPosition = useRef<{ x: number; y: number } | null>(null);
   const t = translations[language];
+
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && accountMenuRef.current?.contains(target)) return;
+      setAccountMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setAccountMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer, true);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer, true);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [accountMenuOpen]);
 
   const activateRuntime = useCallback((runtime: AnalysisRuntime) => {
     setAnalysisCapabilities(runtime.capabilities());
@@ -431,7 +450,7 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
         <LanguageMenu language={language} onChange={changeLanguage} />
         {(providerConfig || cloudConnection.account) && <button className="toolbar-button settings-button" type="button" aria-label={t.settings} onClick={openSettings}><SettingsIcon /></button>}
         <button className="toolbar-button refresh-button" type="button" aria-label={t.refresh} onClick={refreshAll}><RefreshIcon /></button>
-        {connectedCloudAccount && <div className="cloud-account-picker">
+        {connectedCloudAccount && <div className="cloud-account-picker" ref={accountMenuRef}>
           <button className="toolbar-button cloud-account-button" type="button" aria-label={t.account} aria-haspopup="menu" aria-expanded={accountMenuOpen} title={connectedCloudAccount.emailMasked} onClick={() => setAccountMenuOpen((open) => !open)}>{(connectedCloudAccount.emailMasked[0] || 'U').toUpperCase()}</button>
           {accountMenuOpen && <div className="cloud-account-menu" role="menu" aria-label={t.account}>
             <div className="cloud-account-identity">
@@ -444,9 +463,9 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
               </dl>
             </div>
             <nav>
-              <a href="https://www.chartviz.xyz/analyzers" target="_blank" rel="noopener noreferrer" role="menuitem" aria-label={t.analysisList}><HistoryIcon /><span>{t.analysisList}</span><i>›</i></a>
-              <a href="https://www.chartviz.xyz/profile" target="_blank" rel="noopener noreferrer" role="menuitem" aria-label={t.profile}><ProfileIcon /><span>{t.profile}</span><i>›</i></a>
-              <a href="https://www.chartviz.xyz/settings" target="_blank" rel="noopener noreferrer" role="menuitem" aria-label={t.cloudSettings}><SettingsIcon /><span>{t.cloudSettings}</span><i>›</i></a>
+              <a href="https://www.chartviz.xyz/analyzers" target="_blank" rel="noopener noreferrer" role="menuitem" aria-label={t.analysisList} onClick={() => setAccountMenuOpen(false)}><HistoryIcon /><span>{t.analysisList}</span><i>›</i></a>
+              <a href="https://www.chartviz.xyz/profile" target="_blank" rel="noopener noreferrer" role="menuitem" aria-label={t.profile} onClick={() => setAccountMenuOpen(false)}><ProfileIcon /><span>{t.profile}</span><i>›</i></a>
+              <a href="https://www.chartviz.xyz/settings" target="_blank" rel="noopener noreferrer" role="menuitem" aria-label={t.cloudSettings} onClick={() => setAccountMenuOpen(false)}><SettingsIcon /><span>{t.cloudSettings}</span><i>›</i></a>
             </nav>
             <button className="cloud-account-disconnect" type="button" role="menuitem" disabled={cloudBusy} onClick={() => void disconnectCloud()}><DisconnectIcon /><span>{t.disconnectCloud}</span></button>
           </div>}
