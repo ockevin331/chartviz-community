@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AnalysisCapabilities } from '../src/analysis/runtime/analysis-runtime';
@@ -26,6 +26,33 @@ const directCapabilities: AnalysisCapabilities = { multiTimeframe: false, maxTim
 const cloudCapabilities: AnalysisCapabilities = { multiTimeframe: true, maxTimeframes: 3 };
 
 describe('ChartCaptureSource', () => {
+  it('accepts only one capture-and-create flow from two same-batch clicks', async () => {
+    let finishCapture!: (value: CapturedChart) => void;
+    const capture = vi.fn(() => new Promise<CapturedChart>((resolve) => {
+      finishCapture = resolve;
+    }));
+    const onCaptured = vi.fn();
+    render(<ChartCaptureSource
+      language="en"
+      capabilities={cloudCapabilities}
+      inspect={async () => context}
+      capture={capture}
+      onCaptured={onCaptured}
+      onOpenCloudSettings={() => undefined}
+    />);
+
+    const button = await screen.findByRole('button', { name: 'Capture and analyze' });
+    act(() => {
+      button.click();
+      button.click();
+    });
+
+    expect(button).toHaveProperty('disabled', true);
+    expect(capture).toHaveBeenCalledTimes(1);
+    finishCapture(captured);
+    await waitFor(() => expect(onCaptured).toHaveBeenCalledTimes(1));
+  });
+
   it('shows waiting state, detected context, and one capture action without upload', async () => {
     const user = userEvent.setup();
     let resolveInspect: ((value: ChartContext) => void) | undefined;

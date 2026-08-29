@@ -7,17 +7,23 @@ export class CloudConnectionError extends Error {
   readonly code: CloudConnectionErrorCode;
   readonly params: ExtensionApiError['params'];
   readonly pricingUrl: string | null;
+  readonly limit: number | null;
+  readonly activeTaskIds: readonly string[];
 
   constructor(
     code: CloudConnectionErrorCode,
     params: ExtensionApiError['params'] = {},
     pricingUrl: string | null = null,
+    limit: number | null = null,
+    activeTaskIds: readonly string[] = [],
   ) {
     super(code);
     this.name = 'CloudConnectionError';
     this.code = code;
     this.params = params;
     this.pricingUrl = pricingUrl;
+    this.limit = limit;
+    this.activeTaskIds = Object.freeze([...activeTaskIds]);
   }
 }
 

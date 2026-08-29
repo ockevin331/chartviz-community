@@ -28,7 +28,7 @@ const maxCaptureBytes = 10 * 1024 * 1024;
 const errorCodeSchema = z.enum([
   'authentication_required', 'invalid_token', 'token_revoked', 'token_expired',
   'insufficient_scope', 'free_trial_exhausted', 'subscription_required',
-  'subscription_expired', 'quota_exhausted', 'analysis_already_active',
+  'subscription_expired', 'quota_exhausted', 'active_analysis_limit_reached',
   'multi_timeframe_requires_advance',
   'invalid_image', 'invalid_chart_image', 'unsupported_timeframe', 'task_not_found',
   'task_failed', 'task_cancelled', 'incompatible_api_version',
@@ -41,6 +41,8 @@ const errorSchema = z.object({
     z.string(), z.number(), z.boolean(), z.null(),
   ])).default({}),
   pricingUrl: z.string().optional(),
+  limit: z.number().int().positive().nullable().optional(),
+  activeTaskIds: z.array(z.string().min(1).max(80)).nullable().optional(),
 });
 
 export type DownloadedCapture = Readonly<{
@@ -122,6 +124,8 @@ async function request(
     parsed.data.code,
     parsed.data.params,
     parsed.data.pricingUrl ?? null,
+    parsed.data.limit ?? null,
+    parsed.data.activeTaskIds ?? [],
   );
 }
 

@@ -40,11 +40,6 @@ export type AnalysisRuntimeOutcome = Readonly<{
   annotations: PresentationAnnotatedImages;
 }>;
 
-export type RestoredActiveAnalysis = Readonly<{
-  captures: readonly AnalysisCapture[];
-  outputLanguage: OutputLanguage;
-}>;
-
 export type AnalysisRuntimeErrorCode = AnalysisErrorCode
   | 'multi_timeframe_requires_cloud'
   | 'authentication_required'
@@ -56,7 +51,7 @@ export type AnalysisRuntimeErrorCode = AnalysisErrorCode
   | 'subscription_required'
   | 'subscription_expired'
   | 'quota_exhausted'
-  | 'analysis_already_active'
+  | 'active_analysis_limit_reached'
   | 'multi_timeframe_requires_advance'
   | 'invalid_chart_image'
   | 'unsupported_timeframe'
@@ -100,5 +95,4 @@ export interface AnalysisRuntime {
   analyze(input: AnalysisRuntimeInput): Promise<AnalysisRuntimeOutcome>;
   cancel(): void;
   detach?(): void;
-  restoreActiveAnalysis?(): Promise<RestoredActiveAnalysis | null>;
 }

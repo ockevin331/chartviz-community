@@ -167,10 +167,20 @@ export interface components {
         /** ExtensionApiError */
         ExtensionApiError: {
             /**
+             * Activetaskids
+             * @default null
+             */
+            activeTaskIds: string[] | null;
+            /**
              * Code
              * @enum {string}
              */
-            code: "authentication_required" | "invalid_token" | "token_revoked" | "token_expired" | "insufficient_scope" | "free_trial_exhausted" | "subscription_required" | "subscription_expired" | "quota_exhausted" | "analysis_already_active" | "multi_timeframe_requires_advance" | "invalid_image" | "invalid_chart_image" | "unsupported_timeframe" | "task_not_found" | "task_failed" | "task_cancelled" | "incompatible_api_version" | "incompatible_report_schema" | "service_unavailable";
+            code: "authentication_required" | "invalid_token" | "token_revoked" | "token_expired" | "insufficient_scope" | "free_trial_exhausted" | "subscription_required" | "subscription_expired" | "quota_exhausted" | "active_analysis_limit_reached" | "multi_timeframe_requires_advance" | "invalid_image" | "invalid_chart_image" | "unsupported_timeframe" | "task_not_found" | "task_failed" | "task_cancelled" | "incompatible_api_version" | "incompatible_report_schema" | "service_unavailable";
+            /**
+             * Limit
+             * @default null
+             */
+            limit: number | null;
             /**
              * Message
              * @default null

@@ -32,12 +32,8 @@ describe('analysis runtime contract', () => {
     expect(resolveCloudRuntime(unavailableCloudGateway)).toBeNull();
   });
 
-  it('resolves an available C2 Cloud runtime for one capture', async () => {
+  it('resolves an available Cloud runtime for one capture', async () => {
     const singleCapture = [captures[2]!] as const;
-    const restoreActiveAnalysis = vi.fn(async () => ({
-      captures: singleCapture,
-      outputLanguage: 'zh-CN' as const,
-    }));
     const analyze = vi.fn(async (input: AnalysisRuntimeInput) => {
       expect(input.captures).toEqual(singleCapture);
       expect(input.outputLanguage).toBe('zh-CN');
@@ -48,7 +44,6 @@ describe('analysis runtime contract', () => {
       capabilities: () => ({ multiTimeframe: false, maxTimeframes: 1 }),
       analyze,
       cancel: vi.fn(),
-      restoreActiveAnalysis,
     };
     const gateway: CloudAnalysisGateway = {
       availability: () => ({ available: true }),
@@ -58,10 +53,8 @@ describe('analysis runtime contract', () => {
     const resolved = resolveCloudRuntime(gateway);
     expect(resolved?.capabilities()).toEqual({ multiTimeframe: false, maxTimeframes: 1 });
     const outcome = await resolved?.analyze({ captures: singleCapture, outputLanguage: 'zh-CN' });
-    const restored = await resolved?.restoreActiveAnalysis?.();
 
     expect(analyze).toHaveBeenCalledTimes(1);
-    expect(restored).toEqual({ captures: singleCapture, outputLanguage: 'zh-CN' });
     expect(outcome).toEqual({
       captures: singleCapture,
       presentation,

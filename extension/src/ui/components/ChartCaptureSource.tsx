@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
 import type { AnalysisCapabilities } from '../../analysis/runtime/analysis-runtime';
 import {
   isChartAvailabilityError,
@@ -54,6 +60,7 @@ export function ChartCaptureSource({
   const [roleTimeframes, setRoleTimeframes] = useState<readonly SupportedCaptureTimeframe[] | null>(null);
   const [availability, setAvailability] = useState<ChartAvailabilityFailure | null>(null);
   const captureController = useRef<AbortController | null>(null);
+  const capturePending = useRef(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -80,8 +87,10 @@ export function ChartCaptureSource({
     return () => captureController.current?.abort(new DOMException('Cancelled', 'AbortError'));
   }, [refresh]);
 
-  async function startCapture() {
-    if (!context || capturing) return;
+  async function startCapture(event: ReactMouseEvent<HTMLButtonElement>) {
+    if (!context || capturePending.current) return;
+    capturePending.current = true;
+    event.currentTarget.disabled = true;
     const controller = new AbortController();
     captureController.current = controller;
     setCapturing(true);
@@ -105,6 +114,7 @@ export function ChartCaptureSource({
       }
     } finally {
       if (captureController.current === controller) captureController.current = null;
+      capturePending.current = false;
       setCapturing(false);
     }
   }
@@ -142,7 +152,7 @@ export function ChartCaptureSource({
         onOpenCloudSettings={onOpenCloudSettings}
       />
       {captureMode === 'multi' && <p className="multi-capture-warning" role="status">⚠ {t.multiTimeframeFlicker}</p>}
-      <button className="primary" type="button" disabled={capturing} onClick={() => void startCapture()}>{capturing ? t.capturingChart : t.captureAnalyze}</button>
+      <button className="primary" type="button" disabled={capturing} onClick={(event) => void startCapture(event)}>{capturing ? t.capturingChart : t.captureAnalyze}</button>
     </>}
     {!loading && error && <div className="chart-guidance" role="alert">
       <strong>{t.chartUnavailable}</strong><p>{error}</p>

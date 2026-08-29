@@ -200,11 +200,12 @@ describe('fixed-origin ChartViz Cloud client', () => {
     await expect(operation).rejects.not.toThrow(token);
   });
 
-  it('preserves the existing task ID from an active-analysis conflict', async () => {
+  it('preserves the global active-analysis limit conflict', async () => {
     const fetcher = vi.fn().mockResolvedValue(jsonResponse({
-      code: 'analysis_already_active',
-      message: 'An analysis is already pending or processing.',
-      params: { existingTaskId: 'c_20260828_existing' },
+      code: 'active_analysis_limit_reached',
+      params: {},
+      limit: 2,
+      activeTaskIds: ['c_20260828_website', 'c_20260828_extension'],
     }, 409));
 
     const operation = createCloudClient(fetcher).createTask(
@@ -213,8 +214,9 @@ describe('fixed-origin ChartViz Cloud client', () => {
     );
 
     await expect(operation).rejects.toMatchObject({
-      code: 'analysis_already_active',
-      params: { existingTaskId: 'c_20260828_existing' },
+      code: 'active_analysis_limit_reached',
+      limit: 2,
+      activeTaskIds: ['c_20260828_website', 'c_20260828_extension'],
     });
   });
 

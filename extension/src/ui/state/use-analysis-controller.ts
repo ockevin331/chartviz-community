@@ -62,6 +62,7 @@ export function useAnalysisController() {
     const activeRuntime = activeRuntimeRef.current;
     activeRuntimeRef.current = null;
     if (activeRuntime?.mode === 'cloud') activeRuntime.detach?.();
+    else activeRuntime?.cancel();
   }, []);
 
   const invalidateOperation = useCallback(() => {
@@ -290,7 +291,6 @@ export function useAnalysisController() {
     unconfigure,
     selectImage,
     selectCaptures,
-    restoreCaptures: selectCaptures,
     chooseAnotherImage,
     refresh,
     analyze,

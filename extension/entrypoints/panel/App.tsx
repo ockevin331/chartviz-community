@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { AnalysisMode } from '../../src/analysis/analysis-mode';
 import { DirectAnalysisRuntime } from '../../src/analysis/runtime/direct-analysis-runtime';
-import {
-  AnalysisRuntimeFailure,
-  type AnalysisCapabilities,
-  type AnalysisRuntime,
+import type {
+  AnalysisCapabilities,
+  AnalysisRuntime,
 } from '../../src/analysis/runtime/analysis-runtime';
 import { activeChartClient, type CapturedChart } from '../../src/capture/active-chart';
 import { productionCloudGateway, resolveCloudRuntime, type CloudAnalysisGateway } from '../../src/cloud/cloud-gateway';
@@ -21,7 +20,6 @@ import type { ProviderConfig } from '../../src/providers/provider-types';
 import { loadAnalysisMode, saveAnalysisMode } from '../../src/storage/analysis-mode-storage';
 import { loadProviderConfig, saveProviderConfig } from '../../src/storage/provider-session';
 import { loadCloudConnection, type StoredCloudConnection } from '../../src/storage/cloud-connection-storage';
-import { cleanupLegacyCloudAnalysisStorage } from '../../src/storage/legacy-cloud-analysis-cleanup';
 import {
   createLatestPersistenceCoordinator,
   type LatestPersistenceResult,
@@ -45,7 +43,6 @@ export type AppDependencies = {
   cloudConnectionManager: CloudConnectionManager;
   cloudClient: Pick<CloudClient, 'captureSettings'>;
   loadCloudConnection(): Promise<StoredCloudConnection | null>;
-  cleanupLegacyCloudAnalysisStorage(): Promise<void>;
   inspect(): Promise<ChartContext>;
   capture(signal: AbortSignal): Promise<CapturedChart>;
   captureMany(
@@ -65,7 +62,6 @@ const defaultDependencies: AppDependencies = {
   cloudConnectionManager: createCloudConnectionManager(),
   cloudClient: createCloudClient(),
   loadCloudConnection,
-  cleanupLegacyCloudAnalysisStorage,
   inspect: () => activeChartClient.inspect(),
   capture: (signal) => activeChartClient.capture(signal),
   captureMany: (timeframes, signal) => activeChartClient.captureMany(timeframes, signal),
@@ -103,13 +99,11 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
   });
   const [cloudBusy, setCloudBusy] = useState(false);
   const [analysisCapabilities, setAnalysisCapabilities] = useState<AnalysisCapabilities | null>(null);
-  const [restoreError, setRestoreError] = useState<AnalysisRuntimeFailure | null>(null);
   const [modePersistenceError, setModePersistenceError] = useState<number | null>(null);
   const [contextRevision, setContextRevision] = useState(0);
   const [lightbox, setLightbox] = useState<LightboxImage | null>(null);
   const lastContext = useRef<ChartContext | null>(null);
-  const restorationRuntime = useRef<AnalysisRuntime | null>(null);
-  const restorationAttempt = useRef(0);
+  const transitionAttempt = useRef(0);
   const activeModeRef = useRef<AnalysisMode>('cloud');
   const dragPosition = useRef<{ x: number; y: number } | null>(null);
   const t = translations[language];
@@ -119,55 +113,45 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     controller.configure(runtime);
   }, [controller.configure]);
 
-  const invalidateRestoration = useCallback((detach = false) => {
-    restorationAttempt.current += 1;
-    const runtime = restorationRuntime.current;
-    restorationRuntime.current = null;
-    if (detach) runtime?.detach?.();
-    else runtime?.cancel();
-    return restorationAttempt.current;
-  }, []);
-
   const ownModePersistenceCompletion = useCallback((
     completion: Promise<LatestPersistenceResult>,
     attempt: number,
   ) => {
     void completion.then(
       (result) => {
-        if (restorationAttempt.current === attempt && result === 'persisted') {
+        if (transitionAttempt.current === attempt && result === 'persisted') {
           setModePersistenceError(null);
         }
       },
       () => {
-        if (restorationAttempt.current === attempt) setModePersistenceError(attempt);
+        if (transitionAttempt.current === attempt) setModePersistenceError(attempt);
       },
     );
   }, []);
 
   const beginRuntimeTransition = useCallback(() => {
-    const transition = invalidateRestoration();
+    const transition = ++transitionAttempt.current;
     ownModePersistenceCompletion(
       modePersistence.supersedeWith(activeModeRef.current),
       transition,
     );
-    setRestoreError(null);
     setLoading(false);
     setCloudBusy(false);
     return transition;
-  }, [invalidateRestoration, modePersistence, ownModePersistenceCompletion]);
+  }, [modePersistence, ownModePersistenceCompletion]);
 
   const persistModeForTransition = useCallback(async (
     mode: AnalysisMode,
     attempt: number,
   ): Promise<boolean> => {
     const result = await modePersistence.persist(mode);
-    const persisted = result === 'persisted' && restorationAttempt.current === attempt;
+    const persisted = result === 'persisted' && transitionAttempt.current === attempt;
     if (persisted) setModePersistenceError(null);
     return persisted;
   }, [modePersistence]);
 
   const retryModePersistence = useCallback(() => {
-    const attempt = ++restorationAttempt.current;
+    const attempt = ++transitionAttempt.current;
     ownModePersistenceCompletion(modePersistence.persist(activeModeRef.current), attempt);
   }, [modePersistence, ownModePersistenceCompletion]);
 
@@ -180,16 +164,16 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
       const result = await configPersistence.persist(config);
       if (result === 'superseded') return false;
     } catch (error) {
-      if (restorationAttempt.current !== transition) return false;
+      if (transitionAttempt.current !== transition) return false;
       throw error;
     }
-    if (restorationAttempt.current !== transition) return false;
+    if (transitionAttempt.current !== transition) return false;
     if (!await persistModeForTransition('direct', transition)) return false;
-    if (restorationAttempt.current !== transition) return false;
+    if (transitionAttempt.current !== transition) return false;
 
     const wasDirect = activeModeRef.current === 'direct';
     const runtime = dependencies.createDirectRuntime(config);
-    if (restorationAttempt.current !== transition) return false;
+    if (transitionAttempt.current !== transition) return false;
     activeModeRef.current = 'direct';
     setProviderConfig(config);
     setActiveMode('direct');
@@ -218,41 +202,11 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     [activateDirectTransition],
   );
 
-  const restoreCloudRuntime = useCallback(async (
-    runtime: AnalysisRuntime,
-    attempt: number,
-  ): Promise<void> => {
-    try {
-      const restored = await runtime.restoreActiveAnalysis?.();
-      if (restorationAttempt.current !== attempt) return;
-      if (restorationRuntime.current === runtime) restorationRuntime.current = null;
-      setRestoreError(null);
-      const first = restored?.captures[0];
-      if (!restored || !first) return;
-      setLanguage(restored.outputLanguage);
-      controller.restoreCaptures(restored.captures);
-      void controller.analyze(first.context, restored.outputLanguage);
-    } catch (error) {
-      if (restorationAttempt.current !== attempt) return;
-      if (error instanceof AnalysisRuntimeFailure && error.code === 'service_unavailable') {
-        setRestoreError(new AnalysisRuntimeFailure('service_unavailable'));
-      } else {
-        if (restorationRuntime.current === runtime) restorationRuntime.current = null;
-        setRestoreError(null);
-      }
-    }
-  }, [controller.restoreCaptures, controller.analyze]);
-
   useEffect(() => {
     let current = true;
-    const startupAttempt = ++restorationAttempt.current;
-    const isCurrent = () => current && restorationAttempt.current === startupAttempt;
+    const startupAttempt = ++transitionAttempt.current;
+    const isCurrent = () => current && transitionAttempt.current === startupAttempt;
     void (async () => {
-      try {
-        void dependencies.cleanupLegacyCloudAnalysisStorage().catch(() => undefined);
-      } catch {
-        // Legacy cleanup is best-effort and must not block source configuration.
-      }
       const [config, connection] = await Promise.all([
         dependencies.loadConfig(),
         dependencies.cloudConnectionManager.load(),
@@ -272,18 +226,14 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
         const runtime = resolveCloudRuntime(dependencies.cloudGateway);
         if (runtime) {
           activateRuntime(runtime);
-          restorationRuntime.current = runtime;
-          await restoreCloudRuntime(runtime, startupAttempt);
         }
       }
-    })().catch(() => {
-      // Startup restore failures stay local and leave the configured source state available.
-    }).finally(() => {
+    })().catch(() => undefined).finally(() => {
       if (isCurrent()) setLoading(false);
     });
     return () => {
       current = false;
-      invalidateRestoration(true);
+      transitionAttempt.current += 1;
     };
   }, [
     dependencies.loadConfig,
@@ -291,22 +241,8 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     dependencies.createDirectRuntime,
     dependencies.cloudGateway,
     dependencies.cloudConnectionManager,
-    dependencies.cleanupLegacyCloudAnalysisStorage,
     activateRuntime,
-    invalidateRestoration,
-    restoreCloudRuntime,
   ]);
-
-  const retryRestoration = useCallback(() => {
-    const runtime = restorationRuntime.current;
-    if (!runtime) return;
-    const attempt = ++restorationAttempt.current;
-    setRestoreError(null);
-    setLoading(true);
-    void restoreCloudRuntime(runtime, attempt).finally(() => {
-      if (restorationAttempt.current === attempt) setLoading(false);
-    });
-  }, [restoreCloudRuntime]);
 
   const refreshAll = useCallback(() => {
     beginRuntimeTransition();
@@ -377,13 +313,13 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     setCloudBusy(true);
     try {
       const connection = await dependencies.cloudConnectionManager.connect(token);
-      if (restorationAttempt.current !== transition) return false;
+      if (transitionAttempt.current !== transition) return false;
       if (connection.status === 'connected') {
         if (!await persistModeForTransition('cloud', transition)) return false;
-        if (restorationAttempt.current !== transition) return false;
+        if (transitionAttempt.current !== transition) return false;
         const runtime = resolveCloudRuntime(dependencies.cloudGateway);
         if (!runtime) return false;
-        if (restorationAttempt.current !== transition) return false;
+        if (transitionAttempt.current !== transition) return false;
         setCloudConnection(connection);
         activeModeRef.current = 'cloud';
         setActiveMode('cloud');
@@ -396,11 +332,11 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
       setCloudConnection(connection);
       return false;
     } catch {
-      if (restorationAttempt.current !== transition) return false;
+      if (transitionAttempt.current !== transition) return false;
       setCloudConnection({ status: 'error', account: null, errorCode: 'service_unavailable' });
       return false;
     } finally {
-      if (restorationAttempt.current === transition) setCloudBusy(false);
+      if (transitionAttempt.current === transition) setCloudBusy(false);
     }
   }
 
@@ -409,11 +345,11 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     setCloudBusy(true);
     try {
       const connection = await dependencies.cloudConnectionManager.disconnect();
-      if (restorationAttempt.current !== transition) return;
+      if (transitionAttempt.current !== transition) return;
       setCloudConnection(connection);
       if (activeMode === 'cloud') controller.unconfigure();
     } finally {
-      if (restorationAttempt.current === transition) setCloudBusy(false);
+      if (transitionAttempt.current === transition) setCloudBusy(false);
     }
   }
 
@@ -453,9 +389,8 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
       <AnalysisModeSettings language={language} variant="settings" activeMode={activeMode} selectedMode={settingsMode} onSelectedModeChange={setSettingsMode} initialDirectConfig={providerConfig} activateDirect={activateSettingsDirect} testConnection={dependencies.testDirectConnection} cloudConnection={cloudConnection} cloudBusy={cloudBusy} onCloudConnect={connectCloud} onCloudDisconnect={disconnectCloud} />
     </section> : <>
       {loading && <section className="backend-loading" role="status">…</section>}
-      {!loading && restoreError && <AnalysisError language={language} errorCode={restoreError.code} onBack={retryRestoration} />}
-      {!loading && !restoreError && state.status === 'setup' && <AnalysisModeSettings language={language} variant="setup" activeMode={activeMode} selectedMode={setupMode} onSelectedModeChange={setSetupMode} initialDirectConfig={providerConfig} activateDirect={activateInitialDirect} testConnection={dependencies.testDirectConnection} cloudConnection={cloudConnection} cloudBusy={cloudBusy} onCloudConnect={connectCloud} onCloudDisconnect={disconnectCloud} />}
-      {!loading && !restoreError && state.status === 'source' && analysisCapabilities && <ChartCaptureSource key={contextRevision} language={language} capabilities={analysisCapabilities} inspect={dependencies.inspect} capture={dependencies.capture} captureMany={dependencies.captureMany} loadMultiTimeframes={loadMultiTimeframes} onCaptured={analyzeCaptured} onOpenCloudSettings={openCloudSettings} />}
+      {!loading && state.status === 'setup' && <AnalysisModeSettings language={language} variant="setup" activeMode={activeMode} selectedMode={setupMode} onSelectedModeChange={setSetupMode} initialDirectConfig={providerConfig} activateDirect={activateInitialDirect} testConnection={dependencies.testDirectConnection} cloudConnection={cloudConnection} cloudBusy={cloudBusy} onCloudConnect={connectCloud} onCloudDisconnect={disconnectCloud} />}
+      {!loading && state.status === 'source' && analysisCapabilities && <ChartCaptureSource key={contextRevision} language={language} capabilities={analysisCapabilities} inspect={dependencies.inspect} capture={dependencies.capture} captureMany={dependencies.captureMany} loadMultiTimeframes={loadMultiTimeframes} onCaptured={analyzeCaptured} onOpenCloudSettings={openCloudSettings} />}
       {state.status === 'preview' && state.image && <ImagePreview language={language} image={state.image} onZoom={setLightbox} onChange={captureAgain} onAnalyze={retryAnalysis} />}
       {state.status === 'analyzing' && state.image && <><ImagePreview language={language} image={state.image} analyzing onZoom={setLightbox} onChange={captureAgain} onAnalyze={() => undefined} /><AnalysisProgress language={language} progress={state.progress} onCancel={controller.cancel} /></>}
       {state.status === 'failed' && <AnalysisError language={language} errorCode={state.errorCode} diagnostic={state.diagnostic} params={state.errorParams} pricingUrl={state.pricingUrl} onBack={retryAnalysis} />}

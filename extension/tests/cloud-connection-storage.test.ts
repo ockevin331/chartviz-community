@@ -17,22 +17,11 @@ const browserMock = vi.hoisted(() => ({
 
 vi.mock('wxt/browser', () => ({ browser: browserMock }));
 
-import * as cloudConnectionStorage from '../src/storage/cloud-connection-storage';
 import {
   clearCloudConnection,
   loadCloudConnection,
   saveCloudConnection,
 } from '../src/storage/cloud-connection-storage';
-
-type CleanupStorageFactory = (area: Readonly<{
-  get(key: string): Promise<Record<string, unknown>>;
-  set(items: Record<string, unknown>): Promise<void>;
-  remove(key: string): Promise<void>;
-}>) => Readonly<{
-  load(): Promise<unknown>;
-  save(value: unknown): Promise<void>;
-  clear(): Promise<void>;
-}>;
 
 const account = {
   emailMasked: 'k***n@example.com', plan: 'pro' as const,
@@ -75,73 +64,8 @@ describe('local-only Cloud connection storage', () => {
   });
 
   it('rejects invalid credentials before writing local storage', async () => {
-    await expect(saveCloudConnection('website-session', account)).rejects.toBeInstanceOf(TypeError);
+    await expect(saveCloudConnection('website-session', account))
+      .rejects.toBeInstanceOf(TypeError);
     expect(browserMock.storage.local.set).not.toHaveBeenCalled();
-  });
-
-  it('derives a deterministic lowercase SHA-256 grant fingerprint', async () => {
-    const fingerprint = (cloudConnectionStorage as unknown as {
-      cloudGrantFingerprint?: (token: string) => Promise<string>;
-    }).cloudGrantFingerprint;
-    expect(fingerprint).toBeTypeOf('function');
-    if (!fingerprint) return;
-
-    await expect(fingerprint('abc')).resolves.toBe(
-      'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
-    );
-  });
-
-  it('strictly round-trips a cleanup tombstone without token or image data', async () => {
-    const create = (cloudConnectionStorage as unknown as {
-      createCloudCleanupPendingStorage?: CleanupStorageFactory;
-    }).createCloudCleanupPendingStorage;
-    expect(create).toBeTypeOf('function');
-    if (!create) return;
-    let stored: unknown;
-    const area = {
-      get: vi.fn(async (key: string) => ({ [key]: stored })),
-      set: vi.fn(async (items: Record<string, unknown>) => {
-        stored = items.chartvizCloudCleanupPending;
-      }),
-      remove: vi.fn(async () => { stored = undefined; }),
-    };
-    const cleanup = create(area);
-    const tombstone = {
-      requestId: 'c_20260828_cleanup',
-      tokenFingerprint: 'b'.repeat(64),
-    };
-
-    await cleanup.save(tombstone);
-
-    await expect(cleanup.load()).resolves.toEqual(tombstone);
-    expect(JSON.stringify(stored)).not.toMatch(/cv_live_|data:image/i);
-    await expect(cleanup.save({ ...tombstone, token: `cv_live_${'x'.repeat(43)}` }))
-      .rejects.toBeInstanceOf(TypeError);
-    await expect(cleanup.save({ ...tombstone, captures: [{ image: 'data:image/png;base64,AAAA' }] }))
-      .rejects.toBeInstanceOf(TypeError);
-  });
-
-  it('deletes a malformed cleanup tombstone before rejecting it', async () => {
-    const create = (cloudConnectionStorage as unknown as {
-      createCloudCleanupPendingStorage?: CleanupStorageFactory;
-    }).createCloudCleanupPendingStorage;
-    expect(create).toBeTypeOf('function');
-    if (!create) return;
-    let stored: unknown = {
-      requestId: 'c_20260828_cleanup',
-      tokenFingerprint: 'not-sha256',
-    };
-    const area = {
-      get: vi.fn(async (key: string) => ({ [key]: stored })),
-      set: vi.fn(async (items: Record<string, unknown>) => {
-        stored = items.chartvizCloudCleanupPending;
-      }),
-      remove: vi.fn(async () => { stored = undefined; }),
-    };
-    const cleanup = create(area);
-
-    await expect(cleanup.load()).rejects.toBeInstanceOf(TypeError);
-    expect(stored).toBeUndefined();
-    await expect(cleanup.load()).resolves.toBeNull();
   });
 });

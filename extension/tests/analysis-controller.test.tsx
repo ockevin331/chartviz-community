@@ -245,7 +245,7 @@ describe('useAnalysisController runtime boundary', () => {
     await analysis;
   });
 
-  it('leaves active Direct work untouched when the controller unmounts', async () => {
+  it('aborts active Direct work when the controller unmounts', async () => {
     const pending = deferred<AnalysisRuntimeOutcome>();
     const runtime = fakeRuntime(() => pending.promise);
     const hook = setup(runtime);
@@ -257,7 +257,7 @@ describe('useAnalysisController runtime boundary', () => {
 
     hook.unmount();
 
-    expect(runtime.cancel).not.toHaveBeenCalled();
+    expect(runtime.cancel).toHaveBeenCalledTimes(1);
     pending.resolve(outcome);
     await analysis;
   });

@@ -140,6 +140,21 @@
       "ExtensionApiError": {
         "additionalProperties": false,
         "properties": {
+          "activeTaskIds": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Activetaskids"
+          },
           "code": {
             "enum": [
               "authentication_required",
@@ -151,7 +166,7 @@
               "subscription_required",
               "subscription_expired",
               "quota_exhausted",
-              "analysis_already_active",
+              "active_analysis_limit_reached",
               "multi_timeframe_requires_advance",
               "invalid_image",
               "invalid_chart_image",
@@ -165,6 +180,19 @@
             ],
             "title": "Code",
             "type": "string"
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Limit"
           },
           "message": {
             "anyOf": [
