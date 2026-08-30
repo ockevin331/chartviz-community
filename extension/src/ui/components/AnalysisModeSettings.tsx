@@ -79,7 +79,7 @@ export function AnalysisModeSettings({
         ? <section className="cloud-mode-card">
           <div><h2>{t.cloudSetupTitle}</h2><p>{t.cloudSetupHelp}</p></div>
           <p className="cloud-timeframe-note">{t.cloudMultiTimeframe}</p>
-          <label><span>{t.cloudApiUrl}</span><input value={CLOUD_API_BASE_URL} readOnly aria-readonly="true" /></label>
+          <label className="cloud-api-field"><span>{t.cloudApiUrl}</span><input className="cloud-api-url" value={CLOUD_API_BASE_URL} readOnly aria-readonly="true" /></label>
           {cloudError && <p className="cloud-unavailable" role="alert">{cloudError}</p>}
           {cloudAccount ? <>
             <section className="cloud-account-summary">

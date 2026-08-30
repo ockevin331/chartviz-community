@@ -14,6 +14,7 @@ import type { ChartContext } from '../../domain/chart-context';
 import type { SupportedCaptureTimeframe } from '../../domain/chart-messages';
 import { CloudConnectionError } from '../../cloud/cloud-client';
 import {
+  buildAutoOpenChartUrl,
   findSupportedSiteByChartUrl,
   supportedSiteLinks,
   type ChartAvailabilityFailure,
@@ -164,23 +165,28 @@ export function ChartCaptureSource({
       pricingUrl={captureError.pricingUrl}
       onBack={() => setCaptureError(null)}
     />}
-    {!loading && unsupportedSite && <div className="chart-guidance" role="alert">
-      <a
-        className="chartviz-upload-link"
-        href="https://www.chartviz.xyz/"
-        target="_blank"
-        rel="noreferrer"
-      >
-        {availability.onChartVizSite ? t.uploadOnCurrentChartViz : t.uploadOnChartViz}
-      </a>
-      <div className="supported-site-links" aria-label={t.supportedSites}>
-        {supportedSiteLinks.map((site) => <a key={site.id} href={site.url} target="_blank" rel="noreferrer">{site.name}</a>)}
+    {!loading && unsupportedSite && <>
+      <div className="chartviz-destination" role="alert">
+        <a
+          className="chartviz-destination-link"
+          href="https://www.chartviz.xyz/"
+          target="_blank"
+          rel="noreferrer"
+        >
+          {availability.onChartVizSite ? t.analyzeOnCurrentChartViz : t.analyzeOnChartViz}
+        </a>
       </div>
-    </div>}
+      <div className="supported-sites-guidance">
+        <strong>{t.supportedSites}</strong>
+        <div className="supported-site-links" aria-label={t.supportedSites}>
+          {supportedSiteLinks.map((site) => <a key={site.id} href={buildAutoOpenChartUrl(site.url, language)} target="_blank" rel="noreferrer">{site.name}</a>)}
+        </div>
+      </div>
+    </>}
     {!loading && unsupportedUrl && <div className="chart-guidance" role="alert">
       <a
         className="site-example-link"
-        href={availability.exampleUrl}
+        href={buildAutoOpenChartUrl(availability.exampleUrl, language)}
         target="_blank"
         rel="noreferrer"
       >

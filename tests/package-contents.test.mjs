@@ -45,7 +45,7 @@ function expectedManifest() {
     manifest_version: 3,
     name: 'ChartViz',
     description: 'Chart education in your browser.',
-    version: '1.0.3',
+    version: '1.0.4',
     icons: expectedIcons,
     permissions: expectedPermissions,
     host_permissions: [...expectedProviderOrigins, ...expectedCloudOrigins, ...expectedChartHosts],
@@ -150,7 +150,7 @@ function assertManifestContract(browser) {
 
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.name, 'ChartViz');
-  assert.equal(manifest.version, '1.0.3');
+  assert.equal(manifest.version, '1.0.4');
   assert.deepEqual(manifest.permissions, expectedPermissions);
   assert.deepEqual(manifest.host_permissions, [
     ...expectedProviderOrigins,

@@ -1,6 +1,6 @@
 # ChartViz
 
-ChartViz 1.0.3 is an open-source Chrome and Edge extension that helps people read candlestick charts. It detects a supported chart page, captures the visible chart, and presents evidence-based price-action analysis with separate annotated images. It is an educational chart-reading tool, not financial advice.
+ChartViz 1.0.4 is an open-source Chrome and Edge extension that helps people read candlestick charts. It detects a supported chart page, captures the visible chart, and presents evidence-based price-action analysis with separate annotated images. It is an educational chart-reading tool, not financial advice.
 
 For the hosted ChartViz Cloud experience, visit [chartviz.xyz](https://www.chartviz.xyz).
 
@@ -15,10 +15,10 @@ There is no bundled backend, account/login flow, analytics, report history, news
 
 [**Download the latest ChartViz release**](https://github.com/ockevin331/chartviz-community/releases/latest)
 
-Current v1.0.3 packages:
+Current v1.0.4 packages:
 
-- [Download for Chrome](https://github.com/ockevin331/chartviz-community/releases/download/v1.0.3/chartviz-extension-v1.0.3-chrome.zip)
-- [Download for Edge](https://github.com/ockevin331/chartviz-community/releases/download/v1.0.3/chartviz-extension-v1.0.3-edge.zip)
+- [Download for Chrome](https://github.com/ockevin331/chartviz-community/releases/download/v1.0.4/chartviz-extension-v1.0.4-chrome.zip)
+- [Download for Edge](https://github.com/ockevin331/chartviz-community/releases/download/v1.0.4/chartviz-extension-v1.0.4-edge.zip)
 
 Unzip the downloaded package, then:
 
@@ -70,7 +70,7 @@ Open the example link, wait for the chart to finish loading, and then open Chart
 | MEXC | [BTC/USDT spot](https://www.mexc.com/exchange/BTC_USDT) | Yes |
 | HTX | [BTC/USDT spot](https://www.htx.com/trade/btc_usdt) | Yes |
 | Upbit | [BTC/KRW](https://www.upbit.com/exchange?code=CRIX.UPBIT.KRW-BTC) | Yes |
-| 10jqka | [Ping An Bank](https://stockpage.10jqka.com.cn/000001/) | No — single timeframe only |
+| 同花顺 | [Ping An Bank](https://stockpage.10jqka.com.cn/000001/) | No — single timeframe only |
 | VergeX | [BTC chart](https://vergex.trade/chart?symbol=BTC&exchange=3c1d0438-8a57-4a2e-ad90-68069c247367) | Yes |
 
 ## Analysis modes
@@ -79,7 +79,7 @@ Open the example link, wait for the chart to finish loading, and then open Chart
 
 The Cloud tab connects to the fixed ChartViz Cloud service at `https://www.chartviz.xyz`. A revocable `cv_live_*` access token identifies the ChartViz account and lets the extension read account, plan, quota, model, and capture settings; submit analysis tasks; poll or cancel them; and render the validated result. Disconnecting removes the token from this extension only. Token creation and revocation remain on the website.
 
-Multi-timeframe capture uses the ordered timeframes returned by the account's Cloud settings, up to three roles. The default fixture maps Context to `4h`, Setup to `1h`, and Trigger to `15m`. The chart may briefly flicker while ChartViz switches timeframes. A failed switch stops the sequence, attempts to restore the original timeframe, and submits no partial result. Sites can explicitly disable this capability; 10jqka does.
+Multi-timeframe capture uses the ordered timeframes returned by the account's Cloud settings, up to three roles. The default fixture maps Context to `4h`, Setup to `1h`, and Trigger to `15m`. The chart may briefly flicker while ChartViz switches timeframes. A failed switch stops the sequence, attempts to restore the original timeframe, and submits no partial result. Sites can explicitly disable this capability; 同花顺 does.
 
 ### Direct model
 

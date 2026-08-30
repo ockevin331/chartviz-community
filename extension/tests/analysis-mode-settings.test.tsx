@@ -39,6 +39,7 @@ describe('AnalysisModeSettings', () => {
     expect(apiUrl).toHaveProperty('value', 'https://www.chartviz.xyz/api');
     expect(apiUrl).toHaveProperty('readOnly', true);
     expect(apiUrl).toHaveProperty('disabled', false);
+    expect(apiUrl.classList.contains('cloud-api-url')).toBe(true);
     const tokenInput = screen.getByLabelText('ChartViz Token');
     expect(screen.getByText('Get a token from the ChartViz website, then paste it here.')).toBeTruthy();
     const tokenLink = screen.getByRole('link', { name: 'Get a ChartViz Token' });

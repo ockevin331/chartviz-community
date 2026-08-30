@@ -46,4 +46,10 @@ describe('v1 floating panel layout', () => {
     expect(css).toMatch(/\.chart-context\s*\{[^}]*display:\s*block/s);
     expect(css).toMatch(/\.chart-context div\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*82px minmax\(0,\s*1fr\)/s);
   });
+
+  it('renders the fixed Cloud URL on a dark readonly surface', () => {
+    const css = readFileSync(resolve(process.cwd(), 'entrypoints/panel/style.css'), 'utf8');
+    expect(css).toMatch(/\.cloud-api-url\s*\{[^}]*background:\s*#10131a/s);
+    expect(css).toMatch(/\.cloud-api-url\s*\{[^}]*color:\s*#aeb7c5/s);
+  });
 });

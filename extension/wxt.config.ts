@@ -37,7 +37,7 @@ export function createManifest(): ExtensionManifest {
   return {
     name: 'ChartViz',
     description: 'Chart education in your browser.',
-    version: '1.0.3',
+    version: '1.0.4',
     permissions: [...approvedPermissions],
     host_permissions: [...approvedHostPermissions],
     action: {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createContentMessageHandler, createContentPanel, type ContentPanel } from '../entrypoints/content';
+import { createContentMessageHandler, createContentPanel, parsePanelLaunchRequest, type ContentPanel } from '../entrypoints/content';
 import type { ChartContext } from '../src/domain/chart-context';
 
 const context: ChartContext = {
@@ -30,6 +30,17 @@ function panelFixture(initial = false): ContentPanel & { visible: boolean } {
 }
 
 describe('content-script chart bridge', () => {
+  it('recognizes an auto-open chart link and its requested language', () => {
+    expect(parsePanelLaunchRequest('https://www.okx.com/trade-spot/btc-usdt?chartviz=open&chartvizLanguage=zh-CN')).toEqual({
+      open: true,
+      language: 'zh-CN',
+    });
+    expect(parsePanelLaunchRequest('https://www.okx.com/trade-spot/btc-usdt')).toEqual({
+      open: false,
+      language: null,
+    });
+  });
+
   it('replaces a stale panel left behind by an earlier extension runtime', () => {
     const stale = document.createElement('div');
     stale.id = 'chartviz-community-panel';

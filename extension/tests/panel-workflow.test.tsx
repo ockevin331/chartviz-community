@@ -435,7 +435,7 @@ describe('direct Community panel workflow', () => {
       createDirectRuntime: () => runtime,
     }} />);
 
-    expect(await screen.findByRole('link', { name: 'Upload a screenshot on ChartViz' })).toBeTruthy();
+    expect(await screen.findByRole('link', { name: 'Analyze charts on ChartViz' })).toBeTruthy();
     expect(document.querySelector('input[type="file"]')).toBeNull();
     expect(runtime.analyze).not.toHaveBeenCalled();
   });

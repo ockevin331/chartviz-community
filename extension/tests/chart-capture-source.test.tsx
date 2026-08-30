@@ -84,11 +84,21 @@ describe('ChartCaptureSource', () => {
     render(<ChartCaptureSource language="en" capabilities={directCapabilities} inspect={inspect} capture={async () => captured} onCaptured={() => undefined} onOpenCloudSettings={() => undefined} />);
 
     expect(await screen.findByRole('heading', { name: 'This site is not supported' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Upload a screenshot on ChartViz' })).toHaveProperty(
+    const chartVizLink = screen.getByRole('link', { name: 'Analyze charts on ChartViz' });
+    expect(chartVizLink).toHaveProperty(
       'href',
       'https://www.chartviz.xyz/',
     );
     expect(screen.getByRole('link', { name: 'TradingView' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: '同花顺' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: '10jqka' })).toBeNull();
+    const supportedSites = screen.getByLabelText('Supported sites');
+    expect(chartVizLink.closest('.chartviz-destination')).not.toBeNull();
+    expect(supportedSites.closest('.supported-sites-guidance')).not.toBeNull();
+    expect(chartVizLink.closest('.chartviz-destination')?.contains(supportedSites)).toBe(false);
+    const okxUrl = new URL(screen.getByRole('link', { name: 'OKX' }).getAttribute('href')!);
+    expect(okxUrl.searchParams.get('chartviz')).toBe('open');
+    expect(okxUrl.searchParams.get('chartvizLanguage')).toBe('en');
     expect(document.querySelector('input[type="file"]')).toBeNull();
     expect(screen.queryByRole('button', { name: /upload/i })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Refresh chart detection' })).toBeNull();
@@ -108,12 +118,25 @@ describe('ChartCaptureSource', () => {
     render(<ChartCaptureSource language="en" capabilities={directCapabilities} inspect={inspect} capture={async () => captured} onCaptured={() => undefined} onOpenCloudSettings={() => undefined} />);
 
     expect(await screen.findByRole('heading', { name: 'This page is not a supported chart page' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Open Binance BTC chart' })).toHaveProperty(
-      'href',
-      'https://www.binance.com/en/trade/BTC_USDT?type=spot',
-    );
+    const exampleUrl = new URL(screen.getByRole('link', { name: 'Open Binance BTC chart' }).getAttribute('href')!);
+    expect(exampleUrl.searchParams.get('type')).toBe('spot');
+    expect(exampleUrl.searchParams.get('chartviz')).toBe('open');
+    expect(exampleUrl.searchParams.get('chartvizLanguage')).toBe('en');
     expect(screen.queryByRole('link', { name: 'TradingView' })).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Upload a screenshot on ChartViz' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Analyze charts on ChartViz' })).toBeNull();
+  });
+
+  it('preserves Chinese when opening a supported chart example', async () => {
+    const inspect = vi.fn().mockRejectedValue(new ChartAvailabilityError(
+      'This site is not supported.',
+      { code: 'unsupported_site', onChartVizSite: false },
+    ));
+    render(<ChartCaptureSource language="zh-CN" capabilities={directCapabilities} inspect={inspect} capture={async () => captured} onCaptured={() => undefined} onOpenCloudSettings={() => undefined} />);
+
+    expect(await screen.findByRole('link', { name: '前往 ChartViz 分析 K 线' })).toBeTruthy();
+    const okxUrl = new URL((await screen.findByRole('link', { name: 'OKX' })).getAttribute('href')!);
+    expect(okxUrl.searchParams.get('chartviz')).toBe('open');
+    expect(okxUrl.searchParams.get('chartvizLanguage')).toBe('zh-CN');
   });
 
   it('uses same-page upload wording on the ChartViz domain', async () => {
@@ -123,7 +146,7 @@ describe('ChartCaptureSource', () => {
     ));
     render(<ChartCaptureSource language="en" capabilities={directCapabilities} inspect={inspect} capture={async () => captured} onCaptured={() => undefined} onOpenCloudSettings={() => undefined} />);
 
-    expect(await screen.findByRole('link', { name: 'Use the screenshot upload area on this page' })).toHaveProperty(
+    expect(await screen.findByRole('link', { name: 'Analyze charts on this page' })).toHaveProperty(
       'href',
       'https://www.chartviz.xyz/',
     );

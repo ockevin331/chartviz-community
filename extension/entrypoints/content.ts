@@ -27,6 +27,26 @@ export type ContentHandlerDependencies = {
   setTimeframe?(timeframe: SupportedCaptureTimeframe): Promise<void>;
 };
 
+export type PanelLaunchRequest = Readonly<{
+  open: boolean;
+  language: 'en' | 'zh-CN' | null;
+}>;
+
+export function parsePanelLaunchRequest(value: string): PanelLaunchRequest {
+  try {
+    const url = new URL(value);
+    const requestedLanguage = url.searchParams.get('chartvizLanguage');
+    return {
+      open: url.searchParams.get('chartviz') === 'open',
+      language: requestedLanguage === 'en' || requestedLanguage === 'zh-CN'
+        ? requestedLanguage
+        : null,
+    };
+  } catch {
+    return { open: false, language: null };
+  }
+}
+
 function isSupportedCaptureTimeframe(value: unknown): value is SupportedCaptureTimeframe {
   return value === '5m' || value === '15m' || value === '1h' || value === '4h' || value === '1d';
 }
@@ -123,7 +143,12 @@ export default defineContentScript({
     if (/(^|\.)upbit\.com$/i.test(location.hostname)) {
       installUpbitFrameTimeframeReceiver();
     }
+    const launchRequest = parsePanelLaunchRequest(location.href);
+    if (launchRequest.language) {
+      await browser.storage.local.set({ 'chartviz:language': launchRequest.language });
+    }
     const panel = createContentPanel(browser.runtime.getURL('/panel.html'));
+    if (launchRequest.open) panel.setVisible(true);
     const onMessage = createContentMessageHandler({
       panel,
       collectContext: collectActiveChartContext,

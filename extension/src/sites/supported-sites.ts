@@ -184,7 +184,7 @@ export const supportedSites: readonly SupportedSiteDefinition[] = [
   },
   {
     id: '10jqka',
-    name: '10jqka',
+    name: '同花顺',
     hostSuffixes: [],
     exactHosts: ['stockpage.10jqka.com.cn'],
     contentMatches: ['https://stockpage.10jqka.com.cn/*'],
@@ -257,6 +257,13 @@ export function classifyChartAvailability(value: string): ChartAvailabilityFailu
 
 export function isSupportedChartHost(value: string): boolean {
   return findSupportedSiteByHost(value) !== null;
+}
+
+export function buildAutoOpenChartUrl(value: string, language: 'en' | 'zh-CN'): string {
+  const url = new URL(value);
+  url.searchParams.set('chartviz', 'open');
+  url.searchParams.set('chartvizLanguage', language);
+  return url.toString();
 }
 
 export const supportedContentMatches = supportedSites.flatMap((site) => [...site.contentMatches]);
