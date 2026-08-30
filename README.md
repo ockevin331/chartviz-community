@@ -46,9 +46,9 @@ Key price areas are drawn directly on a separate annotated chart, with the neare
 
 ### Trade-signal interpretation
 
-When the chart contains a usable signal, ChartViz explains the trigger, invalidation or stop area, and target context in plain language. Separate signal annotations prevent multiple plans from becoming one crowded image.
+When the chart contains a usable signal, ChartViz explains the trigger, invalidation or stop area, and target context in plain language. Separate signal annotations prevent multiple plans from becoming one crowded image. The real BTCUSDT 15-minute result below marks a Long entry at 63,050, a stop at 62,790, and the first target at 63,300 on the analyzed chart.
 
-![Trade signal with trigger, stop, and target context](docs/images/chartviz-trade-signal.png)
+![Actual BTCUSDT trade signal with Long entry, stop, and target annotations](docs/images/chartviz-trade-signal.png)
 
 ChartViz also explains visible chart patterns and indicator evidence. Every generated annotation can be opened at full size and downloaded.
 
