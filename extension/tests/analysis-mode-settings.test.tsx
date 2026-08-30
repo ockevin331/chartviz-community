@@ -34,13 +34,14 @@ describe('AnalysisModeSettings', () => {
     render(<AnalysisModeSettings {...props} />);
 
     expect(screen.getByRole('tab', { name: 'ChartViz Cloud' }).getAttribute('aria-selected')).toBe('true');
-    expect(screen.getByLabelText('Cloud access token')).toHaveProperty('type', 'password');
+    expect(screen.getByLabelText('ChartViz Token')).toHaveProperty('type', 'password');
     const apiUrl = screen.getByLabelText('Cloud API URL');
     expect(apiUrl).toHaveProperty('value', 'https://www.chartviz.xyz/api');
     expect(apiUrl).toHaveProperty('readOnly', true);
     expect(apiUrl).toHaveProperty('disabled', false);
-    const tokenInput = screen.getByLabelText('Cloud access token');
-    const tokenLink = screen.getByRole('link', { name: 'Create or revoke tokens on ChartViz' });
+    const tokenInput = screen.getByLabelText('ChartViz Token');
+    expect(screen.getByText('Get a token from the ChartViz website, then paste it here.')).toBeTruthy();
+    const tokenLink = screen.getByRole('link', { name: 'Get a ChartViz Token' });
     expect(tokenLink).toHaveProperty(
       'href',
       'https://www.chartviz.xyz/settings',
@@ -58,7 +59,7 @@ describe('AnalysisModeSettings', () => {
     const { props } = fixture();
     render(<AnalysisModeSettings {...props} />);
 
-    await user.click(screen.getByRole('link', { name: 'Create or revoke tokens on ChartViz' }));
+    await user.click(screen.getByRole('link', { name: 'Get a ChartViz Token' }));
 
     expect(postMessage).toHaveBeenCalledWith({ source: 'chartviz', type: 'panel-close' }, '*');
     postMessage.mockRestore();
@@ -70,11 +71,11 @@ describe('AnalysisModeSettings', () => {
     render(<AnalysisModeSettings {...props} />);
 
     const token = `cv_live_${'x'.repeat(43)}`;
-    await user.type(screen.getByLabelText('Cloud access token'), token);
+    await user.type(screen.getByLabelText('ChartViz Token'), token);
     await user.click(screen.getByRole('button', { name: 'Connect and set as default' }));
 
     await waitFor(() => expect(props.onCloudConnect).toHaveBeenCalledWith(token));
-    expect(screen.getByLabelText('Cloud access token')).toHaveProperty('value', '');
+    expect(screen.getByLabelText('ChartViz Token')).toHaveProperty('value', '');
     expect(document.body.textContent).not.toContain(token);
   });
 
@@ -85,11 +86,11 @@ describe('AnalysisModeSettings', () => {
     render(<AnalysisModeSettings {...props} />);
 
     const token = `cv_live_${'x'.repeat(43)}`;
-    await user.type(screen.getByLabelText('Cloud access token'), token);
+    await user.type(screen.getByLabelText('ChartViz Token'), token);
     await user.click(screen.getByRole('button', { name: 'Connect and set as default' }));
 
     await waitFor(() => expect(props.onCloudConnect).toHaveBeenCalledWith(token));
-    expect(screen.getByLabelText('Cloud access token')).toHaveProperty('value', token);
+    expect(screen.getByLabelText('ChartViz Token')).toHaveProperty('value', token);
   });
 
   it('shows live connected account context and disconnect guidance', async () => {
@@ -184,8 +185,9 @@ describe('AnalysisModeSettings', () => {
 
     expect(screen.getByRole('tab', { name: '直连模型' })).toBeTruthy();
     expect(screen.getByText('托管式图表分析')).toBeTruthy();
-    expect(screen.getByLabelText('Cloud 访问令牌')).toBeTruthy();
-    expect(screen.getByRole('link', { name: '在 ChartViz 创建或撤销令牌' })).toBeTruthy();
+    expect(screen.getByLabelText('ChartViz 令牌')).toBeTruthy();
+    expect(screen.getByText('前往 ChartViz 网站获取令牌，然后粘贴到这里。')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '获取 ChartViz 令牌' })).toBeTruthy();
   });
 
   it('uses a no-input unavailable Cloud gateway contract', () => {

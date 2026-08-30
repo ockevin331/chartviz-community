@@ -1,6 +1,8 @@
 # ChartViz
 
-ChartViz 1.0.2 is an open-source Chrome and Edge extension that helps people read candlestick charts. It detects a supported chart page, captures the visible chart, and presents evidence-based price-action analysis with separate annotated images. It is an educational chart-reading tool, not financial advice.
+ChartViz 1.0.3 is an open-source Chrome and Edge extension that helps people read candlestick charts. It detects a supported chart page, captures the visible chart, and presents evidence-based price-action analysis with separate annotated images. It is an educational chart-reading tool, not financial advice.
+
+For the hosted ChartViz Cloud experience, visit [chartviz.xyz](https://www.chartviz.xyz).
 
 The extension contains two explicit analysis modes:
 
@@ -9,22 +11,67 @@ The extension contains two explicit analysis modes:
 
 There is no bundled backend, account/login flow, analytics, report history, news search, exchange-data API, billing flow, or local-model runtime.
 
-## Build and install unpacked
+## Download and install
 
-Requirements: Node.js 24, pnpm 11.20.0, and Git.
+[**Download the latest ChartViz release**](https://github.com/ockevin331/chartviz-community/releases/latest)
 
-From a clean checkout, run the canonical release verification:
+Current v1.0.3 packages:
 
-```bash
-bash scripts/verify-release.sh
-```
+- [Download for Chrome](https://github.com/ockevin331/chartviz-community/releases/download/v1.0.3/chartviz-extension-v1.0.3-chrome.zip)
+- [Download for Edge](https://github.com/ockevin331/chartviz-community/releases/download/v1.0.3/chartviz-extension-v1.0.3-edge.zip)
 
-Then load one generated browser directory:
+Unzip the downloaded package, then:
 
-- Chrome: open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select `extension/.output/chrome-mv3`.
-- Edge: open `edge://extensions`, enable **Developer mode**, choose **Load unpacked**, and select `extension/.output/edge-mv3`.
+1. Open `chrome://extensions` in Chrome or `edge://extensions` in Edge.
+2. Enable **Developer mode**.
+3. Choose **Load unpacked**.
+4. Select the unzipped directory that contains `manifest.json`.
+5. Pin ChartViz and click its toolbar icon on a supported chart page.
 
-Pin ChartViz if desired. Click its toolbar icon to open the full-height floating panel on the current page.
+No build tools are required when installing a release package. See [Development](#development) to build from source.
+
+## What ChartViz shows you
+
+### A readable market view
+
+ChartViz turns a dense candlestick chart into a concise directional view, a plain-language market reading, and the chart evidence behind it. The original chart stays visible next to the result.
+
+![ChartViz analysis beside the original candlestick chart](docs/images/chartviz-analysis-overview.png)
+
+### Support, resistance, and breakouts
+
+Key price areas are drawn directly on a separate annotated chart, with the nearest support and resistance repeated as readable price cards. This keeps level evidence easy to verify without modifying the source chart.
+
+![Annotated support and resistance levels](docs/images/chartviz-support-resistance.png)
+
+### Trade-signal interpretation
+
+When the chart contains a usable signal, ChartViz explains the trigger, invalidation or stop area, and target context in plain language. Separate signal annotations prevent multiple plans from becoming one crowded image.
+
+![Trade signal with trigger, stop, and target context](docs/images/chartviz-trade-signal.png)
+
+ChartViz also explains visible chart patterns and indicator evidence. Every generated annotation can be opened at full size and downloaded.
+
+## Supported chart sites
+
+Open the example link, wait for the chart to finish loading, and then open ChartViz.
+
+| Site | Example chart | Cloud multi-timeframe |
+| --- | --- | :---: |
+| TradingView | [BTC/USD chart](https://www.tradingview.com/chart/?symbol=BITSTAMP%3ABTCUSD) | Yes |
+| Binance | [BTC/USDT spot](https://www.binance.com/en/trade/BTC_USDT?type=spot) | Yes |
+| OKX | [BTC/USDT spot](https://www.okx.com/trade-spot/btc-usdt) | Yes |
+| Bybit | [BTC/USDT](https://www.bybit.com/en/trade/usdt/BTCUSDT) | Yes |
+| Hyperliquid | [BTC perpetual](https://app.hyperliquid.xyz/trade/BTC) | Yes |
+| Coinbase | [BTC/USD advanced trade](https://www.coinbase.com/advanced-trade/spot/BTC-USD) | Yes |
+| Bitget | [BTC/USDT spot](https://www.bitget.com/spot/BTCUSDT) | Yes |
+| Gate | [BTC/USDT spot](https://www.gate.com/trade/BTC_USDT) | Yes |
+| KuCoin | [BTC/USDT spot](https://www.kucoin.com/trade/BTC-USDT) | Yes |
+| MEXC | [BTC/USDT spot](https://www.mexc.com/exchange/BTC_USDT) | Yes |
+| HTX | [BTC/USDT spot](https://www.htx.com/trade/btc_usdt) | Yes |
+| Upbit | [BTC/KRW](https://www.upbit.com/exchange?code=CRIX.UPBIT.KRW-BTC) | Yes |
+| 10jqka | [Ping An Bank](https://stockpage.10jqka.com.cn/000001/) | No — single timeframe only |
+| VergeX | [BTC chart](https://vergex.trade/chart?symbol=BTC&exchange=3c1d0438-8a57-4a2e-ad90-68069c247367) | Yes |
 
 ## Analysis modes
 
@@ -48,7 +95,7 @@ The curated catalog includes `openai/gpt-5.6-terra`, `openai/gpt-5.6-sol`, `open
 
 Open a supported chart page, keep the chart visible, open ChartViz, and choose **Capture and analyze**. The panel hides only while the visible tab is captured and then restores. The extension does not read an exchange API.
 
-Supported chart sites are TradingView, Binance, OKX, Bybit, Hyperliquid, Coinbase, Bitget, Gate, KuCoin, MEXC, HTX, Upbit, 10jqka, and VergeX.
+See [Supported chart sites](#supported-chart-sites) for verified example URLs.
 
 - A supported chart URL shows the detected instrument, exchange, and timeframe plus single/multi capture cards.
 - A supported domain with an unsupported URL explains that the current page is not a chart page and links to one BTC chart example for that site.
@@ -75,6 +122,16 @@ Manifest permissions are limited to `activeTab`, `storage`, `scripting`, and `cl
 - **`invalid_response`:** retry with a clear chart and a curated model; the result must match the Community report contract.
 
 ## Development
+
+Requirements: Node.js 24, pnpm 11.20.0, and Git.
+
+From a clean checkout, run the canonical release verification:
+
+```bash
+bash scripts/verify-release.sh
+```
+
+The generated unpacked directories are `extension/.output/chrome-mv3` and `extension/.output/edge-mv3`.
 
 ```bash
 pnpm --dir extension install --frozen-lockfile
