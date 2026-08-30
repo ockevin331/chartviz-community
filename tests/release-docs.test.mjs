@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -39,4 +39,41 @@ test('manual smoke checklist covers supported and unsupported page guidance', ()
   assert.match(smoke, /Chrome/i);
   assert.match(smoke, /Edge/i);
   assert.doesNotMatch(smoke, /manual upload/i);
+});
+
+test('README offers release downloads, illustrated features, and linked supported sites', () => {
+  const readme = read('README.md');
+
+  assert.match(readme, /github\.com\/ockevin331\/chartviz-community\/releases\/latest/i);
+  assert.match(readme, /chartviz-extension-v1\.0\.3-chrome\.zip/i);
+  assert.match(readme, /chartviz-extension-v1\.0\.3-edge\.zip/i);
+  assert.match(readme, /unzip.+Developer mode.+Load unpacked/is);
+
+  for (const image of [
+    'docs/images/chartviz-analysis-overview.png',
+    'docs/images/chartviz-support-resistance.png',
+    'docs/images/chartviz-trade-signal.png',
+  ]) {
+    assert.equal(existsSync(path.join(root, image)), true, `missing README image: ${image}`);
+    assert.match(readme, new RegExp(image.replaceAll('/', '\\/')));
+  }
+
+  for (const site of [
+    'tradingview.com/chart',
+    'binance.com/en/trade',
+    'okx.com/trade-spot',
+    'bybit.com/en/trade',
+    'app.hyperliquid.xyz/trade',
+    'coinbase.com/advanced-trade',
+    'bitget.com/spot',
+    'gate.com/trade',
+    'kucoin.com/trade',
+    'mexc.com/exchange',
+    'htx.com/trade',
+    'upbit.com/exchange',
+    'stockpage.10jqka.com.cn',
+    'vergex.trade/chart',
+  ]) {
+    assert.match(readme, new RegExp(site.replaceAll('.', '\\.'), 'i'));
+  }
 });
