@@ -10,7 +10,7 @@ Direct analysis uses one processed screenshot and three sequential provider requ
 
 Multi-timeframe capture is capability-gated for ChartViz Cloud. The Cloud client validates account, capability, capture-setting, task, and report envelopes before use. It accepts one to three captured images, submits them only after an explicit analysis action, and stores the Cloud token in extension local storage so the connection survives browser restarts. Users can disconnect locally or revoke the token on the website.
 
-The extension validates chart inputs, provider HTTP/response envelopes, staged evidence, and final report JSON. MV3 CSP limits executable code to the package. Manifest access is limited to `activeTab`, `storage`, `scripting`, supported chart hosts, and the three reviewed provider origins. There is no optional host access, broad `<all_urls>` access, remote executable code, or custom provider origin.
+The extension validates chart inputs, provider HTTP/response envelopes, staged evidence, and final report JSON. MV3 CSP limits executable code to the package. Manifest access includes `activeTab`, `storage`, `scripting`, the reviewed service/provider origins, and `<all_urls>`. Broad host access is used only to capture the currently visible tab after an explicit analysis action, including when a supported chart link opened the panel automatically; the extension does not take background screenshots. There is no optional host access, remote executable code, or custom provider origin.
 
 ## Threat and review boundary
 

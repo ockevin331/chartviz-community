@@ -38,11 +38,11 @@ for (const browser of browsers) {
     assert.equal(manifest.manifest_version, 3);
     assert.equal(manifest.name, 'ChartViz');
     assert.deepEqual(manifest.permissions, ['activeTab', 'storage', 'scripting', 'clipboardWrite']);
-    assert.deepEqual(manifest.host_permissions, [...providerOrigins, ...cloudOrigins, ...chartHosts]);
+    assert.deepEqual(manifest.host_permissions, ['<all_urls>', ...providerOrigins, ...cloudOrigins, ...chartHosts]);
     assert.equal(manifest.optional_host_permissions, undefined);
     assert.deepEqual(manifest.content_scripts, [{ matches: contentMatches, js: ['content-scripts/content.js'] }]);
     assert.equal(manifest.action.default_popup, undefined);
-    assert.equal(JSON.stringify(manifest).includes('<all_urls>'), false);
+    assert.equal(manifest.host_permissions.includes('<all_urls>'), true);
     assert.deepEqual(manifest.web_accessible_resources, [{
       resources: ['panel.html', 'chunks/*', 'assets/*'],
       matches: ['http://*/*', 'https://*/*'],

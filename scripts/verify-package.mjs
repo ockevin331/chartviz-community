@@ -271,15 +271,15 @@ function verifyManifest(entries, label) {
   );
   assert.equal(manifest.manifest_version, 3, `${label} must use Manifest V3`);
   assert.equal(manifest.name, 'ChartViz', `${label} has an unexpected name`);
-  assert.equal(manifest.version, '1.0.4', `${label} has an unexpected version`);
+  assert.equal(manifest.version, '1.0.5', `${label} has an unexpected version`);
   assert.deepEqual(manifest.permissions, expectedPermissions, `${label} has unexpected permissions`);
   assert.deepEqual(
     manifest.host_permissions,
-    [...expectedProviderOrigins, ...expectedCloudOrigins, ...expectedChartHosts],
+    ['<all_urls>', ...expectedProviderOrigins, ...expectedCloudOrigins, ...expectedChartHosts],
     `${label} has unexpected provider, Cloud, or chart origins`,
   );
   assert.equal(manifest.optional_host_permissions, undefined, `${label} must not declare optional origins`);
-  assert.equal(JSON.stringify(manifest).includes('<all_urls>'), false, `${label} must not declare broad <all_urls> access`);
+  assert.equal(manifest.host_permissions.includes('<all_urls>'), true, `${label} must allow visible-tab capture after URL auto-open`);
   assert.deepEqual(
     manifest.content_scripts,
     [{ matches: expectedContentMatches, js: ['content-scripts/content.js'] }],

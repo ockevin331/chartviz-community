@@ -45,10 +45,10 @@ function expectedManifest() {
     manifest_version: 3,
     name: 'ChartViz',
     description: 'Chart education in your browser.',
-    version: '1.0.4',
+    version: '1.0.5',
     icons: expectedIcons,
     permissions: expectedPermissions,
-    host_permissions: [...expectedProviderOrigins, ...expectedCloudOrigins, ...expectedChartHosts],
+    host_permissions: ['<all_urls>', ...expectedProviderOrigins, ...expectedCloudOrigins, ...expectedChartHosts],
     action: { default_icon: expectedIcons },
     web_accessible_resources: [{
       resources: ['panel.html', 'chunks/*', 'assets/*'],
@@ -150,9 +150,10 @@ function assertManifestContract(browser) {
 
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.name, 'ChartViz');
-  assert.equal(manifest.version, '1.0.4');
+  assert.equal(manifest.version, '1.0.5');
   assert.deepEqual(manifest.permissions, expectedPermissions);
   assert.deepEqual(manifest.host_permissions, [
+    '<all_urls>',
     ...expectedProviderOrigins,
     ...expectedCloudOrigins,
     ...expectedChartHosts,

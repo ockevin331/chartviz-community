@@ -1,6 +1,6 @@
 # ChartViz
 
-ChartViz 1.0.4 is an open-source Chrome and Edge extension that helps people read candlestick charts. It detects a supported chart page, captures the visible chart, and presents evidence-based price-action analysis with separate annotated images. It is an educational chart-reading tool, not financial advice.
+ChartViz 1.0.5 is an open-source Chrome and Edge extension that helps people read candlestick charts. It detects a supported chart page, captures the visible chart, and presents evidence-based price-action analysis with separate annotated images. It is an educational chart-reading tool, not financial advice.
 
 For the hosted ChartViz Cloud experience, visit [chartviz.xyz](https://www.chartviz.xyz).
 
@@ -15,10 +15,10 @@ There is no bundled backend, account/login flow, analytics, report history, news
 
 [**Download the latest ChartViz release**](https://github.com/ockevin331/chartviz-community/releases/latest)
 
-Current v1.0.4 packages:
+Current v1.0.5 packages:
 
-- [Download for Chrome](https://github.com/ockevin331/chartviz-community/releases/download/v1.0.4/chartviz-extension-v1.0.4-chrome.zip)
-- [Download for Edge](https://github.com/ockevin331/chartviz-community/releases/download/v1.0.4/chartviz-extension-v1.0.4-edge.zip)
+- [Download for Chrome](https://github.com/ockevin331/chartviz-community/releases/download/v1.0.5/chartviz-extension-v1.0.5-chrome.zip)
+- [Download for Edge](https://github.com/ockevin331/chartviz-community/releases/download/v1.0.5/chartviz-extension-v1.0.5-edge.zip)
 
 Unzip the downloaded package, then:
 
@@ -108,7 +108,7 @@ The original screenshot and generated annotation images can be zoomed and downlo
 
 In Cloud mode, captured screenshots and task metadata are sent only to the fixed ChartViz Cloud service. In Direct mode, the screenshot is sent to the selected provider in the first two requests. The third request contains normalized chart evidence, requested output language, and the final reasoning prompt. The applicable service or provider retention, billing, and privacy terms apply. Avoid charts containing account details, personal data, or private indicators.
 
-Manifest permissions are limited to `activeTab`, `storage`, `scripting`, and `clipboardWrite`; supported chart hosts; and the three fixed Direct provider origins. Clipboard access is used only when the user explicitly copies diagnostic information. There is no `<all_urls>`, optional host access, remote executable code, or custom API origin. See [SECURITY.md](SECURITY.md) for the exact boundary and [docs/manual-smoke-test.md](docs/manual-smoke-test.md) for the release checklist.
+Manifest permissions include `activeTab`, `storage`, `scripting`, `clipboardWrite`, and `<all_urls>`. Broad host access allows a chart panel opened from a ChartViz navigation link to capture the currently visible tab without a second toolbar click. The extension captures only after the user starts an analysis; it does not take background screenshots. Clipboard access is used only when the user explicitly copies diagnostic information. There is no optional host access, remote executable code, or custom API origin. See [SECURITY.md](SECURITY.md) for the exact boundary and [docs/manual-smoke-test.md](docs/manual-smoke-test.md) for the release checklist.
 
 ## Troubleshooting
 

@@ -21,6 +21,7 @@ import { loadAnalysisMode, saveAnalysisMode } from '../../src/storage/analysis-m
 import { loadLanguage, saveLanguage } from '../../src/storage/language-storage';
 import { loadProviderConfig, saveProviderConfig } from '../../src/storage/provider-session';
 import { loadCloudConnection, type StoredCloudConnection } from '../../src/storage/cloud-connection-storage';
+import { SettingsSaveError } from '../../src/storage/settings-save-error';
 import {
   createLatestPersistenceCoordinator,
   type LatestPersistenceResult,
@@ -184,22 +185,25 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
   const activateDirectTransition = useCallback(async (
     config: ProviderConfig,
     closeSettings: boolean,
-  ): Promise<boolean> => {
+  ): Promise<void> => {
     const transition = beginRuntimeTransition();
     try {
       const result = await configPersistence.persist(config);
-      if (result === 'superseded') return false;
+      if (result === 'superseded') throw new SettingsSaveError('config_superseded');
     } catch (error) {
-      if (transitionAttempt.current !== transition) return false;
+      if (transitionAttempt.current !== transition) {
+        if (error instanceof SettingsSaveError) throw error;
+        throw new SettingsSaveError('mode_transition_superseded');
+      }
       throw error;
     }
-    if (transitionAttempt.current !== transition) return false;
-    if (!await persistModeForTransition('direct', transition)) return false;
-    if (transitionAttempt.current !== transition) return false;
+    if (transitionAttempt.current !== transition) throw new SettingsSaveError('mode_transition_superseded');
+    if (!await persistModeForTransition('direct', transition)) throw new SettingsSaveError('mode_persistence_superseded');
+    if (transitionAttempt.current !== transition) throw new SettingsSaveError('mode_transition_superseded');
 
     const wasDirect = activeModeRef.current === 'direct';
     const runtime = dependencies.createDirectRuntime(config);
-    if (transitionAttempt.current !== transition) return false;
+    if (transitionAttempt.current !== transition) throw new SettingsSaveError('runtime_transition_superseded');
     activeModeRef.current = 'direct';
     setProviderConfig(config);
     setActiveMode('direct');
@@ -209,7 +213,6 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     if (wasDirect) controller.updateRuntime(runtime);
     else controller.configure(runtime);
     if (closeSettings) setSettingsOpen(false);
-    return true;
   }, [
     beginRuntimeTransition,
     controller.configure,
@@ -274,11 +277,10 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
   ]);
 
   const refreshAll = useCallback(() => {
-    beginRuntimeTransition();
     lastContext.current = null;
     setContextRevision((revision) => revision + 1);
     controller.refresh();
-  }, [beginRuntimeTransition, controller.refresh]);
+  }, [controller.refresh]);
 
   useEffect(() => {
     function handlePageMessage(event: MessageEvent) {

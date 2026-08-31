@@ -13,7 +13,7 @@ export type AnalysisModeSettingsProps = {
   selectedMode: AnalysisMode;
   onSelectedModeChange(mode: AnalysisMode): void;
   initialDirectConfig: ProviderConfig | null;
-  activateDirect(config: ProviderConfig): Promise<boolean>;
+  activateDirect(config: ProviderConfig): Promise<void>;
   testConnection(config: ProviderConfig, signal: AbortSignal): Promise<void>;
   cloudConnection: CloudConnectionState;
   cloudBusy: boolean;

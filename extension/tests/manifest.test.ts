@@ -8,7 +8,7 @@ import {
 } from '../src/sites/supported-sites';
 
 describe('extension manifest', () => {
-  it('uses only the approved temporary-tab permissions and exact provider origins', () => {
+  it('grants auto-opened chart panels permission to capture the visible tab', () => {
     const manifest = createManifest();
 
     expect(manifest.name).toBe('ChartViz');
@@ -16,7 +16,7 @@ describe('extension manifest', () => {
     expect(manifest.host_permissions).toEqual(approvedHostPermissions);
     expect('content_scripts' in manifest).toBe(false);
     expect(manifest.action.default_popup).toBeUndefined();
-    expect(JSON.stringify(manifest)).not.toContain('<all_urls>');
+    expect(manifest.host_permissions).toContain('<all_urls>');
     expect(manifest.optional_host_permissions).toBeUndefined();
     expect(manifest.host_permissions).toContain('https://www.chartviz.xyz/*');
     expect(manifest.host_permissions).not.toContain('https://*.chartviz.xyz/*');

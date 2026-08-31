@@ -9,8 +9,10 @@ export const approvedProviderOrigins = [
 ] as const;
 
 export const approvedCloudOrigin = 'https://www.chartviz.xyz/*' as const;
+export const approvedCaptureOrigin = '<all_urls>' as const;
 
 export const approvedHostPermissions = [
+  approvedCaptureOrigin,
   ...approvedProviderOrigins,
   approvedCloudOrigin,
   ...supportedChartHosts,
@@ -37,7 +39,7 @@ export function createManifest(): ExtensionManifest {
   return {
     name: 'ChartViz',
     description: 'Chart education in your browser.',
-    version: '1.0.4',
+    version: '1.0.5',
     permissions: [...approvedPermissions],
     host_permissions: [...approvedHostPermissions],
     action: {

@@ -10,6 +10,7 @@ import {
 import { ProviderError, type AnalysisErrorCode } from '../../providers/provider-errors';
 import type { ProviderConfig } from '../../providers/provider-types';
 import { saveProviderConfig } from '../../storage/provider-session';
+import { SettingsSaveError } from '../../storage/settings-save-error';
 import { translations, type Language } from './LanguageMenu';
 import { SelectMenu, type SelectOption } from './SelectMenu';
 
@@ -20,17 +21,17 @@ type Props = {
   onConfigured?(config: ProviderConfig): void;
   initialConfig?: ProviderConfig | null;
   mode?: 'setup' | 'settings';
-  saveConfig?: (config: ProviderConfig) => Promise<boolean>;
+  saveConfig?: (config: ProviderConfig) => Promise<void>;
   testConnection(config: ProviderConfig, signal: AbortSignal): Promise<void>;
 };
 
-async function saveConfigAndContinue(config: ProviderConfig): Promise<boolean> {
+async function saveConfigAndContinue(config: ProviderConfig): Promise<void> {
   await saveProviderConfig(config);
-  return true;
 }
 
 function localError(error: unknown, language: Language): string {
   const t = translations[language];
+  if (error instanceof SettingsSaveError) return t.settingsSaveInterrupted;
   if (error instanceof ProviderError) return t[error.code];
   const code = error instanceof Error ? error.message as AnalysisErrorCode : '';
   return code in t ? t[code as AnalysisErrorCode] : t.unknownError;
@@ -119,7 +120,12 @@ export function ProviderSetup({ language, onConfigured, initialConfig = null, mo
   async function save() {
     if (!valid || saving) return;
     setSaving(true); setMessage(null);
-    try { const value = config(); if (await saveConfig(value)) onConfigured?.(value); }
+    try {
+      const value = config();
+      await saveConfig(value);
+      setMessage({ kind: 'success', text: t.settingsSaved });
+      onConfigured?.(value);
+    }
     catch (error) { setMessage({ kind: 'error', text: localError(error, language) }); }
     finally { setSaving(false); }
   }
@@ -160,7 +166,7 @@ export function ProviderSetup({ language, onConfigured, initialConfig = null, mo
       <p className="cost-notice">{t.analysisRequestNotice}</p>
       <p className="cost-notice">{t.connectionCost}</p>
       {message && <p className={message.kind === 'error' ? 'setup-error' : 'setup-success'} role={message.kind === 'error' ? 'alert' : 'status'}>{message.text}</p>}
-      <div className="provider-actions"><button className="secondary" type="button" disabled={!valid || testing} onClick={() => void connect()}>{testing ? t.testingConnection : t.testConnection}</button><button className="primary" type="submit" disabled={!valid || saving}>{t.saveAndSetDefault}</button></div>
+      <div className="provider-actions"><button className="secondary" type="button" disabled={!valid || testing} onClick={() => void connect()}>{testing ? t.testingConnection : t.testConnection}</button><button className="primary" type="submit" disabled={!valid || saving}>{saving ? t.savingSettings : t.saveAndSetDefault}</button></div>
     </form>
   </section>;
 }

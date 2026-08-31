@@ -17,7 +17,7 @@ function fixture(language: 'en' | 'zh-CN' = 'en') {
     selectedMode: 'cloud' as const,
     onSelectedModeChange: vi.fn(),
     initialDirectConfig: null,
-    activateDirect: vi.fn(async () => { events.push('activate'); return true; }),
+    activateDirect: vi.fn(async () => { events.push('activate'); }),
     testConnection: vi.fn(async () => undefined),
     cloudConnection: { status: 'disconnected', account: null, errorCode: null } as CloudConnectionState,
     cloudBusy: false,
