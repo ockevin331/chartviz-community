@@ -5,6 +5,7 @@ export type AnalysisErrorCode =
   | 'invalid_api_key'
   | 'model_not_found'
   | 'model_not_multimodal'
+  | 'provider_request_rejected'
   | 'insufficient_balance'
   | 'rate_limited'
   | 'invalid_image'

@@ -33,10 +33,48 @@ function statusCode(status: number): AnalysisErrorCode {
   if (status === 401 || status === 403) return 'invalid_api_key';
   if (status === 402) return 'insufficient_balance';
   if (status === 404) return 'model_not_found';
-  if (status === 400) return 'model_not_multimodal';
+  if (status === 400) return 'provider_request_rejected';
   if (status === 413 || status === 415 || status === 422) return 'invalid_image';
   if (status === 429) return 'rate_limited';
   return 'invalid_response';
+}
+
+function openRouterErrorMessage(payload: unknown): string | undefined {
+  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return undefined;
+  const root = payload as Record<string, unknown>;
+  const error = root.error;
+  if (typeof error === 'string') return error;
+  if (error !== null && typeof error === 'object' && !Array.isArray(error)) {
+    const message = (error as Record<string, unknown>).message;
+    if (typeof message === 'string') return message;
+  }
+  return typeof root.message === 'string' ? root.message : undefined;
+}
+
+function explicitlyRejectsImageInput(message: string | undefined): boolean {
+  if (!message) return false;
+  const normalized = message.toLowerCase();
+  const mentionsImage = /\b(?:image|vision|multimodal)\b/.test(normalized);
+  const rejectsCapability = /\b(?:unsupported|not supported|does not support|doesn't support|not multimodal|text[- ]only)\b/.test(normalized);
+  return mentionsImage && rejectsCapability;
+}
+
+async function openRouterRejection(response: Response): Promise<ProviderError> {
+  let message: string | undefined;
+  try {
+    message = openRouterErrorMessage(await response.json());
+  } catch {
+    // The status still provides a deterministic fallback when the error body is unavailable.
+  }
+  const error = new ProviderError(
+    explicitlyRejectsImageInput(message) ? 'model_not_multimodal' : 'provider_request_rejected',
+    { params: { provider: 'openrouter' }, httpStatus: response.status },
+  );
+  if (!message) return error;
+  return attachProviderFailureDetail(error, {
+    stage: 'transport',
+    issues: [{ path: 'provider.http.error', code: 'request_rejected', valuePreview: message }],
+  });
 }
 
 export class OpenRouterProvider implements StructuredVisionProvider {
@@ -154,6 +192,7 @@ export class OpenRouterProvider implements StructuredVisionProvider {
       }
 
       if (!response.ok) {
+        if (response.status === 400) throw await openRouterRejection(response);
         throw new ProviderError(statusCode(response.status), {
           params: { provider: this.kind },
           httpStatus: response.status,

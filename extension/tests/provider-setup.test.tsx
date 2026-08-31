@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProviderSetup } from '../src/ui/components/ProviderSetup';
 import { ProviderError } from '../src/providers/provider-errors';
+import { attachProviderFailureDetail } from '../src/providers/provider-diagnostics';
 import type { ProviderConfig } from '../src/providers/provider-types';
 import { SettingsSaveError } from '../src/storage/settings-save-error';
 
@@ -215,6 +216,47 @@ describe('ProviderSetup', () => {
     await user.click(screen.getByRole('button', { name: '测试连接' }));
     expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('API 密钥无效'));
     expect(testConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not describe a generic OpenRouter rejection as missing image support', async () => {
+    const user = userEvent.setup();
+    const testConnection = vi.fn(async () => { throw new ProviderError('provider_request_rejected'); });
+    render(<ProviderSetup language="zh-CN" saveConfig={async () => undefined} testConnection={testConnection} onConfigured={() => undefined} />);
+    await user.type(screen.getByLabelText('API 密钥'), 'router-key');
+
+    await user.click(screen.getByRole('button', { name: '测试连接' }));
+
+    expect(await screen.findByRole('alert')).toHaveProperty(
+      'textContent',
+      expect.stringContaining('服务商拒绝了这次请求'),
+    );
+    expect(screen.queryByText('所选模型不支持图像输入。')).toBeNull();
+  });
+
+  it('shows the sanitized OpenRouter rejection summary while testing the connection', async () => {
+    const user = userEvent.setup();
+    const rejection = attachProviderFailureDetail(new ProviderError('provider_request_rejected'), {
+      stage: 'transport',
+      issues: [{
+        path: 'provider.http.error',
+        code: 'request_rejected',
+        valuePreview: 'Invalid response_format schema for this request.',
+      }],
+    });
+    render(<ProviderSetup
+      language="en"
+      saveConfig={async () => undefined}
+      testConnection={async () => { throw rejection; }}
+      onConfigured={() => undefined}
+    />);
+    await user.type(screen.getByLabelText('API key'), 'router-key');
+
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+
+    expect(await screen.findByRole('alert')).toHaveProperty(
+      'textContent',
+      expect.stringContaining('Invalid response_format schema for this request.'),
+    );
   });
 
   it('does not duplicate the header-owned language control', () => {

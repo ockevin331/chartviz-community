@@ -98,7 +98,7 @@ describe('OpenRouter analyze', () => {
   });
 
   it.each([
-    [400, 'model_not_multimodal'],
+    [400, 'provider_request_rejected'],
     [401, 'invalid_api_key'],
     [403, 'invalid_api_key'],
     [402, 'insufficient_balance'],
@@ -107,7 +107,7 @@ describe('OpenRouter analyze', () => {
     [415, 'invalid_image'],
     [422, 'invalid_image'],
     [429, 'rate_limited'],
-  ] satisfies Array<[number, AnalysisErrorCode]>)('maps HTTP %i to %s without reading the response body', async (status, code) => {
+  ] satisfies Array<[number, AnalysisErrorCode]>)('maps HTTP %i to %s and only inspects a rejected-request body', async (status, code) => {
     const json = vi.fn(async () => ({ secret: 'must-not-be-read' }));
     const fetchImpl = vi.fn(async () => ({ ok: false, status, json }) as unknown as Response);
     const provider = providerWithFetch(fetchImpl);
@@ -116,7 +116,50 @@ describe('OpenRouter analyze', () => {
 
     await expect(operation).rejects.toMatchObject({ code, httpStatus: status, params: { provider: 'openrouter' } });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(json).not.toHaveBeenCalled();
+    if (status === 400) expect(json).toHaveBeenCalledTimes(1);
+    else expect(json).not.toHaveBeenCalled();
+  });
+
+  it('maps HTTP 400 to image incompatibility only when OpenRouter explicitly reports it', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      error: {
+        code: 400,
+        message: 'The selected model does not support image input.',
+      },
+    }), { status: 400, headers: { 'content-type': 'application/json' } }));
+    const provider = providerWithFetch(fetchImpl);
+
+    await expect(provider.generateStructured(config, request())).rejects.toMatchObject({
+      code: 'model_not_multimodal',
+      httpStatus: 400,
+    });
+  });
+
+  it('preserves a safe OpenRouter rejection summary instead of claiming image incompatibility', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      error: {
+        code: 400,
+        message: 'Invalid response_format schema for this request.',
+      },
+    }), { status: 400, headers: { 'content-type': 'application/json' } }));
+    const provider = providerWithFetch(fetchImpl);
+    let caught: unknown;
+
+    try {
+      await provider.generateStructured(config, request());
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toMatchObject({ code: 'provider_request_rejected', httpStatus: 400 });
+    expect(getProviderFailureDetail(caught)).toMatchObject({
+      stage: 'transport',
+      issues: [{
+        path: 'provider.http.error',
+        code: 'request_rejected',
+        valuePreview: 'Invalid response_format schema for this request.',
+      }],
+    });
   });
 
   it('rejects invalid config before fetch', async () => {

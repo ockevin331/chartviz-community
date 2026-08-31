@@ -8,6 +8,7 @@ import {
   type ModelVendor,
 } from '../../providers/model-catalog';
 import { ProviderError, type AnalysisErrorCode } from '../../providers/provider-errors';
+import { getProviderFailureDetail } from '../../providers/provider-diagnostics';
 import type { ProviderConfig } from '../../providers/provider-types';
 import { saveProviderConfig } from '../../storage/provider-session';
 import { SettingsSaveError } from '../../storage/settings-save-error';
@@ -32,7 +33,13 @@ async function saveConfigAndContinue(config: ProviderConfig): Promise<void> {
 function localError(error: unknown, language: Language): string {
   const t = translations[language];
   if (error instanceof SettingsSaveError) return t.settingsSaveInterrupted;
-  if (error instanceof ProviderError) return t[error.code];
+  if (error instanceof ProviderError) {
+    const message = t[error.code];
+    if (error.code !== 'provider_request_rejected') return message;
+    const preview = getProviderFailureDetail(error)?.issues
+      .find((issue) => issue.path === 'provider.http.error')?.valuePreview;
+    return preview ? `${message} ${preview}` : message;
+  }
   const code = error instanceof Error ? error.message as AnalysisErrorCode : '';
   return code in t ? t[code as AnalysisErrorCode] : t.unknownError;
 }
