@@ -421,6 +421,30 @@ describe('direct Community panel workflow', () => {
     expect(screen.getByLabelText('API key')).toBeTruthy();
   });
 
+  it('leaves Direct setup after replacing an expired session key', async () => {
+    const user = userEvent.setup();
+    const saveConfig = vi.fn(async () => undefined);
+    const runtime = fakeRuntime();
+    render(<App dependencies={{
+      loadConfig: async () => null,
+      ...directModeDependencies,
+      saveConfig,
+      inspect,
+      capture,
+      createDirectRuntime: () => runtime,
+    }} />);
+
+    await screen.findByLabelText('API key');
+    await user.type(screen.getByLabelText('API key'), 'replacement-key');
+    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
+
+    await waitFor(() => expect(saveConfig).toHaveBeenCalledWith(expect.objectContaining({
+      apiKey: 'replacement-key',
+    })));
+    expect(await screen.findByRole('heading', { name: 'Detected chart' })).toBeTruthy();
+    expect(screen.queryByText('Settings saved.')).toBeNull();
+  });
+
   it('guides an unsupported site to ChartViz without invoking analysis', async () => {
     const runtime = fakeRuntime();
     render(<App dependencies={{

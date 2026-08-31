@@ -210,7 +210,10 @@ export function App({ dependencies: overrides }: { dependencies?: Partial<AppDep
     if (closeSettings) setSettingsMode('direct');
     else setSetupMode('direct');
     setAnalysisCapabilities(runtime.capabilities());
-    if (wasDirect) controller.updateRuntime(runtime);
+    // A saved Direct preference can outlive the session-scoped API key. In that
+    // recovery setup state there is no configured runtime to update, even though
+    // the selected mode is already Direct, so setup must always configure it.
+    if (closeSettings && wasDirect) controller.updateRuntime(runtime);
     else controller.configure(runtime);
     if (closeSettings) setSettingsOpen(false);
   }, [
