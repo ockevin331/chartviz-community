@@ -154,6 +154,35 @@ describe('AnalysisError diagnostics', () => {
     expect(screen.queryByText('Copied successfully')).toBeNull();
   });
 
+  it('falls back to document copy when the embedded clipboard API is blocked', async () => {
+    const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const execCommandDescriptor = Object.getOwnPropertyDescriptor(document, 'execCommand');
+    const writeText = vi.fn(async () => { throw new DOMException('Blocked by permissions policy', 'NotAllowedError'); });
+    const execCommand = vi.fn(() => true);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: execCommand });
+
+    try {
+      render(<AnalysisError language="en" errorCode="invalid_response" diagnostic={diagnostic} onBack={() => undefined} />);
+      fireEvent.click(screen.getByRole('button', { name: 'View diagnostics' }));
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
+        await Promise.resolve();
+      });
+
+      expect(writeText).toHaveBeenCalledTimes(1);
+      expect(execCommand).toHaveBeenCalledWith('copy');
+      expect(screen.getByRole('status')).toHaveProperty('textContent', 'Copied successfully');
+      expect(document.querySelector('textarea[data-chartviz-clipboard]')).toBeNull();
+    } finally {
+      if (clipboardDescriptor) Object.defineProperty(navigator, 'clipboard', clipboardDescriptor);
+      else delete (navigator as unknown as Record<string, unknown>).clipboard;
+      if (execCommandDescriptor) Object.defineProperty(document, 'execCommand', execCommandDescriptor);
+      else delete (document as unknown as Record<string, unknown>).execCommand;
+    }
+  });
+
   it('shows an explicit error when the clipboard write is rejected', async () => {
     const copyText = vi.fn(async () => { throw new Error('clipboard blocked'); });
     render(<AnalysisError language="en" errorCode="invalid_response" diagnostic={diagnostic} onBack={() => undefined} copyText={copyText} />);

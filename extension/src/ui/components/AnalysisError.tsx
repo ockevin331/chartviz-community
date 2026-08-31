@@ -21,7 +21,32 @@ type Props = {
 const CHARTVIZ_PRICING_URL = 'https://www.chartviz.xyz/#pricing';
 
 async function defaultCopyText(value: string): Promise<void> {
-  await navigator.clipboard.writeText(value);
+  try {
+    await navigator.clipboard.writeText(value);
+    return;
+  } catch (clipboardError) {
+    const textarea = document.createElement('textarea');
+    textarea.dataset.chartvizClipboard = 'true';
+    textarea.value = value;
+    textarea.readOnly = true;
+    Object.assign(textarea.style, {
+      position: 'fixed',
+      inset: '0 auto auto -9999px',
+      opacity: '0',
+      pointerEvents: 'none',
+    });
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    document.body.append(textarea);
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, value.length);
+    try {
+      if (!document.execCommand('copy')) throw clipboardError;
+    } finally {
+      textarea.remove();
+      previousFocus?.focus();
+    }
+  }
 }
 
 function defaultDownloadText(name: string, value: string): void {
