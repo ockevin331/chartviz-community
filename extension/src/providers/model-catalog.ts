@@ -10,7 +10,7 @@ export type ModelChoice = Readonly<{
   label: string;
   openRouterModel: string;
   direct?: Readonly<{
-    provider: Extract<ProviderKind, 'openai' | 'gemini'>;
+    provider: Extract<ProviderKind, 'openai'>;
     model: string;
   }>;
   description: Readonly<{

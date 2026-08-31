@@ -15,8 +15,6 @@ import { SettingsSaveError } from '../../storage/settings-save-error';
 import { translations, type Language } from './LanguageMenu';
 import { SelectMenu, type SelectOption } from './SelectMenu';
 
-const CUSTOM_MODEL_KEY = '__custom_openrouter_model__' as const;
-
 type Props = {
   language: Language;
   onConfigured?(config: ProviderConfig): void;
@@ -59,59 +57,40 @@ function LockIcon() {
 export function ProviderSetup({ language, onConfigured, initialConfig = null, mode = 'setup', saveConfig = saveConfigAndContinue, testConnection }: Props) {
   const privacyTitleId = useId();
   const initialChoice = findModelChoiceForConfig(initialConfig);
-  const [selectedModelKey, setSelectedModelKey] = useState(initialConfig?.customModel
-    ? CUSTOM_MODEL_KEY
-    : initialChoice?.key ?? getDefaultModelChoice().key);
+  const [selectedModelKey, setSelectedModelKey] = useState(initialChoice?.key ?? getDefaultModelChoice().key);
   const [useOpenRouter, setUseOpenRouter] = useState(initialConfig
     ? initialConfig.provider === 'openrouter'
     : true);
   const [apiKey, setApiKey] = useState(initialConfig?.apiKey ?? '');
-  const [customModelId, setCustomModelId] = useState(initialConfig?.customModel ? initialConfig.model : '');
   const [showKey, setShowKey] = useState(false);
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ kind: 'error' | 'success'; text: string } | null>(null);
   const t = translations[language];
-  const customModel = selectedModelKey === CUSTOM_MODEL_KEY;
-  const selectedChoice = customModel ? null : getModelChoice(selectedModelKey);
-  const openRouterRequired = customModel || !selectedChoice?.direct;
+  const selectedChoice = getModelChoice(selectedModelKey);
+  const openRouterRequired = !selectedChoice?.direct;
   const vendorLabels: Record<ModelVendor, string> = {
     openai: 'OpenAI', anthropic: 'Anthropic', qwen: 'Qwen',
   };
-  const modelOptions = useMemo<readonly SelectOption<string>[]>(() => [
-    ...modelChoices.map((item) => ({
+  const modelOptions = useMemo<readonly SelectOption<string>[]>(() =>
+    modelChoices.map((item) => ({
       value: item.key,
       label: item.label,
       group: vendorLabels[item.vendor],
       description: item.description[language],
       badge: item.badge?.[language],
-    })),
-    {
-      value: CUSTOM_MODEL_KEY,
-      label: t.customModel,
-      group: t.otherModels,
-      description: t.customModelHelp,
-    },
-  ], [language, t.customModel, t.customModelHelp, t.otherModels]);
+    })), [language]);
 
   function config(): ProviderConfig {
-    if (customModel) {
-      return {
-        provider: 'openrouter',
-        apiKey: apiKey.trim(),
-        model: customModelId.trim(),
-        customModel: true,
-      };
-    }
     const resolved = resolveModelChoice(selectedChoice ?? getDefaultModelChoice(), useOpenRouter);
     return { ...resolved, apiKey: apiKey.trim() };
   }
 
-  const valid = apiKey.trim() !== '' && (customModel ? customModelId.trim() !== '' : selectedChoice !== null);
+  const valid = apiKey.trim() !== '' && selectedChoice !== null;
 
   function changeModel(value: string) {
     setSelectedModelKey(value);
-    const nextChoice = value === CUSTOM_MODEL_KEY ? null : getModelChoice(value);
+    const nextChoice = getModelChoice(value);
     if (!nextChoice?.direct) setUseOpenRouter(true);
     setMessage(null);
   }
@@ -161,7 +140,6 @@ export function ProviderSetup({ language, onConfigured, initialConfig = null, mo
           <span><strong>{t.useOpenRouter}</strong><small>{openRouterRequired ? t.openRouterRequired : t.openRouterHelp}</small></span>
         </label>
       </div>
-      {customModel && <div className="custom-model-fields"><label>{t.customModelId}<input aria-label={t.customModelId} value={customModelId} onChange={(event) => { setCustomModelId(event.target.value); setMessage(null); }} /></label><p className="capture-warning" role="status">⚠ {t.multimodalWarning}</p></div>}
       <label>{t.apiKey}<span className="password-field"><input aria-label={t.apiKey} type={showKey ? 'text' : 'password'} autoComplete="off" value={apiKey} onChange={(event) => setApiKey(event.target.value)} /><button type="button" aria-label={showKey ? t.hideApiKey : t.showApiKey} onClick={() => setShowKey((value) => !value)}>{showKey ? <EyeOffIcon /> : <EyeIcon />}</button></span></label>
       <aside className="privacy-notice" role="note" aria-labelledby={privacyTitleId}>
         <span className="privacy-notice-icon"><LockIcon /></span>

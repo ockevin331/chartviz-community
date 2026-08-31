@@ -36,15 +36,15 @@ describe('session-only provider configuration', () => {
     await saveProviderConfig({
       provider: 'openrouter',
       apiKey: '  session-secret  ',
-      model: '  custom/vision-model  ',
-      customModel: true,
+      model: '  openai/gpt-5.6-terra  ',
+      customModel: false,
     });
 
     await expect(loadProviderConfig()).resolves.toEqual({
       provider: 'openrouter',
       apiKey: 'session-secret',
-      model: 'custom/vision-model',
-      customModel: true,
+      model: 'openai/gpt-5.6-terra',
+      customModel: false,
     });
     expect(browserMock.storage.session.set).toHaveBeenCalledTimes(1);
     expect(browserMock.storage.session.get).toHaveBeenCalledTimes(1);
@@ -62,6 +62,7 @@ describe('session-only provider configuration', () => {
   it.each([
     [{ provider: 'openrouter', apiKey: '   ', model: 'google/gemini-3.7-flash', customModel: false }, 'apiKey'],
     [{ provider: 'openrouter', apiKey: 'key', model: '   ', customModel: true }, 'model'],
+    [{ provider: 'openrouter', apiKey: 'key', model: 'custom/vision-model', customModel: true }, 'model'],
     [{ provider: 'other', apiKey: 'key', model: 'model', customModel: true }, 'model'],
     [{ provider: 'openrouter', apiKey: 'key', model: 'model', customModel: true, origin: 'https://evil.test' }, 'model'],
   ])('rejects invalid or origin-bearing configs before storage', async (config, field) => {

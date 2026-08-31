@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getProviderFailureDetail, validationFailureDetail } from '../src/providers/provider-diagnostics';
 import { ProviderError } from '../src/providers/provider-errors';
-import {
-  extractGeminiStructuredValue,
-  extractOpenAiStructuredValue,
-  extractOpenRouterStructuredValue,
-} from '../src/providers/response-parser';
+import { extractOpenAiStructuredValue, extractOpenRouterStructuredValue } from '../src/providers/response-parser';
 import { parseStructuredResponse } from '../src/providers/structured-response';
 import { parseCommunityReportV3 } from '../src/analysis/stages/community-report-v3';
 
@@ -36,12 +32,10 @@ describe('safe provider response diagnostics', () => {
     });
   });
 
-  it.each([
-    ['openai', extractOpenAiStructuredValue, { status: 'completed', output: [] }],
-    ['gemini', extractGeminiStructuredValue, { candidates: [] }],
-  ] as const)('preserves the rejected %s response envelope', (_provider, extract, payload) => {
+  it('preserves the rejected OpenAI response envelope', () => {
+    const payload = { status: 'completed', output: [] };
     let caught: unknown;
-    try { extract(payload); }
+    try { extractOpenAiStructuredValue(payload); }
     catch (error) { caught = error; }
 
     expect(getProviderFailureDetail(caught)).toEqual({

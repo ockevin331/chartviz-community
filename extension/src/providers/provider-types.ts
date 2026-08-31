@@ -1,10 +1,10 @@
-export type ProviderKind = 'openrouter' | 'openai' | 'gemini';
+export type ProviderKind = 'openrouter' | 'openai';
 
 export type ProviderConfig = {
   provider: ProviderKind;
   apiKey: string;
   model: string;
-  customModel: boolean;
+  customModel: false;
 };
 
 export type SupportedImageMediaType = 'image/png' | 'image/jpeg' | 'image/webp';
@@ -38,7 +38,7 @@ export interface StructuredVisionProvider extends ProviderTransport {
   generateStructured<T>(config: ProviderConfig, request: StructuredGenerationRequest<T>): Promise<T>;
 }
 
-const providerKinds = new Set<ProviderKind>(['openrouter', 'openai', 'gemini']);
+const providerKinds = new Set<ProviderKind>(['openrouter', 'openai']);
 const configKeys = ['apiKey', 'customModel', 'model', 'provider'];
 
 export function normalizeProviderConfig(value: unknown): ProviderConfig | null {
@@ -46,7 +46,7 @@ export function normalizeProviderConfig(value: unknown): ProviderConfig | null {
   const record = value as Record<string, unknown>;
   if (Object.keys(record).sort().join('\0') !== configKeys.join('\0')) return null;
   if (typeof record.provider !== 'string' || !providerKinds.has(record.provider as ProviderKind)) return null;
-  if (typeof record.apiKey !== 'string' || typeof record.model !== 'string' || typeof record.customModel !== 'boolean') {
+  if (typeof record.apiKey !== 'string' || typeof record.model !== 'string' || record.customModel !== false) {
     return null;
   }
 
@@ -57,6 +57,6 @@ export function normalizeProviderConfig(value: unknown): ProviderConfig | null {
     provider: record.provider as ProviderKind,
     apiKey,
     model,
-    customModel: record.customModel,
+    customModel: false,
   };
 }

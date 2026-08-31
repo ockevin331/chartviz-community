@@ -55,8 +55,7 @@ export class OpenAiProvider implements StructuredVisionProvider {
     const normalized = normalizeProviderConfig(config);
     if (normalized === null) return { ok: false, field: invalidField(config), code: 'invalid_config' };
     if (normalized.provider !== this.kind) return { ok: false, field: 'model', code: 'invalid_config' };
-    if (!normalized.customModel
-      && !getModelsForProvider(this.kind).some(({ id }) => id === normalized.model)) {
+    if (!getModelsForProvider(this.kind).some(({ id }) => id === normalized.model)) {
       return { ok: false, field: 'model', code: 'invalid_config' };
     }
     return { ok: true };

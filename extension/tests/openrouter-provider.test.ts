@@ -14,15 +14,8 @@ const validReport = communityReport;
 const config: ProviderConfig = {
   provider: 'openrouter',
   apiKey: 'unit-test-placeholder',
-  model: ' custom/vision-model ',
-  customModel: true,
-};
-
-const customGeminiConfig: ProviderConfig = {
-  provider: 'openrouter',
-  apiKey: 'unit-test-placeholder',
-  model: 'google/gemini-3.7-flash',
-  customModel: true,
+  model: ' openai/gpt-5.6-terra ',
+  customModel: false,
 };
 
 function request(signal = new AbortController().signal): StructuredGenerationRequest<CommunityReportV3> {
@@ -85,7 +78,7 @@ describe('OpenRouter analyze', () => {
       'Content-Type': 'application/json',
     });
     const body = fetchCallBody(fetchImpl);
-    expect(body.model).toBe('custom/vision-model');
+    expect(body.model).toBe('openai/gpt-5.6-terra');
     expect(body.messages).toEqual([
       { role: 'system', content: 'Screenshot-only system prompt.' },
       {
@@ -102,36 +95,6 @@ describe('OpenRouter analyze', () => {
     });
     expect(body.provider).toEqual({ require_parameters: true });
     expect(JSON.stringify(body)).not.toContain(config.apiKey);
-  });
-
-  it('removes unsupported JSON Schema keywords only for custom Gemini routes', async () => {
-    const fetchImpl = vi.fn(async () => successfulResponse(JSON.stringify(validReport)));
-    const provider = providerWithFetch(fetchImpl);
-    const sourceSchema = {
-      $schema: 'http://json-schema.org/draft-07/schema#',
-      type: 'object',
-      properties: {
-        schemaVersion: { type: 'string', const: 'community-visual-1.0' },
-        id: { type: 'string', minLength: 1, pattern: '^L\\d{2}$' },
-      },
-      required: ['schemaVersion', 'id'],
-      additionalProperties: false,
-    };
-
-    await provider.generateStructured(customGeminiConfig, { ...request(), jsonSchema: sourceSchema });
-
-    const body = fetchCallBody(fetchImpl);
-    expect(body.response_format.json_schema.schema).toEqual({
-      type: 'object',
-      properties: {
-        schemaVersion: { type: 'string', enum: ['community-visual-1.0'] },
-        id: { type: 'string' },
-      },
-      required: ['schemaVersion', 'id'],
-      additionalProperties: false,
-    });
-    expect(sourceSchema).toHaveProperty('$schema');
-    expect(sourceSchema.properties.schemaVersion).toHaveProperty('const');
   });
 
   it.each([

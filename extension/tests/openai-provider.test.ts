@@ -14,8 +14,8 @@ const validReport = communityReport;
 const config: ProviderConfig = {
   provider: 'openai',
   apiKey: 'unit-test-placeholder',
-  model: ' custom/gpt-vision ',
-  customModel: true,
+  model: ' gpt-5.6-terra ',
+  customModel: false,
 };
 
 function request(signal = new AbortController().signal): StructuredGenerationRequest<CommunityReportV3> {
@@ -90,7 +90,7 @@ describe('OpenAI Responses analyze', () => {
     });
     const body = fetchCallBody(fetchImpl);
     expect(body).toEqual({
-      model: 'custom/gpt-vision',
+      model: 'gpt-5.6-terra',
       instructions: 'Screenshot-only system prompt.',
       input: [{
         role: 'user',
@@ -137,7 +137,7 @@ describe('OpenAI Responses analyze', () => {
     await expect(provider.generateStructured({ ...config, apiKey: ' ' }, request())).rejects.toMatchObject({
       code: 'invalid_config', params: { field: 'apiKey' },
     });
-    await expect(provider.generateStructured({ ...config, provider: 'gemini' }, request())).rejects.toMatchObject({
+    await expect(provider.generateStructured({ ...config, provider: 'openrouter' }, request())).rejects.toMatchObject({
       code: 'invalid_config', params: { field: 'model' },
     });
     expect(fetchImpl).not.toHaveBeenCalled();

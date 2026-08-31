@@ -51,7 +51,7 @@ describe('provider secret boundary', () => {
           provider: 'openrouter',
           apiKey: secret,
           model: '',
-          customModel: true,
+          customModel: false,
         });
       } catch (caught) {
         error = caught;

@@ -143,25 +143,14 @@ describe('ProviderSetup', () => {
     expect(screen.getByText(/required for this model/i)).toBeTruthy();
   });
 
-  it('accepts a custom OpenRouter model without a confirmation checkbox', async () => {
+  it('does not offer a custom model option or custom model input', async () => {
     const user = userEvent.setup();
-    const saveConfig = vi.fn(async () => undefined);
-    render(<ProviderSetup language="en" saveConfig={saveConfig} testConnection={async () => undefined} onConfigured={() => undefined} />);
+    render(<ProviderSetup language="en" saveConfig={async () => undefined} testConnection={async () => undefined} onConfigured={() => undefined} />);
+
     await user.click(screen.getByRole('combobox', { name: 'Model' }));
-    await user.click(screen.getByRole('option', { name: /custom model/i }));
-    await user.type(screen.getByLabelText('Custom model ID'), 'vendor/vision-model');
-    await user.type(screen.getByLabelText('API key'), 'key');
 
-    expect(screen.getByText(/must support image input/i)).toBeTruthy();
-    expect(screen.queryByText(/I confirm this model supports image input/i)).toBeNull();
-    expect(screen.getByRole('checkbox', { name: 'Use OpenRouter' })).toHaveProperty('checked', true);
-    expect(screen.getByRole('checkbox', { name: 'Use OpenRouter' })).toHaveProperty('disabled', true);
-    expect(screen.getByRole('button', { name: 'Save and set as default' })).toHaveProperty('disabled', false);
-
-    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
-    await waitFor(() => expect(saveConfig).toHaveBeenCalledWith({
-      provider: 'openrouter', apiKey: 'key', model: 'vendor/vision-model', customModel: true,
-    }));
+    expect(screen.queryByRole('option', { name: /custom model/i })).toBeNull();
+    expect(screen.queryByLabelText('Custom model ID')).toBeNull();
   });
 
   it.each([
@@ -186,20 +175,20 @@ describe('ProviderSetup', () => {
   it('does not restore a removed Gemini preset as a supported model', () => {
     render(<ProviderSetup language="en" initialConfig={{
       provider: 'gemini', apiKey: 'google-key', model: 'gemini-3.7-flash', customModel: false,
-    }} saveConfig={async () => undefined} testConnection={async () => undefined} onConfigured={() => undefined} />);
+    } as never} saveConfig={async () => undefined} testConnection={async () => undefined} onConfigured={() => undefined} />);
     expect(screen.getByRole('combobox', { name: 'Model' })).toHaveProperty(
       'textContent', expect.stringContaining('openai/gpt-5.6-terra'),
     );
     expect(screen.queryByText('Google')).toBeNull();
   });
 
-  it('restores an existing custom OpenRouter configuration', () => {
-    const initialConfig: ProviderConfig = {
+  it('falls back to the default curated model for an old custom configuration', () => {
+    const initialConfig = {
       provider: 'openrouter', apiKey: 'router-key', model: 'vendor/custom-vision', customModel: true,
     };
-    render(<ProviderSetup language="en" initialConfig={initialConfig} saveConfig={async () => undefined} testConnection={async () => undefined} onConfigured={() => undefined} />);
-    expect(screen.getByRole('combobox', { name: 'Model' })).toHaveProperty('textContent', expect.stringContaining('Custom model'));
-    expect(screen.getByLabelText('Custom model ID')).toHaveProperty('value', 'vendor/custom-vision');
+    render(<ProviderSetup language="en" initialConfig={initialConfig as never} saveConfig={async () => undefined} testConnection={async () => undefined} onConfigured={() => undefined} />);
+    expect(screen.getByRole('combobox', { name: 'Model' })).toHaveProperty('textContent', expect.stringContaining('openai/gpt-5.6-terra'));
+    expect(screen.queryByLabelText('Custom model ID')).toBeNull();
     expect(screen.getByRole('checkbox', { name: 'Use OpenRouter' })).toHaveProperty('checked', true);
   });
 

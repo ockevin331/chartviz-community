@@ -7,7 +7,6 @@ import {
   communityVisualFactsJsonSchema,
   parseCommunityVisualFacts,
 } from '../src/analysis/stages/visual-facts';
-import { GeminiProvider } from '../src/providers/gemini-provider';
 import { OpenAiProvider } from '../src/providers/openai-provider';
 import { OpenRouterProvider } from '../src/providers/openrouter-provider';
 import type {
@@ -23,8 +22,8 @@ function config(provider: ProviderConfig['provider']): ProviderConfig {
   return {
     provider,
     apiKey: 'unit-test-placeholder',
-    model: ` custom/${provider}-vision `,
-    customModel: true,
+    model: provider === 'openai' ? ' gpt-5.6-terra ' : ' openai/gpt-5.6-terra ',
+    customModel: false,
   };
 }
 
@@ -75,18 +74,12 @@ function responseFor(provider: ProviderConfig['provider'], value: unknown): Resp
       choices: [{ message: { role: 'assistant', content: text } }],
     }), { status: 200 });
   }
-  return new Response(JSON.stringify({
-    candidates: [{
-      finishReason: 'STOP',
-      content: { role: 'model', parts: [{ text }] },
-    }],
-  }), { status: 200 });
+  throw new Error(`Unsupported test provider: ${provider}`);
 }
 
 function providerFor(kind: ProviderConfig['provider']): StructuredVisionProvider {
   if (kind === 'openai') return new OpenAiProvider();
-  if (kind === 'openrouter') return new OpenRouterProvider();
-  return new GeminiProvider();
+  return new OpenRouterProvider();
 }
 
 afterEach(() => {
@@ -94,7 +87,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe.each(['openai', 'openrouter', 'gemini'] as const)('%s structured stage transport', (kind) => {
+describe.each(['openai', 'openrouter'] as const)('%s structured stage transport', (kind) => {
   it('sends an image only for the image stage and parses both stages with their real contracts', async () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(responseFor(kind, validVisualFacts))
@@ -111,7 +104,7 @@ describe.each(['openai', 'openrouter', 'gemini'] as const)('%s structured stage 
 
     if (kind === 'openai') {
       expect(imageBody).toEqual({
-        model: 'custom/openai-vision',
+        model: 'gpt-5.6-terra',
         instructions: 'Extract screenshot facts.',
         input: [{ role: 'user', content: [
           { type: 'input_text', text: 'Return only visible facts.' },
@@ -148,16 +141,6 @@ describe.each(['openai', 'openrouter', 'gemini'] as const)('%s structured stage 
       });
       expect(imageBody.provider).toEqual({ require_parameters: true });
       expect(textBody.provider).toEqual({ require_parameters: true });
-    } else {
-      expect(imageBody.systemInstruction).toEqual({ parts: [{ text: 'Extract screenshot facts.' }] });
-      expect(imageBody.contents[0].parts).toEqual([
-        { text: 'Return only visible facts.' },
-        { inlineData: { mimeType: 'image/png', data: 'AAAA' } },
-      ]);
-      expect(textBody.systemInstruction).toEqual({ parts: [{ text: 'Reason from supplied facts.' }] });
-      expect(textBody.contents[0].parts).toEqual([{ text: 'Return the final report.' }]);
-      expect(imageBody.generationConfig.responseSchema).toEqual(communityVisualFactsJsonSchema);
-      expect(textBody.generationConfig.responseSchema).toEqual(communityReportV3JsonSchema);
     }
 
     expect(JSON.stringify(imageBody)).not.toContain('unit-test-placeholder');

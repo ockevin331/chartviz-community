@@ -14,11 +14,11 @@ import {
 import { providerRegistry } from '../src/providers/provider-registry';
 
 describe('provider registry and curated catalog', () => {
-  it('registers exactly the three working Community adapters', () => {
-    expect(providerRegistry.kinds()).toEqual(['openrouter', 'openai', 'gemini']);
+  it('registers exactly the supported Community adapters', () => {
+    expect(providerRegistry.kinds()).toEqual(['openrouter', 'openai']);
     expect(providerRegistry.get('openrouter').kind).toBe('openrouter');
     expect(providerRegistry.get('openai').kind).toBe('openai');
-    expect(providerRegistry.get('gemini').kind).toBe('gemini');
+    expect(() => providerRegistry.get('gemini' as never)).toThrowError(ProviderError);
     expect(() => providerRegistry.get('future' as any)).toThrowError(ProviderError);
   });
 
@@ -100,10 +100,8 @@ describe('provider registry and curated catalog', () => {
     ]);
     expect(getModelsForProvider('openrouter')).toEqual(curatedModels.slice(0, 9));
     expect(getModelsForProvider('openai')).toEqual(curatedModels.slice(9, 12));
-    expect(getModelsForProvider('gemini')).toEqual([]);
     expect(getDefaultModel('openrouter')?.id).toBe('openai/gpt-5.6-terra');
     expect(getDefaultModel('openai')?.id).toBe('gpt-5.6-terra');
-    expect(getDefaultModel('gemini')).toBeNull();
     expect(curatedModels.some(({ id }) => /google|gemini/i.test(id))).toBe(false);
   });
 
@@ -142,16 +140,16 @@ describe('provider registry and curated catalog', () => {
   it.each([
     ['openrouter', 'openai/gpt-5.6-terra'],
     ['openai', 'gpt-5.6-terra'],
-  ] as const)('validates curated and custom %s models only for the selected provider', (kind, curatedModel) => {
+  ] as const)('validates only curated %s models for the selected provider', (kind, curatedModel) => {
     const provider = providerRegistry.get(kind);
     expect(provider.validateConfig({
       provider: kind, apiKey: ' key ', model: ` ${curatedModel} `, customModel: false,
     })).toEqual({ ok: true });
     expect(provider.validateConfig({
       provider: kind, apiKey: ' key ', model: ' custom/vision-model ', customModel: true,
-    })).toEqual({ ok: true });
+    } as never)).toEqual({ ok: false, field: 'model', code: 'invalid_config' });
     expect(provider.validateConfig({
-      provider: 'gemini', apiKey: 'key', model: curatedModel, customModel: false,
+      provider: kind === 'openai' ? 'openrouter' : 'openai', apiKey: 'key', model: curatedModel, customModel: false,
     })).toEqual({ ok: false, field: 'model', code: 'invalid_config' });
     expect(provider.validateConfig({
       provider: kind, apiKey: 'key', model: 'unlisted/model', customModel: false,
@@ -161,7 +159,7 @@ describe('provider registry and curated catalog', () => {
     })).toEqual({ ok: false, field: 'apiKey', code: 'invalid_config' });
     expect(provider.validateConfig({
       provider: kind, apiKey: 'key', model: ' ', customModel: true,
-    })).toEqual({ ok: false, field: 'model', code: 'invalid_config' });
+    } as never)).toEqual({ ok: false, field: 'model', code: 'invalid_config' });
     expect(provider.validateConfig({
       provider: kind, apiKey: 'key', model: curatedModel, customModel: false, origin: 'https://evil.test',
     } as any)).toEqual({ ok: false, field: 'model', code: 'invalid_config' });

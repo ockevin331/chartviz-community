@@ -89,7 +89,7 @@ Each Direct analysis makes three sequential requests. The first two inspect the 
 
 Keys and Direct settings are stored only in `browser.storage.session`. They are not written to local/sync storage, logs, reports, downloads, copied diagnostics, or page scripts. Fully quitting and restarting the browser clears the session key.
 
-The curated catalog includes `openai/gpt-5.6-terra`, `openai/gpt-5.6-sol`, `openai/gpt-5.6-luna`, Claude 5/4.5 variants, and Qwen 3.7/VL variants. Custom OpenRouter model IDs are allowed, but custom API origins are not. A custom model must support image input and strict structured output.
+The curated catalog includes `openai/gpt-5.6-terra`, `openai/gpt-5.6-sol`, `openai/gpt-5.6-luna`, Claude 5/4.5 variants, and Qwen 3.7/VL variants. Only models in this catalog are supported; arbitrary model IDs and custom API origins are rejected.
 
 ## Capture and page guidance
 
