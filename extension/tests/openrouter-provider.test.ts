@@ -162,6 +162,43 @@ describe('OpenRouter analyze', () => {
     });
   });
 
+  it('extracts the upstream provider reason from OpenRouter metadata.raw', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      error: {
+        code: 400,
+        message: 'Provider returned error',
+        metadata: {
+          provider_name: 'Google AI Studio',
+          raw: JSON.stringify({
+            error: {
+              code: 400,
+              status: 'INVALID_ARGUMENT',
+              message: 'Invalid JSON payload received: unsupported schema property.',
+            },
+          }),
+        },
+      },
+    }), { status: 400, headers: { 'content-type': 'application/json' } }));
+    const provider = providerWithFetch(fetchImpl);
+    let caught: unknown;
+
+    try {
+      await provider.generateStructured(config, request());
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toMatchObject({ code: 'provider_request_rejected', httpStatus: 400 });
+    expect(getProviderFailureDetail(caught)).toMatchObject({
+      stage: 'transport',
+      issues: [{
+        path: 'provider.http.error',
+        code: 'request_rejected',
+        valuePreview: 'Google AI Studio: Invalid JSON payload received: unsupported schema property.',
+      }],
+    });
+  });
+
   it('rejects invalid config before fetch', async () => {
     const fetchImpl = vi.fn();
     const provider = providerWithFetch(fetchImpl);

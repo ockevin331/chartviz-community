@@ -39,14 +39,50 @@ function statusCode(status: number): AnalysisErrorCode {
   return 'invalid_response';
 }
 
+function objectRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function errorMessage(payload: unknown): string | undefined {
+  const root = objectRecord(payload);
+  if (!root) return typeof payload === 'string' ? payload : undefined;
+  const error = root.error;
+  if (typeof error === 'string') return error;
+  const nested = objectRecord(error);
+  if (typeof nested?.message === 'string') return nested.message;
+  return typeof root.message === 'string' ? root.message : undefined;
+}
+
+function rawProviderMessage(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return errorMessage(raw);
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  try {
+    return errorMessage(JSON.parse(trimmed)) ?? trimmed;
+  } catch {
+    return trimmed;
+  }
+}
+
 function openRouterErrorMessage(payload: unknown): string | undefined {
   if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return undefined;
   const root = payload as Record<string, unknown>;
   const error = root.error;
   if (typeof error === 'string') return error;
   if (error !== null && typeof error === 'object' && !Array.isArray(error)) {
-    const message = (error as Record<string, unknown>).message;
-    if (typeof message === 'string') return message;
+    const errorRecord = error as Record<string, unknown>;
+    const message = typeof errorRecord.message === 'string' ? errorRecord.message : undefined;
+    const metadata = objectRecord(errorRecord.metadata);
+    const upstreamMessage = rawProviderMessage(metadata?.raw);
+    if (upstreamMessage && (!message || /^provider returned error$/i.test(message.trim()))) {
+      const providerName = typeof metadata?.provider_name === 'string'
+        ? metadata.provider_name.trim()
+        : '';
+      return providerName ? `${providerName}: ${upstreamMessage}` : upstreamMessage;
+    }
+    if (message) return message;
   }
   return typeof root.message === 'string' ? root.message : undefined;
 }
