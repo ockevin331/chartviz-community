@@ -18,6 +18,13 @@ const config: ProviderConfig = {
   customModel: true,
 };
 
+const geminiConfig: ProviderConfig = {
+  provider: 'openrouter',
+  apiKey: 'unit-test-placeholder',
+  model: 'google/gemini-3.7-flash',
+  customModel: false,
+};
+
 function request(signal = new AbortController().signal): StructuredGenerationRequest<CommunityReportV3> {
   return {
     image: { mediaType: 'image/png', dataUrl: 'data:image/png;base64,AAAA' },
@@ -95,6 +102,36 @@ describe('OpenRouter analyze', () => {
     });
     expect(body.provider).toEqual({ require_parameters: true });
     expect(JSON.stringify(body)).not.toContain(config.apiKey);
+  });
+
+  it('removes unsupported JSON Schema keywords only for Gemini routes', async () => {
+    const fetchImpl = vi.fn(async () => successfulResponse(JSON.stringify(validReport)));
+    const provider = providerWithFetch(fetchImpl);
+    const sourceSchema = {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      type: 'object',
+      properties: {
+        schemaVersion: { type: 'string', const: 'community-visual-1.0' },
+        id: { type: 'string', minLength: 1, pattern: '^L\\d{2}$' },
+      },
+      required: ['schemaVersion', 'id'],
+      additionalProperties: false,
+    };
+
+    await provider.generateStructured(geminiConfig, { ...request(), jsonSchema: sourceSchema });
+
+    const body = fetchCallBody(fetchImpl);
+    expect(body.response_format.json_schema.schema).toEqual({
+      type: 'object',
+      properties: {
+        schemaVersion: { type: 'string', enum: ['community-visual-1.0'] },
+        id: { type: 'string' },
+      },
+      required: ['schemaVersion', 'id'],
+      additionalProperties: false,
+    });
+    expect(sourceSchema).toHaveProperty('$schema');
+    expect(sourceSchema.properties.schemaVersion).toHaveProperty('const');
   });
 
   it.each([

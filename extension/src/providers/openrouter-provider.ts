@@ -25,6 +25,35 @@ type RequestContent = Array<
   | { type: 'image_url'; image_url: { url: string } }
 >;
 
+const unsupportedGeminiSchemaKeywords = new Set([
+  '$schema',
+  'minLength',
+  'maxLength',
+  'pattern',
+]);
+
+function geminiCompatibleSchema(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(geminiCompatibleSchema);
+  const record = objectRecord(value);
+  if (!record) return value;
+  const compatible: Record<string, unknown> = {};
+  Object.entries(record).forEach(([key, entry]) => {
+    if (unsupportedGeminiSchemaKeywords.has(key)) return;
+    if (key === 'const') {
+      compatible.enum = [geminiCompatibleSchema(entry)];
+      return;
+    }
+    compatible[key] = geminiCompatibleSchema(entry);
+  });
+  return compatible;
+}
+
+function schemaForModel(model: string, schema: Record<string, unknown>): Record<string, unknown> {
+  return /(?:^|\/)gemini-/i.test(model)
+    ? geminiCompatibleSchema(schema) as Record<string, unknown>
+    : schema;
+}
+
 function invalidField(config: ProviderConfig): 'apiKey' | 'model' {
   return typeof config.apiKey !== 'string' || config.apiKey.trim() === '' ? 'apiKey' : 'model';
 }
@@ -178,15 +207,16 @@ export class OpenRouterProvider implements StructuredVisionProvider {
     if (!validation.ok) {
       throw new ProviderError('invalid_config', { params: { field: validation.field } });
     }
+    const model = config.model.trim();
     return {
-      model: config.model.trim(),
+      model,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userContent },
       ],
       response_format: {
         type: 'json_schema',
-        json_schema: { name: schemaName, strict: true, schema },
+        json_schema: { name: schemaName, strict: true, schema: schemaForModel(model, schema) },
       },
       provider: { require_parameters: true },
     };
