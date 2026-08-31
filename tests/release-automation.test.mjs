@@ -16,16 +16,16 @@ function run(...args) {
   });
 }
 
-test('v1.0.7 release metadata uses canonical Chrome and Edge asset names', () => {
-  const result = run('--tag', 'v1.0.7', '--dry-run');
+test('v1.0.8 release metadata uses canonical Chrome and Edge asset names', () => {
+  const result = run('--tag', 'v1.0.8', '--dry-run');
 
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout), {
-    version: '1.0.7',
-    tag: 'v1.0.7',
+    version: '1.0.8',
+    tag: 'v1.0.8',
     assets: [
-      'chartviz-extension-v1.0.7-chrome.zip',
-      'chartviz-extension-v1.0.7-edge.zip',
+      'chartviz-extension-v1.0.8-chrome.zip',
+      'chartviz-extension-v1.0.8-edge.zip',
     ],
   });
 });
@@ -34,7 +34,7 @@ test('release metadata rejects a tag that differs from the extension version', (
   const result = run('--tag', 'v1.0.0', '--dry-run');
 
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /tag v1\.0\.0 does not match extension version 1\.0\.7/i);
+  assert.match(result.stderr, /tag v1\.0\.0 does not match extension version 1\.0\.8/i);
 });
 
 test('release metadata writes GitHub outputs for source and public asset names', () => {
@@ -42,15 +42,15 @@ test('release metadata writes GitHub outputs for source and public asset names',
   const output = path.join(temp, 'github-output.txt');
 
   try {
-    const result = run('--tag', 'v1.0.7', '--github-output', output);
+    const result = run('--tag', 'v1.0.8', '--github-output', output);
 
     assert.equal(result.status, 0, result.stderr);
     assert.equal(readFileSync(output, 'utf8'), [
-      'version=1.0.7',
-      'chrome_source=extension/.output/chartviz-community-extension-1.0.7-chrome.zip',
-      'edge_source=extension/.output/chartviz-community-extension-1.0.7-edge.zip',
-      'chrome_asset=chartviz-extension-v1.0.7-chrome.zip',
-      'edge_asset=chartviz-extension-v1.0.7-edge.zip',
+      'version=1.0.8',
+      'chrome_source=extension/.output/chartviz-community-extension-1.0.8-chrome.zip',
+      'edge_source=extension/.output/chartviz-community-extension-1.0.8-edge.zip',
+      'chrome_asset=chartviz-extension-v1.0.8-chrome.zip',
+      'edge_asset=chartviz-extension-v1.0.8-edge.zip',
       '',
     ].join('\n'));
   } finally {

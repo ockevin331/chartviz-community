@@ -45,8 +45,8 @@ test('README offers release downloads, illustrated features, and linked supporte
   const readme = read('README.md');
 
   assert.match(readme, /github\.com\/ockevin331\/chartviz-community\/releases\/latest/i);
-  assert.match(readme, /chartviz-extension-v1\.0\.7-chrome\.zip/i);
-  assert.match(readme, /chartviz-extension-v1\.0\.7-edge\.zip/i);
+  assert.match(readme, /chartviz-extension-v1\.0\.8-chrome\.zip/i);
+  assert.match(readme, /chartviz-extension-v1\.0\.8-edge\.zip/i);
   assert.match(readme, /unzip.+Developer mode.+Load unpacked/is);
 
   for (const image of [

@@ -5,7 +5,6 @@ const approvedPermissions = ['activeTab', 'storage', 'scripting', 'clipboardWrit
 export const approvedProviderOrigins = [
   'https://openrouter.ai/api/*',
   'https://api.openai.com/v1/*',
-  'https://generativelanguage.googleapis.com/*',
 ] as const;
 
 export const approvedCloudOrigin = 'https://www.chartviz.xyz/*' as const;
@@ -39,7 +38,7 @@ export function createManifest(): ExtensionManifest {
   return {
     name: 'ChartViz',
     description: 'Chart education in your browser.',
-    version: '1.0.7',
+    version: '1.0.8',
     permissions: [...approvedPermissions],
     host_permissions: [...approvedHostPermissions],
     action: {

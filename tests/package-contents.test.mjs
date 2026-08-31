@@ -13,7 +13,6 @@ const expectedPermissions = ['activeTab', 'storage', 'scripting', 'clipboardWrit
 const expectedProviderOrigins = [
   'https://openrouter.ai/api/*',
   'https://api.openai.com/v1/*',
-  'https://generativelanguage.googleapis.com/*',
 ];
 const expectedCloudOrigins = ['https://www.chartviz.xyz/*'];
 const expectedChartHosts = [
@@ -45,7 +44,7 @@ function expectedManifest() {
     manifest_version: 3,
     name: 'ChartViz',
     description: 'Chart education in your browser.',
-    version: '1.0.7',
+    version: '1.0.8',
     icons: expectedIcons,
     permissions: expectedPermissions,
     host_permissions: ['<all_urls>', ...expectedProviderOrigins, ...expectedCloudOrigins, ...expectedChartHosts],
@@ -150,7 +149,7 @@ function assertManifestContract(browser) {
 
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.name, 'ChartViz');
-  assert.equal(manifest.version, '1.0.7');
+  assert.equal(manifest.version, '1.0.8');
   assert.deepEqual(manifest.permissions, expectedPermissions);
   assert.deepEqual(manifest.host_permissions, [
     '<all_urls>',

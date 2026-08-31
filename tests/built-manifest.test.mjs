@@ -10,7 +10,6 @@ const browsers = ['chrome-mv3', 'edge-mv3'];
 const providerOrigins = [
   'https://openrouter.ai/api/*',
   'https://api.openai.com/v1/*',
-  'https://generativelanguage.googleapis.com/*',
 ];
 const cloudOrigins = ['https://www.chartviz.xyz/*'];
 const chartHosts = [

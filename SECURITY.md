@@ -6,7 +6,7 @@ Report vulnerabilities privately to the maintainers. Do not include API keys, au
 
 ChartViz 1.0.2 is an open-source browser extension with no bundled account service, backend, website runtime, analytics, history, news, exchange-data feed, billing, or local-model runtime. Its optional Cloud mode talks only to the fixed ChartViz service origin and uses a user-created revocable access token.
 
-Direct analysis uses one processed screenshot and three sequential provider requests. The screenshot is sent directly to the selected OpenRouter, OpenAI, or Gemini endpoint in the first two requests; normalized evidence rather than the image is sent in the third. Provider credentials are held only in `browser.storage.session` and must never reach page scripts, URLs, logs, telemetry, reports, downloads, copied diagnostics, local storage, or sync storage.
+Direct analysis uses one processed screenshot and three sequential provider requests. The screenshot is sent directly to the selected OpenRouter or OpenAI endpoint in the first two requests; normalized evidence rather than the image is sent in the third. Provider credentials are held only in `browser.storage.session` and must never reach page scripts, URLs, logs, telemetry, reports, downloads, copied diagnostics, local storage, or sync storage.
 
 Multi-timeframe capture is capability-gated for ChartViz Cloud. The Cloud client validates account, capability, capture-setting, task, and report envelopes before use. It accepts one to three captured images, submits them only after an explicit analysis action, and stores the Cloud token in extension local storage so the connection survives browser restarts. Users can disconnect locally or revoke the token on the website.
 

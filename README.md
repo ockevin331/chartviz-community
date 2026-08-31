@@ -1,6 +1,6 @@
 # ChartViz
 
-ChartViz 1.0.7 is an open-source Chrome and Edge extension that helps people read candlestick charts. It detects a supported chart page, captures the visible chart, and presents evidence-based price-action analysis with separate annotated images. It is an educational chart-reading tool, not financial advice.
+ChartViz 1.0.8 is an open-source Chrome and Edge extension that helps people read candlestick charts. It detects a supported chart page, captures the visible chart, and presents evidence-based price-action analysis with separate annotated images. It is an educational chart-reading tool, not financial advice.
 
 For the hosted ChartViz Cloud experience, visit [chartviz.xyz](https://www.chartviz.xyz).
 
@@ -15,10 +15,10 @@ There is no bundled backend, account/login flow, analytics, report history, news
 
 [**Download the latest ChartViz release**](https://github.com/ockevin331/chartviz-community/releases/latest)
 
-Current v1.0.7 packages:
+Current v1.0.8 packages:
 
-- [Download for Chrome](https://github.com/ockevin331/chartviz-community/releases/download/v1.0.7/chartviz-extension-v1.0.7-chrome.zip)
-- [Download for Edge](https://github.com/ockevin331/chartviz-community/releases/download/v1.0.7/chartviz-extension-v1.0.7-edge.zip)
+- [Download for Chrome](https://github.com/ockevin331/chartviz-community/releases/download/v1.0.8/chartviz-extension-v1.0.8-chrome.zip)
+- [Download for Edge](https://github.com/ockevin331/chartviz-community/releases/download/v1.0.8/chartviz-extension-v1.0.8-edge.zip)
 
 Unzip the downloaded package, then:
 
@@ -116,7 +116,7 @@ Manifest permissions include `activeTab`, `storage`, `scripting`, `clipboardWrit
 - **Unable to detect the active chart:** wait until the chart and timeframe controls finish loading, then refresh chart detection.
 - **Timeframe switch failed:** keep the chart tab visible and let the site finish loading before retrying.
 - **`invalid_api_key`:** confirm the key belongs to the selected Direct provider and re-enter it after a browser restart.
-- **`model_not_found` / `model_not_multimodal`:** choose a current vision-capable model or verify the custom OpenRouter model ID.
+- **`model_not_found` / `model_not_multimodal`:** choose another supported model from the built-in catalog.
 - **`insufficient_balance` / `rate_limited`:** check the provider account's billing, quota, and limits.
 - **`network_timeout`:** check connectivity and provider availability, then start a new explicit analysis.
 - **`invalid_response`:** retry with a clear chart and a curated model; the result must match the Community report contract.

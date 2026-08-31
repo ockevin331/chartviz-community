@@ -19,6 +19,7 @@ describe('extension manifest', () => {
     expect(manifest.host_permissions).toContain('<all_urls>');
     expect(manifest.optional_host_permissions).toBeUndefined();
     expect(manifest.host_permissions).toContain('https://www.chartviz.xyz/*');
+    expect(manifest.host_permissions).not.toContain('https://generativelanguage.googleapis.com/*');
     expect(manifest.host_permissions).not.toContain('https://*.chartviz.xyz/*');
     expect(manifest.host_permissions).not.toContain('http://www.chartviz.xyz/*');
   });
