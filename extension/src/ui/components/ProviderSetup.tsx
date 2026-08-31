@@ -76,7 +76,7 @@ export function ProviderSetup({ language, onConfigured, initialConfig = null, mo
   const selectedChoice = customModel ? null : getModelChoice(selectedModelKey);
   const openRouterRequired = customModel || !selectedChoice?.direct;
   const vendorLabels: Record<ModelVendor, string> = {
-    openai: 'OpenAI', anthropic: 'Anthropic', google: 'Google', qwen: 'Qwen',
+    openai: 'OpenAI', anthropic: 'Anthropic', qwen: 'Qwen',
   };
   const modelOptions = useMemo<readonly SelectOption<string>[]>(() => [
     ...modelChoices.map((item) => ({

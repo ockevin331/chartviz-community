@@ -22,8 +22,8 @@ describe('provider registry and curated catalog', () => {
     expect(() => providerRegistry.get('future' as any)).toThrowError(ProviderError);
   });
 
-  it('publishes the approved multimodal catalog with full model IDs and no preview model', () => {
-    expect(MODEL_CATALOG_VERSION).toBe('community-models-2');
+  it('publishes the approved multimodal catalog without Google models', () => {
+    expect(MODEL_CATALOG_VERSION).toBe('community-models-3');
     expect(curatedModels).toEqual([
       {
         provider: 'openrouter',
@@ -41,12 +41,6 @@ describe('provider registry and curated catalog', () => {
         provider: 'openrouter',
         id: 'openai/gpt-5.6-luna',
         label: 'openai/gpt-5.6-luna',
-        default: false,
-      },
-      {
-        provider: 'openrouter',
-        id: 'google/gemini-3.7-flash',
-        label: 'google/gemini-3.7-flash',
         default: false,
       },
       {
@@ -103,47 +97,36 @@ describe('provider registry and curated catalog', () => {
         label: 'gpt-5.6-luna',
         default: false,
       },
-      {
-        provider: 'gemini',
-        id: 'gemini-3.7-flash',
-        label: 'gemini-3.7-flash',
-        default: true,
-      },
     ]);
-    expect(getModelsForProvider('openrouter')).toEqual(curatedModels.slice(0, 10));
-    expect(getModelsForProvider('openai')).toEqual(curatedModels.slice(10, 13));
-    expect(getModelsForProvider('gemini')).toEqual(curatedModels.slice(13, 14));
+    expect(getModelsForProvider('openrouter')).toEqual(curatedModels.slice(0, 9));
+    expect(getModelsForProvider('openai')).toEqual(curatedModels.slice(9, 12));
+    expect(getModelsForProvider('gemini')).toEqual([]);
     expect(getDefaultModel('openrouter')?.id).toBe('openai/gpt-5.6-terra');
     expect(getDefaultModel('openai')?.id).toBe('gpt-5.6-terra');
-    expect(getDefaultModel('gemini')?.id).toBe('gemini-3.7-flash');
-    expect(curatedModels.some(({ id }) => id === 'gemini-3.1-pro-preview')).toBe(false);
+    expect(getDefaultModel('gemini')).toBeNull();
+    expect(curatedModels.some(({ id }) => /google|gemini/i.test(id))).toBe(false);
   });
 
   it('publishes one model-first catalog and resolves OpenRouter or direct transport details', () => {
     expect(getDefaultModelChoice().key).toBe('openai/gpt-5.6-terra');
     expect(modelChoices.map(({ vendor }) => vendor)).toEqual([
       'openai', 'openai', 'openai',
-      'google',
       'anthropic', 'anthropic', 'anthropic',
       'qwen', 'qwen', 'qwen',
     ]);
     expect(modelChoices.every(({ description }) => description.en !== '' && description['zh-CN'] !== '')).toBe(true);
-    expect(modelChoices.some(({ openRouterModel }) => openRouterModel === 'gemini-3.1-pro-preview')).toBe(false);
+    expect(modelChoices.some(({ openRouterModel }) => /google|gemini/i.test(openRouterModel))).toBe(false);
 
     const terra = getModelChoice('openai/gpt-5.6-terra');
-    const gemini = getModelChoice('google/gemini-3.7-flash');
     const claude = getModelChoice('anthropic/claude-sonnet-5');
     expect(terra).toBeTruthy();
-    expect(gemini).toBeTruthy();
+    expect(getModelChoice('google/gemini-3.7-flash')).toBeNull();
     expect(claude).toBeTruthy();
     expect(resolveModelChoice(terra!, true)).toEqual({
       provider: 'openrouter', model: 'openai/gpt-5.6-terra', customModel: false,
     });
     expect(resolveModelChoice(terra!, false)).toEqual({
       provider: 'openai', model: 'gpt-5.6-terra', customModel: false,
-    });
-    expect(resolveModelChoice(gemini!, false)).toEqual({
-      provider: 'gemini', model: 'gemini-3.7-flash', customModel: false,
     });
     expect(resolveModelChoice(claude!, false)).toEqual({
       provider: 'openrouter', model: 'anthropic/claude-sonnet-5', customModel: false,
@@ -153,13 +136,12 @@ describe('provider registry and curated catalog', () => {
     })?.key).toBe(terra!.key);
     expect(findModelChoiceForConfig({
       provider: 'openrouter', apiKey: 'key', model: 'google/gemini-3.7-flash', customModel: false,
-    })?.key).toBe(gemini!.key);
+    })).toBeNull();
   });
 
   it.each([
     ['openrouter', 'openai/gpt-5.6-terra'],
     ['openai', 'gpt-5.6-terra'],
-    ['gemini', 'gemini-3.7-flash'],
   ] as const)('validates curated and custom %s models only for the selected provider', (kind, curatedModel) => {
     const provider = providerRegistry.get(kind);
     expect(provider.validateConfig({
@@ -169,7 +151,7 @@ describe('provider registry and curated catalog', () => {
       provider: kind, apiKey: ' key ', model: ' custom/vision-model ', customModel: true,
     })).toEqual({ ok: true });
     expect(provider.validateConfig({
-      provider: kind === 'gemini' ? 'openai' : 'gemini', apiKey: 'key', model: curatedModel, customModel: false,
+      provider: 'gemini', apiKey: 'key', model: curatedModel, customModel: false,
     })).toEqual({ ok: false, field: 'model', code: 'invalid_config' });
     expect(provider.validateConfig({
       provider: kind, apiKey: 'key', model: 'unlisted/model', customModel: false,

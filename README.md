@@ -7,7 +7,7 @@ For the hosted ChartViz Cloud experience, visit [chartviz.xyz](https://www.chart
 The extension contains two explicit analysis modes:
 
 - **ChartViz Cloud** is the default tab for a new installation. Create a revocable access token in ChartViz website Settings, paste it into the extension, and use the managed analysis service without placing a model-provider key in the extension.
-- **Direct model** sends the captured chart from the browser to a user-selected OpenRouter, OpenAI, or Gemini model. Existing usable Direct configurations remain in Direct mode after an upgrade.
+- **Direct model** sends the captured chart from the browser to a user-selected OpenRouter or OpenAI model. Existing usable Direct configurations remain in Direct mode after an upgrade.
 
 There is no bundled backend, account/login flow, analytics, report history, news search, exchange-data API, billing flow, or local-model runtime.
 
@@ -83,13 +83,13 @@ Multi-timeframe capture uses the ordered timeframes returned by the account's Cl
 
 ### Direct model
 
-Direct mode is single-timeframe only. Select a curated vision model grouped by OpenAI, Anthropic, Google, or Qwen; optionally use OpenRouter; then enter a key issued by that service. Saving configuration makes no provider request. **Test connection** makes exactly one real request and may consume provider quota.
+Direct mode is single-timeframe only. Select a curated vision model grouped by OpenAI, Anthropic, or Qwen; optionally use OpenRouter; then enter a key issued by that service. Saving configuration makes no provider request. **Test connection** makes exactly one real request and may consume provider quota.
 
 Each Direct analysis makes three sequential requests. The first two inspect the same screenshot from complementary chart-reading and trade-signal perspectives; the third receives normalized evidence instead of the image and prepares the validated report. A failed request stops immediately and is never retried silently. Direct mode rejects multiple captures before contacting a provider.
 
 Keys and Direct settings are stored only in `browser.storage.session`. They are not written to local/sync storage, logs, reports, downloads, copied diagnostics, or page scripts. Fully quitting and restarting the browser clears the session key.
 
-The curated catalog includes `openai/gpt-5.6-terra`, `openai/gpt-5.6-sol`, `openai/gpt-5.6-luna`, `google/gemini-3.7-flash`, Claude 5/4.5 variants, and Qwen 3.7/VL variants. Custom OpenRouter model IDs are allowed, but custom API origins are not. A custom model must support image input and strict structured output.
+The curated catalog includes `openai/gpt-5.6-terra`, `openai/gpt-5.6-sol`, `openai/gpt-5.6-luna`, Claude 5/4.5 variants, and Qwen 3.7/VL variants. Custom OpenRouter model IDs are allowed, but custom API origins are not. A custom model must support image input and strict structured output.
 
 ## Capture and page guidance
 

@@ -102,7 +102,7 @@ describe('ProviderSetup', () => {
     await waitFor(() => expect(save).toHaveProperty('disabled', false));
   });
 
-  it('routes OpenAI and Google models directly when OpenRouter is disabled', async () => {
+  it('routes approved OpenAI models directly when OpenRouter is disabled', async () => {
     const user = userEvent.setup();
     const saveConfig = vi.fn(async () => undefined);
     render(<ProviderSetup language="en" saveConfig={saveConfig} testConnection={async () => undefined} onConfigured={() => undefined} />);
@@ -111,13 +111,6 @@ describe('ProviderSetup', () => {
     await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
     await waitFor(() => expect(saveConfig).toHaveBeenLastCalledWith({
       provider: 'openai', apiKey: 'key', model: 'gpt-5.6-terra', customModel: false,
-    }));
-
-    await user.click(screen.getByRole('combobox', { name: 'Model' }));
-    await user.click(screen.getByRole('option', { name: /google\/gemini-3\.7-flash/i }));
-    await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
-    await waitFor(() => expect(saveConfig).toHaveBeenLastCalledWith({
-      provider: 'gemini', apiKey: 'key', model: 'gemini-3.7-flash', customModel: false,
     }));
   });
 
@@ -131,7 +124,6 @@ describe('ProviderSetup', () => {
       'openai/gpt-5.6-terra',
       'openai/gpt-5.6-sol',
       'openai/gpt-5.6-luna',
-      'google/gemini-3.7-flash',
       'anthropic/claude-sonnet-5',
       'anthropic/claude-opus-5',
       'anthropic/claude-haiku-4.5',
@@ -141,9 +133,9 @@ describe('ProviderSetup', () => {
     ]) expect(screen.getByRole('option', { name: new RegExp(modelId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) })).toBeTruthy();
     expect(screen.getByText('OpenAI')).toBeTruthy();
     expect(screen.getByText('Anthropic')).toBeTruthy();
-    expect(screen.getByText('Google')).toBeTruthy();
+    expect(screen.queryByText('Google')).toBeNull();
     expect(screen.getByText('Qwen')).toBeTruthy();
-    expect(screen.queryByRole('option', { name: /gemini-3\.1-pro-preview/ })).toBeNull();
+    expect(screen.queryByRole('option', { name: /google|gemini/i })).toBeNull();
 
     await user.click(screen.getByRole('option', { name: /anthropic\/claude-sonnet-5/i }));
     expect(screen.getByRole('checkbox', { name: 'Use OpenRouter' })).toHaveProperty('checked', true);
@@ -180,12 +172,6 @@ describe('ProviderSetup', () => {
       false,
     ],
     [
-      'direct Gemini',
-      { provider: 'gemini', apiKey: 'google-key', model: 'gemini-3.7-flash', customModel: false },
-      'google/gemini-3.7-flash',
-      false,
-    ],
-    [
       'OpenRouter',
       { provider: 'openrouter', apiKey: 'router-key', model: 'qwen/qwen3.7-plus', customModel: false },
       'qwen/qwen3.7-plus',
@@ -195,6 +181,16 @@ describe('ProviderSetup', () => {
     render(<ProviderSetup language="en" initialConfig={initialConfig as ProviderConfig} saveConfig={async () => undefined} testConnection={async () => undefined} onConfigured={() => undefined} />);
     expect(screen.getByRole('combobox', { name: 'Model' })).toHaveProperty('textContent', expect.stringContaining(modelLabel));
     expect(screen.getByRole('checkbox', { name: 'Use OpenRouter' })).toHaveProperty('checked', openRouter);
+  });
+
+  it('does not restore a removed Gemini preset as a supported model', () => {
+    render(<ProviderSetup language="en" initialConfig={{
+      provider: 'gemini', apiKey: 'google-key', model: 'gemini-3.7-flash', customModel: false,
+    }} saveConfig={async () => undefined} testConnection={async () => undefined} onConfigured={() => undefined} />);
+    expect(screen.getByRole('combobox', { name: 'Model' })).toHaveProperty(
+      'textContent', expect.stringContaining('openai/gpt-5.6-terra'),
+    );
+    expect(screen.queryByText('Google')).toBeNull();
   });
 
   it('restores an existing custom OpenRouter configuration', () => {

@@ -18,11 +18,11 @@ const config: ProviderConfig = {
   customModel: true,
 };
 
-const geminiConfig: ProviderConfig = {
+const customGeminiConfig: ProviderConfig = {
   provider: 'openrouter',
   apiKey: 'unit-test-placeholder',
   model: 'google/gemini-3.7-flash',
-  customModel: false,
+  customModel: true,
 };
 
 function request(signal = new AbortController().signal): StructuredGenerationRequest<CommunityReportV3> {
@@ -104,7 +104,7 @@ describe('OpenRouter analyze', () => {
     expect(JSON.stringify(body)).not.toContain(config.apiKey);
   });
 
-  it('removes unsupported JSON Schema keywords only for Gemini routes', async () => {
+  it('removes unsupported JSON Schema keywords only for custom Gemini routes', async () => {
     const fetchImpl = vi.fn(async () => successfulResponse(JSON.stringify(validReport)));
     const provider = providerWithFetch(fetchImpl);
     const sourceSchema = {
@@ -118,7 +118,7 @@ describe('OpenRouter analyze', () => {
       additionalProperties: false,
     };
 
-    await provider.generateStructured(geminiConfig, { ...request(), jsonSchema: sourceSchema });
+    await provider.generateStructured(customGeminiConfig, { ...request(), jsonSchema: sourceSchema });
 
     const body = fetchCallBody(fetchImpl);
     expect(body.response_format.json_schema.schema).toEqual({

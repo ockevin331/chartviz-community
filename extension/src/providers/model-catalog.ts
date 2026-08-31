@@ -1,8 +1,8 @@
 import type { ProviderConfig, ProviderKind } from './provider-types';
 
-export const MODEL_CATALOG_VERSION = 'community-models-2' as const;
+export const MODEL_CATALOG_VERSION = 'community-models-3' as const;
 
-export type ModelVendor = 'openai' | 'anthropic' | 'google' | 'qwen';
+export type ModelVendor = 'openai' | 'anthropic' | 'qwen';
 
 export type ModelChoice = Readonly<{
   key: string;
@@ -75,14 +75,6 @@ export const modelChoices: readonly ModelChoice[] = Object.freeze([
     openRouterModel: 'openai/gpt-5.6-luna',
     direct: { provider: 'openai', model: 'gpt-5.6-luna' },
     description: { en: 'Fast and cost-effective', 'zh-CN': '快速且性价比高' },
-    badge: { en: 'Fast', 'zh-CN': '快速' },
-    default: false,
-  }),
-  choice({
-    vendor: 'google',
-    openRouterModel: 'google/gemini-3.7-flash',
-    direct: { provider: 'gemini', model: 'gemini-3.7-flash' },
-    description: { en: 'Fast with strong image understanding', 'zh-CN': '快速，图像理解能力强' },
     badge: { en: 'Fast', 'zh-CN': '快速' },
     default: false,
   }),
