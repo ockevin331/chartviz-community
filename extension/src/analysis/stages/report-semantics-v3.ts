@@ -114,11 +114,6 @@ export function validateCommunityReportV3Semantics(
       confidence: fact.confidence,
     };
   });
-  for (const type of ['support', 'resistance'] as const) {
-    if (levels.filter((level) => level.type === type).length > 2) {
-      semanticError(['levels'], 'too_many_levels');
-    }
-  }
   const tradeSignals = report.tradeSignals.map((signal) => {
     const fact = signalFacts.get(signal.id)!;
     return {

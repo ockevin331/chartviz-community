@@ -31,6 +31,7 @@ export function buildEvidenceReasoningPrompt(input: {
       'For each important conclusion explain what is visible, what it suggests about buyer or seller participation, and how it supports or weakens the conclusion.',
       'Explain traded-volume, RSI, and MACD implications in their actual price context rather than listing a state or confidence alone.',
       'Keep entries, triggers, confirmations, stops, targets, and pending conditions out of the top conclusion summary.',
+      'Select no more than four important support and resistance levels in total. An asymmetric set, such as three supports and one resistance, is valid when the evidence warrants it.',
       'Preserve complete validated signals without hindsight modification. Never expose internal segment or evidence IDs in user-facing text.',
       'Copy validated pattern geometry exactly; never reinterpret its geometry kind, boundaries, points, or coordinates.',
       'Use only one visible timeframe. Never invent a price, time, indicator parameter, or source.',

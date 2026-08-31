@@ -117,6 +117,7 @@ describe('three-stage analysis pipeline', () => {
     expect(provider.calls[0]?.userPrompt).not.toMatch(/Output language|Simplified Chinese/);
     expect(provider.calls[1]?.userPrompt).not.toMatch(/Output language|Simplified Chinese/);
     expect(provider.calls[2]?.userPrompt).toContain('Output language: English.');
+    expect(provider.calls[2]?.userPrompt).toContain('no more than four important support and resistance levels');
     expect(new Set(provider.calls.map(({ signal }) => signal)).size).toBe(1);
     expect(progress).toEqual([
       'preparing',
@@ -341,6 +342,30 @@ describe('three-stage analysis pipeline', () => {
     expect(report.levels[0]).toMatchObject({
       id: 'L01', type: 'support', priceLabel: '64,000', yRatio: 0.6, confidence: 0.86,
     });
+  });
+
+  it('accepts three layered supports and one resistance when the total stays within four', async () => {
+    const visualFacts = clone(validVisualFacts) as any;
+    visualFacts.levels = [
+      visualFacts.levels[0],
+      { id: 'L02', type: 'support', priceLabel: '63,000', price: null, yRatio: 0.66, reason: 'A deeper reaction formed here.', timeAnchor: 'Left side', confidence: 0.74 },
+      { id: 'L03', type: 'support', priceLabel: '62,000', price: null, yRatio: 0.71, reason: 'The visible base formed here.', timeAnchor: 'Far left', confidence: 0.68 },
+      { id: 'L04', type: 'resistance', priceLabel: '66,000', price: 66_000, yRatio: 0.2, reason: 'Repeated highs stalled here.', timeAnchor: 'Right side', confidence: 0.81 },
+    ];
+    const report = clone(validReportV3) as any;
+    report.levels = [
+      report.levels[0],
+      { id: 'L02', type: 'support', tier: 'secondary', status: 'holding', priceLabel: '63,000', reason: 'A deeper reaction formed here.', timeAnchor: 'Left side', yRatio: 0.66, confidence: 0.74 },
+      { id: 'L03', type: 'support', tier: 'major', status: 'holding', priceLabel: '62,000', reason: 'The visible base formed here.', timeAnchor: 'Far left', yRatio: 0.71, confidence: 0.68 },
+      { id: 'L04', type: 'resistance', tier: 'nearest', status: 'testing', priceLabel: '66,000', reason: 'Repeated highs stalled here.', timeAnchor: 'Right side', yRatio: 0.2, confidence: 0.81 },
+    ];
+    const provider = new FixtureProvider([visualFacts, validSignalFacts, report]);
+
+    const result = await runThreeStageAnalysis(input(provider));
+
+    expect(result.levels).toHaveLength(4);
+    expect(result.levels.filter(({ type }) => type === 'support')).toHaveLength(3);
+    expect(provider.calls).toHaveLength(3);
   });
 
   it('anchors the final chart timeframe before semantic validation', async () => {

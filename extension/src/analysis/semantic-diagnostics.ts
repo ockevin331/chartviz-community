@@ -5,7 +5,6 @@ export const semanticDiagnosticCodes = [
   'unknown_indicator_id',
   'unknown_pattern_id',
   'signal_set_mismatch',
-  'too_many_levels',
   'price_scale_not_monotonic',
   'multiple_timeframes',
   'external_source_claim',

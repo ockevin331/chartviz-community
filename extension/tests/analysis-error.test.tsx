@@ -33,6 +33,15 @@ const diagnostic: AnalysisDiagnostic = {
 };
 
 describe('AnalysisError diagnostics', () => {
+  it('distinguishes a semantic consistency failure from an invalid response shape', () => {
+    render(<AnalysisError language="en" errorCode="invalid_response" diagnostic={diagnostic} onBack={() => undefined} />);
+
+    expect(screen.getByRole('alert')).toHaveProperty(
+      'textContent',
+      'The analysis result did not pass consistency checks. Try again or choose another model.',
+    );
+  });
+
   it.each([
     ['en', 'authentication_required', 'Connect ChartViz Cloud to continue.'],
     ['en', 'quota_exhausted', 'Your analysis quota is exhausted.'],

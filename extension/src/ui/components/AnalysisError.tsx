@@ -38,11 +38,18 @@ export function AnalysisError({ language, errorCode = 'unknown', cancelled = fal
   const [copyStatus, setCopyStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const t = translations[language];
   const messages = t as Record<string, string>;
+  const semanticFailure = errorCode === 'invalid_response' && diagnostic !== null && [
+    'visual_extraction_semantics',
+    'signal_extraction_semantics',
+    'report_semantics',
+  ].includes(diagnostic.stage);
   const message = cancelled
     ? t.cancelled
-    : errorCode && errorCode !== 'unknown'
-      ? (messages[errorCode] ?? t.unknownError)
-      : t.unknownError;
+    : semanticFailure
+      ? t.semanticValidationFailed
+      : errorCode && errorCode !== 'unknown'
+        ? (messages[errorCode] ?? t.unknownError)
+        : t.unknownError;
   const serialized = diagnostic ? JSON.stringify(diagnostic, null, 2) : '';
   useEffect(() => {
     if (copyStatus !== 'success') return undefined;

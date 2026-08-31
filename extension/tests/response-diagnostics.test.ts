@@ -69,7 +69,6 @@ describe('safe provider response diagnostics', () => {
     ['unknown_indicator_id', ['marketExplanation', 'indicators']],
     ['unknown_pattern_id', ['patterns']],
     ['signal_set_mismatch', ['tradeSignals']],
-    ['too_many_levels', ['levels']],
     ['price_scale_not_monotonic', ['priceScaleAnchors', 1]],
     ['multiple_timeframes', ['chart', 'timeframe']],
     ['external_source_claim', ['conclusion', 'summary']],
