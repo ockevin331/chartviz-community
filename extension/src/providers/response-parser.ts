@@ -81,66 +81,6 @@ export function extractOpenRouterStructuredValue(payload: unknown): unknown {
   return parseJsonText(content, 'openrouter');
 }
 
-function anthropicStopError(
-  payload: unknown,
-  code: 'provider_refusal' | 'output_truncated',
-): never {
-  throw attachProviderFailureDetail(
-    new ProviderError(code, { params: { provider: 'openrouter' } }),
-    {
-      stage: 'response_envelope',
-      issues: [{ path: 'provider.response.stop_reason', code }],
-      providerOutput: payload,
-    },
-  );
-}
-
-function anthropicAssistantContent(payload: unknown): string {
-  const fail = (path: string, code: string): never => invalidResponse(
-    'openrouter', 'response_envelope', [{ path, code }], payload,
-  );
-  if (!isRecord(payload)) return fail('provider.response', 'invalid_type');
-  if (payload.stop_reason === 'refusal') return anthropicStopError(payload, 'provider_refusal');
-  if (payload.stop_reason === 'max_tokens') return anthropicStopError(payload, 'output_truncated');
-  if (payload.type !== 'message') return fail('provider.response.type', 'invalid_value');
-  if (payload.role !== 'assistant') return fail('provider.response.role', 'invalid_value');
-  if (payload.stop_reason !== 'end_turn') return fail('provider.response.stop_reason', 'invalid_value');
-  if (!Array.isArray(payload.content)) return fail('provider.response.content', 'invalid_type');
-
-  const textBlocks: string[] = [];
-  for (let index = 0; index < payload.content.length; index += 1) {
-    const block = payload.content[index];
-    if (!isRecord(block)) return fail(`provider.response.content.${index}`, 'invalid_type');
-    if (block.type === 'text') {
-      if (typeof block.text !== 'string') return fail(`provider.response.content.${index}.text`, 'invalid_type');
-      textBlocks.push(block.text);
-      continue;
-    }
-    if (block.type === 'thinking') {
-      if (typeof block.thinking !== 'string' || typeof block.signature !== 'string') {
-        return fail(`provider.response.content.${index}`, 'invalid_thinking_block');
-      }
-      continue;
-    }
-    if (block.type === 'redacted_thinking') {
-      if (typeof block.data !== 'string') {
-        return fail(`provider.response.content.${index}`, 'invalid_thinking_block');
-      }
-      continue;
-    }
-    return fail(`provider.response.content.${index}.type`, 'unsupported_block');
-  }
-  if (textBlocks.length !== 1) return fail('provider.response.content', 'invalid_text_block_count');
-  return textBlocks[0]!;
-}
-
-export function extractOpenRouterAnthropicStructuredValue(payload: unknown): unknown {
-  return preserveRejectedEnvelope(
-    payload,
-    () => parseJsonText(anthropicAssistantContent(payload), 'openrouter'),
-  );
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -216,10 +156,6 @@ function assertConnectionValue(parsed: unknown, provider: ProviderKind): void {
 
 export function assertOpenRouterConnectionResponse(payload: unknown): void {
   assertConnectionValue(extractOpenRouterStructuredValue(payload), 'openrouter');
-}
-
-export function assertOpenRouterAnthropicConnectionResponse(payload: unknown): void {
-  assertConnectionValue(extractOpenRouterAnthropicStructuredValue(payload), 'openrouter');
 }
 
 export function assertOpenAiConnectionResponse(payload: unknown): void {

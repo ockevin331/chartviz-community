@@ -51,32 +51,6 @@ function envelopeResponse(envelope: unknown): Response {
   });
 }
 
-function anthropicEnvelope(
-  content: unknown[],
-  overrides: Record<string, unknown> = {},
-): Record<string, unknown> {
-  return {
-    id: 'msg-safe-123',
-    type: 'message',
-    role: 'assistant',
-    model: 'anthropic/claude-opus-5',
-    provider: 'Anthropic',
-    content,
-    stop_reason: 'end_turn',
-    stop_sequence: null,
-    usage: { input_tokens: 17, output_tokens: 23 },
-    openrouter_metadata: {
-      requested: 'anthropic/claude-opus-5',
-      strategy: 'direct',
-      summary: 'available=1, selected=Anthropic',
-      attempt: 1,
-      attempts: [{ provider: 'Anthropic', model: 'claude-opus-5', status: 200 }],
-      pipeline: [{ type: 'response_healing', name: 'response-healing', data: { private: 'omitted' } }],
-    },
-    ...overrides,
-  };
-}
-
 function fetchCallBody(fetchImpl: ReturnType<typeof vi.fn>): Record<string, any> {
   const init = fetchImpl.mock.calls[0]?.[1] as RequestInit;
   return JSON.parse(String(init.body));
@@ -131,7 +105,7 @@ describe('OpenRouter analyze', () => {
     expect(JSON.stringify(body)).not.toContain(config.apiKey);
   });
 
-  it('uses Anthropic Messages structured outputs without mutating the application schema', async () => {
+  it('uses OpenRouter Chat Completions structured outputs for Anthropic without mutating the application schema', async () => {
     const applicationSchema = {
       type: 'object',
       properties: {
@@ -141,9 +115,9 @@ describe('OpenRouter analyze', () => {
       additionalProperties: false,
     } satisfies Record<string, unknown>;
     const originalSchema = structuredClone(applicationSchema);
-    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => envelopeResponse(anthropicEnvelope([
-      { type: 'text', text: JSON.stringify(validReport) },
-    ])));
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => (
+      successfulResponse(JSON.stringify(validReport))
+    ));
     const provider = providerWithFetch(fetchImpl);
 
     await expect(provider.generateStructured(anthropicConfig, {
@@ -152,7 +126,7 @@ describe('OpenRouter analyze', () => {
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0]!;
-    expect(url).toBe('https://openrouter.ai/api/v1/messages');
+    expect(url).toBe('https://openrouter.ai/api/v1/chat/completions');
     expect(init?.headers).toEqual({
       Authorization: 'Bearer unit-test-placeholder',
       'Content-Type': 'application/json',
@@ -160,21 +134,21 @@ describe('OpenRouter analyze', () => {
     });
     expect(fetchCallBody(fetchImpl)).toEqual({
       model: 'anthropic/claude-opus-5',
-      max_tokens: 32_000,
-      system: 'Screenshot-only system prompt.',
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'text', text: 'Analyze this screenshot.' },
-          {
-            type: 'image',
-            source: { type: 'base64', media_type: 'image/png', data: 'AAAA' },
-          },
-        ],
-      }],
-      output_config: {
-        format: {
-          type: 'json_schema',
+      messages: [
+        { role: 'system', content: 'Screenshot-only system prompt.' },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Analyze this screenshot.' },
+            { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } },
+          ],
+        },
+      ],
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'community_report',
+          strict: true,
           schema: {
             type: 'object',
             properties: {
@@ -193,12 +167,26 @@ describe('OpenRouter analyze', () => {
     expect(applicationSchema).toEqual(originalSchema);
   });
 
-  it('accepts one Anthropic text block after a documented thinking block and emits safe trace data', async () => {
+  it('extracts Anthropic Chat Completions output and emits safe trace data', async () => {
     const onTrace = vi.fn();
-    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => envelopeResponse(anthropicEnvelope([
-      { type: 'thinking', thinking: 'Private reasoning is not copied into trace.', signature: 'signed' },
-      { type: 'text', text: JSON.stringify(validReport) },
-    ])));
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => envelopeResponse({
+      id: 'gen-safe-123',
+      model: 'anthropic/claude-opus-5',
+      provider: 'Anthropic',
+      choices: [{
+        finish_reason: 'stop',
+        message: { role: 'assistant', content: JSON.stringify(validReport) },
+      }],
+      usage: { prompt_tokens: 17, completion_tokens: 23, total_tokens: 40 },
+      openrouter_metadata: {
+        requested: 'anthropic/claude-opus-5',
+        strategy: 'direct',
+        summary: 'available=1, selected=Anthropic',
+        attempt: 1,
+        attempts: [{ provider: 'Anthropic', model: 'claude-opus-5', status: 200 }],
+        pipeline: [{ type: 'response_healing', name: 'response-healing', data: { private: 'omitted' } }],
+      },
+    }));
     const provider = providerWithFetch(fetchImpl);
 
     await expect(provider.generateStructured(anthropicConfig, {
@@ -208,10 +196,10 @@ describe('OpenRouter analyze', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(onTrace).toHaveBeenCalledTimes(1);
     expect(onTrace).toHaveBeenCalledWith({
-      generationId: 'msg-safe-123',
+      generationId: 'gen-safe-123',
       returnedModel: 'anthropic/claude-opus-5',
       selectedProvider: 'Anthropic',
-      finishReason: 'end_turn',
+      finishReason: 'stop',
       usage: { inputTokens: 17, outputTokens: 23, totalTokens: 40 },
       routing: {
         requestedModel: 'anthropic/claude-opus-5',
@@ -222,55 +210,6 @@ describe('OpenRouter analyze', () => {
         pipeline: [{ type: 'response_healing', name: 'response-healing' }],
       },
     });
-    expect(JSON.stringify(onTrace.mock.calls)).not.toContain('Private reasoning');
-  });
-
-  it.each([
-    ['refusal', 'provider_refusal'],
-    ['max_tokens', 'output_truncated'],
-  ] as const)('maps Anthropic stop_reason %s to %s with one request and trace', async (stopReason, code) => {
-    const onTrace = vi.fn();
-    const fetchImpl = vi.fn(async () => envelopeResponse(anthropicEnvelope(
-      [{ type: 'text', text: JSON.stringify(validReport) }],
-      { stop_reason: stopReason },
-    )));
-    const provider = providerWithFetch(fetchImpl);
-    let caught: unknown;
-
-    try { await provider.generateStructured(anthropicConfig, { ...request(), onTrace }); }
-    catch (error) { caught = error; }
-
-    expect(caught).toMatchObject({ code });
-    expect(getProviderFailureDetail(caught)).toMatchObject({
-      stage: 'response_envelope',
-      issues: [{ path: 'provider.response.stop_reason', code }],
-    });
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(onTrace).toHaveBeenCalledTimes(1);
-  });
-
-  it.each([
-    ['multiple text blocks', [
-      { type: 'text', text: JSON.stringify(validReport) },
-      { type: 'text', text: JSON.stringify(validReport) },
-    ], 'response_envelope'],
-    ['missing text block', [{ type: 'thinking', thinking: 'reasoning', signature: 'signed' }], 'response_envelope'],
-    ['unknown content block', [{ type: 'tool_use', id: 'tool-1', name: 'unexpected', input: {} }], 'response_envelope'],
-    ['invalid JSON text', [{ type: 'text', text: '{' }], 'json_parse'],
-    ['schema-invalid JSON text', [{ type: 'text', text: JSON.stringify({ schemaVersion: 'wrong' }) }], 'report_shape'],
-  ] as const)('rejects Anthropic %s without retry and preserves trace', async (_name, content, stage) => {
-    const onTrace = vi.fn();
-    const fetchImpl = vi.fn(async () => envelopeResponse(anthropicEnvelope([...content])));
-    const provider = providerWithFetch(fetchImpl);
-    let caught: unknown;
-
-    try { await provider.generateStructured(anthropicConfig, { ...request(), onTrace }); }
-    catch (error) { caught = error; }
-
-    expect(caught).toMatchObject({ code: 'invalid_response' });
-    expect(getProviderFailureDetail(caught)?.stage).toBe(stage);
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(onTrace).toHaveBeenCalledTimes(1);
   });
 
   it('accepts one pure JSON code fence and still applies the strict report schema', async () => {
@@ -594,10 +533,10 @@ describe('OpenRouter analyze', () => {
 });
 
 describe('OpenRouter connection test card', () => {
-  it('uses the Anthropic Messages contract for Claude connection tests', async () => {
-    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => envelopeResponse(anthropicEnvelope([
-      { type: 'text', text: '{"seenImage":true}' },
-    ])));
+  it('uses the shared Chat Completions contract for Claude connection tests', async () => {
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => (
+      successfulResponse('{"seenImage":true}')
+    ));
     const provider = providerWithFetch(fetchImpl);
 
     await expect(provider.testConnection(
@@ -606,23 +545,31 @@ describe('OpenRouter connection test card', () => {
     )).resolves.toBeUndefined();
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(fetchImpl.mock.calls[0]?.[0]).toBe('https://openrouter.ai/api/v1/messages');
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe('https://openrouter.ai/api/v1/chat/completions');
     const body = fetchCallBody(fetchImpl);
-    expect(body.system).toBe('Verify only whether the supplied test-card image is visible.');
-    expect(body.messages[0].content[0]).toMatchObject({ type: 'text' });
-    expect(body.messages[0].content[1]).toMatchObject({
-      type: 'image',
-      source: { type: 'base64', media_type: 'image/png' },
+    expect(body.messages[0]).toEqual({
+      role: 'system',
+      content: 'Verify only whether the supplied test-card image is visible.',
     });
-    expect(body.output_config.format).toMatchObject({
+    expect(body.messages[1].content[0]).toMatchObject({ type: 'text' });
+    expect(body.messages[1].content[1]).toMatchObject({
+      type: 'image_url',
+      image_url: { url: expect.stringMatching(/^data:image\/png;base64,/) },
+    });
+    expect(body.response_format).toEqual({
       type: 'json_schema',
-      schema: {
-        type: 'object',
-        properties: { seenImage: { type: 'boolean' } },
-        required: ['seenImage'],
-        additionalProperties: false,
+      json_schema: {
+        name: 'connection_test',
+        strict: true,
+        schema: {
+          type: 'object',
+          properties: { seenImage: { type: 'boolean' } },
+          required: ['seenImage'],
+          additionalProperties: false,
+        },
       },
     });
+    expect(body.provider).toEqual({ require_parameters: true });
   });
 
   it('bundles the exact 64x64 icon-derived PNG and requests seenImage true with one call', async () => {

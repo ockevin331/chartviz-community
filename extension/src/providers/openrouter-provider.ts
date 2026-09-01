@@ -6,17 +6,13 @@ import { attachProviderFailureDetail } from './provider-diagnostics';
 import { parseOpenRouterTrace } from './openrouter-trace';
 import { normalizeProviderConfig, type ProviderConfig, type ProviderImage, type StructuredGenerationRequest, type StructuredVisionProvider, type ValidationResult } from './provider-types';
 import {
-  assertOpenRouterAnthropicConnectionResponse,
   assertOpenRouterConnectionResponse,
-  extractOpenRouterAnthropicStructuredValue,
   extractOpenRouterStructuredValue,
 } from './response-parser';
 import { parseStructuredResponse } from './structured-response';
 
 const openRouterChatUrl = 'https://openrouter.ai/api/v1/chat/completions';
-const openRouterAnthropicUrl = 'https://openrouter.ai/api/v1/messages';
 const defaultTimeoutMs = 120_000;
-const anthropicMaxTokens = 32_000;
 
 const connectionSchema = {
   type: 'object',
@@ -35,7 +31,7 @@ type RequestContent = Array<
 >;
 
 type OpenRouterRequest = Readonly<{
-  url: typeof openRouterChatUrl | typeof openRouterAnthropicUrl;
+  url: typeof openRouterChatUrl;
   body: Record<string, unknown>;
   extract(payload: unknown): unknown;
 }>;
@@ -46,21 +42,6 @@ function invalidField(config: ProviderConfig): 'apiKey' | 'model' {
 
 function isAnthropicModel(model: string): boolean {
   return /^anthropic\//.test(model);
-}
-
-function anthropicImageBlock(image: ProviderImage): Record<string, unknown> {
-  const prefix = `data:${image.mediaType};base64,`;
-  if (!image.dataUrl.startsWith(prefix) || image.dataUrl.length === prefix.length) {
-    throw new ProviderError('invalid_image', { params: { provider: 'openrouter' } });
-  }
-  return {
-    type: 'image',
-    source: {
-      type: 'base64',
-      media_type: image.mediaType,
-      data: image.dataUrl.slice(prefix.length),
-    },
-  };
 }
 
 function statusCode(status: number): AnalysisErrorCode {
@@ -204,8 +185,7 @@ export class OpenRouterProvider implements StructuredVisionProvider {
       connectionSchema,
     );
     const payload = await this.send(config, signal, outgoing.url, outgoing.body);
-    if (isAnthropicModel(config.model.trim())) assertOpenRouterAnthropicConnectionResponse(payload);
-    else assertOpenRouterConnectionResponse(payload);
+    assertOpenRouterConnectionResponse(payload);
   }
 
   private buildRequest(
@@ -221,30 +201,11 @@ export class OpenRouterProvider implements StructuredVisionProvider {
       throw new ProviderError('invalid_config', { params: { field: validation.field } });
     }
     const model = config.model.trim();
-    if (isAnthropicModel(model)) {
-      const content: Record<string, unknown>[] = [{ type: 'text', text: userPrompt }];
-      if (image) content.push(anthropicImageBlock(image));
-      return {
-        url: openRouterAnthropicUrl,
-        extract: extractOpenRouterAnthropicStructuredValue,
-        body: {
-          model,
-          max_tokens: anthropicMaxTokens,
-          system: systemPrompt,
-          messages: [{ role: 'user', content }],
-          output_config: {
-            format: {
-              type: 'json_schema',
-              schema: toAnthropicTransportSchema(schema),
-            },
-          },
-          provider: { require_parameters: true },
-        },
-      };
-    }
-
     const userContent: RequestContent = [{ type: 'text', text: userPrompt }];
     if (image) userContent.push({ type: 'image_url', image_url: { url: image.dataUrl } });
+    const transportSchema = isAnthropicModel(model)
+      ? toAnthropicTransportSchema(schema)
+      : schema;
     return {
       url: openRouterChatUrl,
       extract: extractOpenRouterStructuredValue,
@@ -256,7 +217,7 @@ export class OpenRouterProvider implements StructuredVisionProvider {
         ],
         response_format: {
           type: 'json_schema',
-          json_schema: { name: schemaName, strict: true, schema },
+          json_schema: { name: schemaName, strict: true, schema: transportSchema },
         },
         provider: { require_parameters: true },
       },
