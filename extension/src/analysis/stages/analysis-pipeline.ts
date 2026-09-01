@@ -13,17 +13,20 @@ import { communityReportV3JsonSchema, parseCommunityReportV3Shape, type Communit
 import { mergeCommunityEvidence } from './evidence-bundle';
 import { buildEvidenceReasoningPrompt } from './evidence-reasoning-prompt';
 import { normalizeCommunitySignalFacts } from './normalize-signals';
-import { normalizeCommunityVisualFacts } from './normalize-visual-facts';
+import { normalizeCommunityVisualFacts, toCommunityVisualFacts } from './normalize-visual-facts';
 import { validateCommunityReportV3Semantics } from './report-semantics-v3';
 import { communitySignalFactsJsonSchema, parseCommunitySignalFacts } from './signal-facts';
 import { buildSignalExtractionPrompt } from './signal-extraction-prompt';
-import type { OutputLanguage, StagePageContext } from './shared-stage-types';
-import { communityVisualFactsJsonSchema, parseCommunityVisualFacts } from './visual-facts';
+import type { AnalysisWarning, OutputLanguage, StagePageContext } from './shared-stage-types';
+import { communityVisualWireJsonSchema, parseCommunityVisualWireFacts } from './visual-facts';
 import { buildVisualExtractionPrompt } from './visual-extraction-prompt';
 
 type MutableStageSnapshot = {
   -readonly [Key in keyof AnalysisStageSnapshot]: AnalysisStageSnapshot[Key];
 };
+
+const extractionTimeoutMs = 120_000;
+const reasoningTimeoutMs = 180_000;
 
 export type AnalysisPipelineProgress =
   | 'preparing'
@@ -40,6 +43,7 @@ export type ThreeStageAnalysisInput = {
   outputLanguage: OutputLanguage;
   signal: AbortSignal;
   onProgress?(message: AnalysisPipelineProgress): void;
+  onWarning?(warning: AnalysisWarning): void;
 };
 
 function cancelled(provider: ProviderConfig['provider']): ProviderError {
@@ -62,7 +66,9 @@ function classifiedError(
   if (error instanceof ProviderError) {
     const detail = getProviderFailureDetail(error);
     const fallbackIssues: readonly ProviderDiagnosticIssue[] = error.httpStatus === undefined
-      ? [{ path: 'provider.response', code: 'missing_failure_detail' }]
+      ? error.code === 'invalid_response'
+        ? [{ path: 'provider.response', code: 'missing_failure_detail' }]
+        : [{ path: 'provider.transport', code: error.code }]
       : [{ path: 'provider.http.status', code: `http_${error.httpStatus}` }];
     const snapshotWithProviderOutput = detail?.providerOutput === undefined
       ? snapshot
@@ -126,12 +132,15 @@ function stageSnapshot(
   prompt: { version: string; system: string; user: string },
   schemaName: string,
   hasImage: boolean,
+  timeoutMs: number,
 ): MutableStageSnapshot {
   return {
     stage,
     promptVersion: prompt.version,
     schemaName,
     hasImage,
+    timeoutMs,
+    inputChars: prompt.system.length + prompt.user.length,
     systemPrompt: prompt.system,
     userPrompt: prompt.user,
   };
@@ -154,7 +163,7 @@ export async function runThreeStageAnalysis(input: ThreeStageAnalysisInput): Pro
   input.onProgress?.('preparing');
   input.onProgress?.('reading_chart');
   const visualPrompt = buildVisualExtractionPrompt(input.context);
-  const visualStage = stageSnapshot('visual_extraction', visualPrompt, 'community_visual_facts', true);
+  const visualStage = stageSnapshot('visual_extraction', visualPrompt, 'community_visual_wire', true, extractionTimeoutMs);
   stages.push(visualStage);
   let visualRaw;
   try {
@@ -162,10 +171,11 @@ export async function runThreeStageAnalysis(input: ThreeStageAnalysisInput): Pro
       systemPrompt: visualPrompt.system,
       userPrompt: visualPrompt.user,
       image: input.image,
-      schemaName: 'community_visual_facts',
-      jsonSchema: communityVisualFactsJsonSchema,
-      parse: parseCommunityVisualFacts,
+      schemaName: 'community_visual_wire',
+      jsonSchema: communityVisualWireJsonSchema,
+      parse: parseCommunityVisualWireFacts,
       signal: input.signal,
+      timeoutMs: extractionTimeoutMs,
       onTrace: (trace) => { visualStage.providerTrace = trace; },
     });
   } catch (error) {
@@ -173,13 +183,13 @@ export async function runThreeStageAnalysis(input: ThreeStageAnalysisInput): Pro
   }
   visualStage.output = visualRaw;
   let visualFacts;
-  try { visualFacts = normalizeCommunityVisualFacts(visualRaw); }
+  try { visualFacts = normalizeCommunityVisualFacts(toCommunityVisualFacts(visualRaw, input.context)); }
   catch (error) { return semanticError(error, input, 'visual_extraction_semantics', failureSnapshot(input, stages)); }
 
   assertActive(input);
   input.onProgress?.('reviewing_clues');
   const signalPrompt = buildSignalExtractionPrompt({ context: input.context, facts: visualFacts });
-  const signalStage = stageSnapshot('signal_extraction', signalPrompt, 'community_signal_facts', true);
+  const signalStage = stageSnapshot('signal_extraction', signalPrompt, 'community_signal_facts', true, extractionTimeoutMs);
   stages.push(signalStage);
   let signalRaw;
   try {
@@ -191,6 +201,7 @@ export async function runThreeStageAnalysis(input: ThreeStageAnalysisInput): Pro
       jsonSchema: communitySignalFactsJsonSchema,
       parse: parseCommunitySignalFacts,
       signal: input.signal,
+      timeoutMs: extractionTimeoutMs,
       onTrace: (trace) => { signalStage.providerTrace = trace; },
     });
   } catch (error) {
@@ -207,7 +218,7 @@ export async function runThreeStageAnalysis(input: ThreeStageAnalysisInput): Pro
   const reasoningPrompt = buildEvidenceReasoningPrompt({
     context: input.context, evidence, outputLanguage: input.outputLanguage,
   });
-  const reasoningStage = stageSnapshot('evidence_reasoning', reasoningPrompt, 'community_report_v3', false);
+  const reasoningStage = stageSnapshot('evidence_reasoning', reasoningPrompt, 'community_report_v3', false, reasoningTimeoutMs);
   stages.push(reasoningStage);
   let reportRaw;
   try {
@@ -218,6 +229,7 @@ export async function runThreeStageAnalysis(input: ThreeStageAnalysisInput): Pro
       jsonSchema: communityReportV3JsonSchema,
       parse: parseCommunityReportV3Shape,
       signal: input.signal,
+      timeoutMs: reasoningTimeoutMs,
       onTrace: (trace) => { reasoningStage.providerTrace = trace; },
     });
   } catch (error) {
@@ -225,7 +237,9 @@ export async function runThreeStageAnalysis(input: ThreeStageAnalysisInput): Pro
   }
   reasoningStage.output = reportRaw;
   try {
-    const report = validateCommunityReportV3Semantics(reportRaw, evidence, input.outputLanguage);
+    const report = validateCommunityReportV3Semantics(
+      reportRaw, evidence, input.outputLanguage, input.onWarning,
+    );
     input.onProgress?.('preparing_result');
     return report;
   }

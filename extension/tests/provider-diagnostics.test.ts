@@ -9,7 +9,7 @@ import type {
   StructuredVisionProvider,
   ValidationResult,
 } from '../src/providers/provider-types';
-import { validReportV3, validSignalFacts, validVisualFacts } from './three-stage-fixtures';
+import { validReportV3, validSignalFacts, validVisualWireFacts } from './three-stage-fixtures';
 
 const config: ProviderConfig = {
   provider: 'openrouter', apiKey: 'test-key', model: 'anthropic/claude-opus-5', customModel: false,
@@ -121,7 +121,7 @@ describe('OpenRouter trace diagnostics', () => {
       Object.freeze({ generationId: 'gen-reasoning', returnedModel: 'model-reasoning' }),
     ];
     const provider = new TracedFixtureProvider(
-      [validVisualFacts, validSignalFacts, malformedReport],
+      [validVisualWireFacts, validSignalFacts, malformedReport],
       traces,
     );
     let caught: unknown;

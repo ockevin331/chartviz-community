@@ -37,6 +37,8 @@ export type AnalysisStageSnapshot = Readonly<{
   promptVersion: string;
   schemaName: string;
   hasImage: boolean;
+  timeoutMs?: number;
+  inputChars?: number;
   systemPrompt: string;
   userPrompt: string;
   output?: unknown;

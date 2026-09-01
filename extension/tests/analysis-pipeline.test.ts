@@ -11,7 +11,13 @@ import type {
   ValidationResult,
 } from '../src/providers/provider-types';
 import { parseStructuredResponse } from '../src/providers/structured-response';
-import { validReportV3, validSignalFacts, validVisualFacts } from './three-stage-fixtures';
+import type { ProviderTrace } from '../src/providers/openrouter-trace';
+import {
+  validReportV3,
+  validSignalFacts,
+  validVisualFacts as domainVisualFacts,
+  validVisualWireFacts as validVisualFacts,
+} from './three-stage-fixtures';
 
 const config: ProviderConfig = {
   provider: 'openrouter', apiKey: 'test-key', model: 'openai/gpt-5.6-terra', customModel: false,
@@ -22,6 +28,7 @@ const image = { mediaType: 'image/png' as const, dataUrl: 'data:image/png;base64
 type RecordedRequest = Omit<StructuredGenerationRequest<unknown>, 'parse' | 'signal'> & {
   hasImage: boolean;
   signal: AbortSignal;
+  timeoutMs?: number;
 };
 
 class FixtureProvider implements StructuredVisionProvider {
@@ -29,7 +36,10 @@ class FixtureProvider implements StructuredVisionProvider {
   readonly calls: RecordedRequest[] = [];
   private index = 0;
 
-  constructor(private readonly fixtures: unknown[]) {}
+  constructor(
+    private readonly fixtures: unknown[],
+    private readonly traces: readonly (ProviderTrace | undefined)[] = [],
+  ) {}
 
   validateConfig(): ValidationResult { return { ok: true }; }
   async testConnection(): Promise<void> {}
@@ -43,9 +53,13 @@ class FixtureProvider implements StructuredVisionProvider {
       jsonSchema: request.jsonSchema,
       hasImage: request.image !== undefined,
       signal: request.signal,
+      timeoutMs: (request as StructuredGenerationRequest<T> & { timeoutMs?: number }).timeoutMs,
     });
-    const fixture = this.fixtures[this.index++];
+    const fixtureIndex = this.index++;
+    const fixture = this.fixtures[fixtureIndex];
     if (fixture instanceof Error) throw fixture;
+    const trace = this.traces[fixtureIndex];
+    if (trace) request.onTrace?.(trace);
     return parseStructuredResponse(this.kind, structuredClone(fixture), request.parse);
   }
 }
@@ -108,9 +122,10 @@ describe('three-stage analysis pipeline', () => {
     });
 
     expect(provider.calls.map(({ schemaName }) => schemaName)).toEqual([
-      'community_visual_facts', 'community_signal_facts', 'community_report_v3',
+      'community_visual_wire', 'community_signal_facts', 'community_report_v3',
     ]);
     expect(provider.calls.map(({ hasImage }) => hasImage)).toEqual([true, true, false]);
+    expect(provider.calls.map(({ timeoutMs }) => timeoutMs)).toEqual([120_000, 120_000, 180_000]);
     expect(provider.calls[0]?.systemPrompt).toContain('visual evidence extractor');
     expect(provider.calls[1]?.userPrompt).toContain('Previously validated visual facts');
     expect(provider.calls[2]?.userPrompt).toContain('Validated evidence');
@@ -131,15 +146,50 @@ describe('three-stage analysis pipeline', () => {
     expect(report.tradeSignals[0]?.riskReward).toBe('1:2');
   });
 
+  it('records the effective timeout and prompt size for every stage in a failure snapshot', async () => {
+    const upstreamFailure = new ProviderError('network_timeout', { params: { provider: 'openrouter' } });
+    const provider = new FixtureProvider([validVisualFacts, validSignalFacts, upstreamFailure]);
+    let caught: unknown;
+
+    try { await runThreeStageAnalysis(input(provider)); }
+    catch (error) { caught = error; }
+
+    const stages = getProviderFailureDetail(caught)?.snapshot?.stages;
+    expect(stages?.map(({ timeoutMs }) => timeoutMs)).toEqual([120_000, 120_000, 180_000]);
+    expect(stages?.map(({ inputChars }) => inputChars)).toEqual(
+      provider.calls.map(({ systemPrompt, userPrompt }) => systemPrompt.length + userPrompt.length),
+    );
+  });
+
+  it('attaches each provider trace only to the stage that produced it', async () => {
+    const malformedReport = clone(validReportV3) as any;
+    malformedReport.tradePlan.summary = 'The 1h chart confirms this 15m chart.';
+    const traces: ProviderTrace[] = [
+      Object.freeze({ generationId: 'gen-visual', returnedModel: 'model-visual' }),
+      Object.freeze({ generationId: 'gen-signal', returnedModel: 'model-signal' }),
+      Object.freeze({ generationId: 'gen-reasoning', returnedModel: 'model-reasoning' }),
+    ];
+    const provider = new FixtureProvider(
+      [validVisualFacts, validSignalFacts, malformedReport],
+      traces,
+    );
+    let caught: unknown;
+
+    try { await runThreeStageAnalysis(input(provider)); }
+    catch (error) { caught = error; }
+
+    expect(getProviderFailureDetail(caught)?.snapshot?.stages.map((stage) => stage.providerTrace)).toEqual(traces);
+  });
+
   it('normalizes monotonic price coordinates while preserving the signal-candle arrow coordinate', () => {
-    const visual = normalizeCommunityVisualFacts(clone(validVisualFacts));
+    const visual = normalizeCommunityVisualFacts(clone(domainVisualFacts));
     const signals = normalizeCommunitySignalFacts(clone(validSignalFacts), visual);
 
     expect(signals.signals[0]?.entry).toMatchObject({ xRatio: 0.86, yRatio: 0.36 });
     expect(signals.signals[0]?.stopLoss.yRatio).toBeCloseTo(0.42, 6);
     expect(signals.signals[0]?.riskReward).toBe('1:2');
 
-    const nonMonotonic = clone(validVisualFacts) as any;
+    const nonMonotonic = clone(domainVisualFacts) as any;
     nonMonotonic.priceScaleAnchors.push({ price: 65_000, label: '65,000', yRatio: 0.7 });
     expect(() => normalizeCommunityVisualFacts(nonMonotonic)).toThrow();
   });
@@ -219,9 +269,23 @@ describe('three-stage analysis pipeline', () => {
     });
   });
 
+  it('preserves a bare transport error code when provider diagnostics are absent', async () => {
+    const upstreamFailure = new ProviderError('network_timeout', { params: { provider: 'openrouter' } });
+    const provider = new FixtureProvider([upstreamFailure]);
+    let caught: unknown;
+
+    try { await runThreeStageAnalysis(input(provider)); }
+    catch (error) { caught = error; }
+
+    expect(getProviderFailureDetail(caught)).toMatchObject({
+      stage: 'visual_extraction_transport',
+      issues: [{ path: 'provider.transport', code: 'network_timeout' }],
+    });
+  });
+
   it('classifies deterministic anchor validation as visual semantics without another model call', async () => {
     const nonMonotonic = clone(validVisualFacts) as any;
-    nonMonotonic.priceScaleAnchors.push({ price: 65_000, label: '65,000', yRatio: 0.7 });
+    nonMonotonic.priceScaleAnchors.push({ price: 65_000, yRatio: 0.7 });
     const provider = new FixtureProvider([nonMonotonic, validSignalFacts, validReportV3]);
     let caught: unknown;
 
@@ -250,7 +314,9 @@ describe('three-stage analysis pipeline', () => {
   });
 
   it('keeps prompts in English while producing a schema-valid Simplified Chinese report', async () => {
-    const provider = new FixtureProvider([validVisualFacts, validSignalFacts, chineseReport()]);
+    const rawReport = chineseReport();
+    rawReport.tradeSignals[0].signalType = '模型自由生成的信号名称';
+    const provider = new FixtureProvider([validVisualFacts, validSignalFacts, rawReport]);
 
     const report = await runThreeStageAnalysis({ ...input(provider), outputLanguage: 'zh-CN' });
 
@@ -260,6 +326,47 @@ describe('three-stage analysis pipeline', () => {
     expect(provider.calls[2]?.userPrompt).toContain('Output language: Simplified Chinese.');
     expect(report.conclusion.summary).toContain('价格');
     expect(report.tradeSignals[0]?.signalType).toBe('突破后回踩');
+  });
+
+  it('uses the deterministic English label instead of model-authored signal wording', async () => {
+    const rawReport = clone(validReportV3) as any;
+    rawReport.tradeSignals[0].signalType = 'Model-authored wording';
+    const provider = new FixtureProvider([validVisualFacts, validSignalFacts, rawReport]);
+
+    const report = await runThreeStageAnalysis(input(provider));
+
+    expect(report.tradeSignals[0]?.signalType).toBe('Breakout and retest');
+  });
+
+  it('localizes a supported pattern classification instead of trusting model-authored wording', async () => {
+    const visual = clone(validVisualFacts) as any;
+    visual.patterns[0].canonicalType = 'rising_channel';
+    const rawReport = chineseReport();
+    rawReport.patterns[0].name = 'Model-authored pattern name';
+    const provider = new FixtureProvider([visual, validSignalFacts, rawReport]);
+
+    const report = await runThreeStageAnalysis({ ...input(provider), outputLanguage: 'zh-CN' });
+
+    expect(report.patterns[0]?.name).toBe('上升通道');
+  });
+
+  it('returns a custom pattern name with a soft language warning instead of failing the analysis', async () => {
+    const visual = clone(validVisualFacts) as any;
+    visual.patterns[0].canonicalType = null;
+    visual.patterns[0].name = 'Custom visible structure';
+    const rawReport = chineseReport();
+    rawReport.patterns[0].name = 'Custom visible structure';
+    const provider = new FixtureProvider([visual, validSignalFacts, rawReport]);
+    const warnings: unknown[] = [];
+
+    const report = await runThreeStageAnalysis({
+      ...input(provider), outputLanguage: 'zh-CN', onWarning: (warning: unknown) => warnings.push(warning),
+    } as any);
+
+    expect(report.patterns[0]?.name).toBe('Custom visible structure');
+    expect(warnings).toEqual([{
+      code: 'output_language_mismatch', path: ['patterns', 0, 'name'], valuePreview: 'Custom visible structure',
+    }]);
   });
 
   it('accepts a standard technical acronym as a Chinese trade-plan target', async () => {
@@ -273,40 +380,36 @@ describe('three-stage analysis pipeline', () => {
     expect(provider.calls).toHaveLength(3);
   });
 
-  it('rejects a final report in the wrong language without a repair request', async () => {
+  it('returns a report in the wrong language with warnings and without a repair request', async () => {
     const provider = new FixtureProvider([validVisualFacts, validSignalFacts, validReportV3]);
-    let caught: unknown;
+    const warnings: unknown[] = [];
 
-    try { await runThreeStageAnalysis({ ...input(provider), outputLanguage: 'zh-CN' }); }
-    catch (error) { caught = error; }
+    const report = await runThreeStageAnalysis({
+      ...input(provider), outputLanguage: 'zh-CN', onWarning: (warning) => warnings.push(warning),
+    });
 
-    expect(getProviderFailureDetail(caught)).toMatchObject({
-      stage: 'report_semantics',
-      issues: [{
-        path: 'conclusion.summary',
-        code: 'output_language_mismatch',
-        valuePreview: 'Price is rotating between visible support and resistance.',
-      }],
+    expect(report.conclusion.summary).toBe('Price is rotating between visible support and resistance.');
+    expect(warnings).toContainEqual({
+      path: ['conclusion', 'summary'], code: 'output_language_mismatch',
+      valuePreview: 'Price is rotating between visible support and resistance.',
     });
     expect(provider.calls).toHaveLength(3);
   });
 
-  it('includes a safe preview when a Chinese trade-plan target is an English phrase', async () => {
+  it('returns an English trade-plan target in Chinese output with a safe warning', async () => {
     const report = chineseReport();
     report.tradePlan.short.targets = ['previous low'];
     const provider = new FixtureProvider([validVisualFacts, validSignalFacts, report]);
-    let caught: unknown;
+    const warnings: unknown[] = [];
 
-    try { await runThreeStageAnalysis({ ...input(provider), outputLanguage: 'zh-CN' }); }
-    catch (error) { caught = error; }
+    const result = await runThreeStageAnalysis({
+      ...input(provider), outputLanguage: 'zh-CN', onWarning: (warning) => warnings.push(warning),
+    });
 
-    expect(getProviderFailureDetail(caught)).toMatchObject({
-      stage: 'report_semantics',
-      issues: [{
-        path: 'tradePlan.short.targets.0',
-        code: 'output_language_mismatch',
-        valuePreview: 'previous low',
-      }],
+    expect(result.tradePlan.short.targets).toEqual(['previous low']);
+    expect(warnings).toContainEqual({
+      path: ['tradePlan', 'short', 'targets', 0], code: 'output_language_mismatch',
+      valuePreview: 'previous low',
     });
     expect(provider.calls).toHaveLength(3);
   });
@@ -400,17 +503,17 @@ describe('three-stage analysis pipeline', () => {
         outputLanguage: 'en',
         stages: [
           {
-            stage: 'visual_extraction', promptVersion: 'visual-1.0',
-            schemaName: 'community_visual_facts', hasImage: true,
+            stage: 'visual_extraction', promptVersion: 'visual-2.0',
+            schemaName: 'community_visual_wire', hasImage: true,
             output: validVisualFacts,
           },
           {
-            stage: 'signal_extraction', promptVersion: 'signals-1.0',
+            stage: 'signal_extraction', promptVersion: 'signals-1.2',
             schemaName: 'community_signal_facts', hasImage: true,
             output: validSignalFacts,
           },
           {
-            stage: 'evidence_reasoning', promptVersion: 'reasoning-1.0',
+            stage: 'evidence_reasoning', promptVersion: 'reasoning-1.3',
             schemaName: 'community_report_v3', hasImage: false,
             output: alteredReport,
           },
@@ -433,8 +536,8 @@ describe('three-stage analysis pipeline', () => {
     await runThreeStageAnalysis(input(provider));
 
     expect(provider.calls.map(({ schemaName }) => schemaName)).toEqual([
-      'community_visual_facts', 'community_signal_facts', 'community_report_v3',
-      'community_visual_facts', 'community_signal_facts', 'community_report_v3',
+      'community_visual_wire', 'community_signal_facts', 'community_report_v3',
+      'community_visual_wire', 'community_signal_facts', 'community_report_v3',
     ]);
   });
 });

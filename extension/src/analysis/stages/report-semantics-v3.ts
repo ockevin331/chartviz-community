@@ -7,7 +7,9 @@ import {
   parseCommunityReportV3Shape,
   type CommunityReportV3,
 } from './community-report-v3';
-import type { OutputLanguage } from './shared-stage-types';
+import type { AnalysisWarning, OutputLanguage } from './shared-stage-types';
+import { localizedSignalType } from './signal-types';
+import { localizedPatternName } from './pattern-types';
 
 type Narrative = Readonly<{ text: string; path: Array<string | number> }>;
 
@@ -32,7 +34,7 @@ function narratives(value: unknown, path: Array<string | number> = [], result: N
     if (![
       'schemaVersion', 'id', 'instrument', 'timeframe', 'priceLabel', 'riskReward',
       'direction', 'trend', 'structure', 'strength', 'type', 'tier', 'status', 'bias',
-      'geometryKind',
+      'geometryKind', 'signalType',
     ].includes(String(key))) result.push({ text: value, path });
   } else if (Array.isArray(value)) {
     value.forEach((entry, index) => narratives(entry, [...path, index], result));
@@ -42,18 +44,20 @@ function narratives(value: unknown, path: Array<string | number> = [], result: N
   return result;
 }
 
-function assertLanguage(report: CommunityReportV3, outputLanguage: OutputLanguage): void {
+function languageWarnings(report: CommunityReportV3, outputLanguage: OutputLanguage): AnalysisWarning[] {
+  const warnings: AnalysisWarning[] = [];
   for (const { text, path } of narratives(report)) {
     if (outputLanguage === 'en' && /\p{Script=Han}/u.test(text)) {
-      semanticError(path, 'output_language_mismatch', text);
+      warnings.push({ code: 'output_language_mismatch', path, valuePreview: text });
     }
     if (outputLanguage === 'zh-CN'
       && /[A-Za-z]{4,}/.test(text)
       && !/\p{Script=Han}/u.test(text)
       && !supportedTechnicalLabels.test(text)) {
-      semanticError(path, 'output_language_mismatch', text);
+      warnings.push({ code: 'output_language_mismatch', path, valuePreview: text });
     }
   }
+  return warnings;
 }
 
 function byId<T extends { id: string }>(items: readonly T[]): Map<string, T> {
@@ -64,6 +68,7 @@ export function validateCommunityReportV3Semantics(
   value: unknown,
   evidence: CommunityEvidenceBundle,
   outputLanguage: OutputLanguage,
+  onWarning?: (warning: AnalysisWarning) => void,
 ): CommunityReportV3 {
   const reportShape = parseCommunityReportV3Shape(value);
   const anchoredReport = {
@@ -87,8 +92,6 @@ export function validateCommunityReportV3Semantics(
   if (exposedId) {
     semanticError(exposedId.path, 'internal_evidence_id_exposed');
   }
-  assertLanguage(report, outputLanguage);
-
   const visualLevels = byId(evidence.visualFacts.levels);
   const visualIndicators = byId(evidence.visualFacts.indicators);
   const visualPatterns = byId(evidence.visualFacts.patterns);
@@ -119,6 +122,7 @@ export function validateCommunityReportV3Semantics(
     return {
       ...signal,
       direction: fact.direction,
+      signalType: localizedSignalType(fact.signalType, outputLanguage),
       entry: { priceLabel: fact.entry.priceLabel, xRatio: fact.entry.xRatio, yRatio: fact.entry.yRatio },
       stopLoss: { priceLabel: fact.stopLoss.priceLabel, yRatio: fact.stopLoss.yRatio },
       takeProfits: fact.takeProfits.map(({ priceLabel, yRatio }) => ({ priceLabel, yRatio })),
@@ -130,17 +134,22 @@ export function validateCommunityReportV3Semantics(
     const fact = visualPatterns.get(pattern.id)!;
     return {
       ...pattern,
+      name: fact.canonicalType === null
+        ? pattern.name
+        : localizedPatternName(fact.canonicalType, outputLanguage),
       status: fact.status,
       bias: fact.bias,
       confidence: fact.confidence,
       geometry: fact.geometry,
     };
   });
-  return parseCommunityReportV3({
+  const finalReport = parseCommunityReportV3({
     ...report,
     chart: evidence.visualFacts.chart,
     levels,
     tradeSignals,
     patterns,
   });
+  languageWarnings(finalReport, outputLanguage).forEach((warning) => onWarning?.(warning));
+  return finalReport;
 }

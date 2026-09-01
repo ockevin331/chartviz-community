@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { assertScreenshotOnlyText } from '../source-policy';
+import { signalTypeSchema } from './signal-types';
 
 const text = z.string().trim().min(1);
 const ratio = z.number().min(0).max(1);
@@ -14,7 +15,7 @@ const signalFactsShape = z.object({
   signals: z.array(z.object({
     id: z.string().regex(/^S\d{2}$/),
     direction: z.enum(['long', 'short']),
-    signalType: text,
+    signalType: signalTypeSchema,
     signalTime: text,
     thesisAtSignal: text,
     evidenceAtSignal: z.array(text).min(1).max(6),

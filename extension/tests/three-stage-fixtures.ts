@@ -28,7 +28,7 @@ export const validVisualFacts = {
     timeAnchor: 'Middle and right side', confidence: 0.86,
   }],
   patterns: [{
-    id: 'P01', name: 'Rising channel', status: 'forming', bias: 'bullish',
+    id: 'P01', canonicalType: 'rising_channel', name: 'Rising channel', status: 'forming', bias: 'bullish',
     timeRange: 'Left side to right edge', evidence: 'Swing highs and lows rise inside parallel boundaries.',
     confirmation: 'A close above the upper boundary.', invalidation: 'A close below the lower boundary.',
     confidence: 0.74,
@@ -55,10 +55,41 @@ export const validVisualFacts = {
   }],
 } as const;
 
+export const validVisualWireFacts = {
+  schemaVersion: 'community-visual-wire-1.0',
+  chart: null,
+  imageQuality: { usable: true, limitations: [] },
+  pricePanelBounds: { leftRatio: 0.05, topRatio: 0.12, rightRatio: 0.94, bottomRatio: 0.72 },
+  priceScaleAnchors: [
+    { price: 66_000, yRatio: 0.2 },
+    { price: 64_000, yRatio: 0.6 },
+  ],
+  priceAction: validVisualFacts.priceAction,
+  volume: validVisualFacts.volume,
+  indicators: validVisualFacts.indicators,
+  levels: validVisualFacts.levels,
+  patterns: validVisualFacts.patterns,
+  segments: validVisualFacts.segments,
+} as const;
+
+export const capturedClaudeVisualAlternates = [{
+  ...validVisualWireFacts,
+  imageQuality: { overall: 'good', usable: true, limitations: [] },
+}, {
+  ...validVisualWireFacts,
+  pricePanelBounds: { xMin: 0.05, yMin: 0.12, xMax: 0.94, yMax: 0.72 },
+}, {
+  ...validVisualWireFacts,
+  priceAction: {
+    ...validVisualWireFacts.priceAction,
+    trendDirection: validVisualWireFacts.priceAction.trend,
+  },
+}] as const;
+
 export const validSignalFacts = {
   schemaVersion: 'community-signals-1.0',
   signals: [{
-    id: 'S01', direction: 'long', signalType: 'Breakout and retest', signalTime: 'Rightmost closed candle',
+    id: 'S01', direction: 'long', signalType: 'breakout_retest', signalTime: 'Rightmost closed candle',
     thesisAtSignal: 'Price accepts above the visible boundary after a controlled retest.',
     evidenceAtSignal: ['Higher lows lead into resistance.', 'Volume expands on the breakout attempt.'],
     entry: { priceLabel: '65,300', price: 65_300, xRatio: 0.86, yRatio: 0.36 },

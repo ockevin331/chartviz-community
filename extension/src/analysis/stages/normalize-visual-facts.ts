@@ -1,12 +1,59 @@
 import { z } from 'zod';
 import type { SemanticDiagnosticCode } from '../semantic-diagnostics';
 import { patternGeometryPoints } from './pattern-geometry-schema';
-import { parseCommunityVisualFacts, type CommunityVisualFacts } from './visual-facts';
+import { localizedPatternName } from './pattern-types';
+import type { StagePageContext } from './shared-stage-types';
+import {
+  communityVisualFactsSchemaVersion,
+  parseCommunityVisualFacts,
+  type CommunityVisualFacts,
+} from './visual-facts';
+import { parseCommunityVisualWireFacts, type CommunityVisualWireFacts } from './visual-wire-schema';
 
 type PriceAnchor = CommunityVisualFacts['priceScaleAnchors'][number];
 
 function semanticError(path: Array<string | number>, code: SemanticDiagnosticCode): never {
   throw new z.ZodError([{ code: 'custom', path, message: code }]);
+}
+
+function formattedPrice(price: number): string {
+  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 12 }).format(price);
+}
+
+function qualitySummary(facts: CommunityVisualWireFacts): string {
+  if (!facts.imageQuality.usable) return 'Screenshot is not usable for reliable chart analysis.';
+  return facts.imageQuality.limitations.length === 0
+    ? 'Screenshot is usable for chart analysis.'
+    : 'Screenshot is usable with visible limitations.';
+}
+
+export function toCommunityVisualFacts(
+  value: unknown,
+  context: StagePageContext,
+): CommunityVisualFacts {
+  const wire = parseCommunityVisualWireFacts(value);
+  return parseCommunityVisualFacts({
+    ...wire,
+    schemaVersion: communityVisualFactsSchemaVersion,
+    chart: {
+      instrument: context.instrument ?? wire.chart?.instrument ?? null,
+      timeframe: context.timeframe ?? wire.chart?.timeframe ?? null,
+    },
+    imageQuality: {
+      ...wire.imageQuality,
+      summary: qualitySummary(wire),
+    },
+    priceScaleAnchors: wire.priceScaleAnchors.map((anchor) => ({
+      ...anchor,
+      label: formattedPrice(anchor.price),
+    })),
+    patterns: wire.patterns.map((pattern) => ({
+      ...pattern,
+      name: pattern.canonicalType === null
+        ? pattern.name
+        : localizedPatternName(pattern.canonicalType, 'en'),
+    })),
+  });
 }
 
 function monotonicAnchors(anchors: readonly PriceAnchor[]): PriceAnchor[] {

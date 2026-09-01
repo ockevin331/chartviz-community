@@ -1,5 +1,11 @@
 export type OutputLanguage = 'en' | 'zh-CN';
 
+export type AnalysisWarning = Readonly<{
+  code: 'output_language_mismatch';
+  path: readonly (string | number)[];
+  valuePreview: string;
+}>;
+
 export type StagePageContext = {
   instrument: string | null;
   timeframe: string | null;

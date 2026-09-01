@@ -1,13 +1,15 @@
 import { z } from 'zod';
 import { assertScreenshotOnlyText, assertSingleTimeframe } from '../source-policy';
 import { patternGeometrySchema, patternPointSchema } from './pattern-geometry-schema';
+import { canonicalPatternTypeSchema } from './pattern-types';
 
 const text = z.string().trim().min(1);
 const ratio = z.number().min(0).max(1);
 const point = patternPointSchema;
+export const communityVisualFactsSchemaVersion = 'community-visual-1.0' as const;
 
 const visualFactsShape = z.object({
-  schemaVersion: z.literal('community-visual-1.0'),
+  schemaVersion: z.literal(communityVisualFactsSchemaVersion),
   chart: z.object({ instrument: text.nullable(), timeframe: text.nullable() }).strict(),
   imageQuality: z.object({
     usable: z.boolean(), summary: text, limitations: z.array(text).max(4),
@@ -47,6 +49,7 @@ const visualFactsShape = z.object({
   }).strict()).max(6),
   patterns: z.array(z.object({
     id: z.string().regex(/^P\d{2}$/),
+    canonicalType: canonicalPatternTypeSchema.nullable(),
     name: text,
     status: z.enum(['forming', 'confirmed', 'invalidated']),
     bias: z.enum(['bullish', 'bearish', 'neutral']),
