@@ -1,8 +1,8 @@
 import type { ProviderConfig, ProviderKind } from './provider-types';
 
-export const MODEL_CATALOG_VERSION = 'community-models-3' as const;
+export const MODEL_CATALOG_VERSION = 'community-models-4' as const;
 
-export type ModelVendor = 'openai' | 'anthropic' | 'qwen';
+export type ModelVendor = 'openai' | 'anthropic';
 
 export type ModelChoice = Readonly<{
   key: string;
@@ -99,28 +99,12 @@ export const modelChoices: readonly ModelChoice[] = Object.freeze([
     badge: { en: 'Fast', 'zh-CN': '快速' },
     default: false,
   }),
-  choice({
-    vendor: 'qwen',
-    openRouterModel: 'qwen/qwen3.7-plus',
-    description: { en: 'Balanced with strong Chinese understanding', 'zh-CN': '均衡，中文理解能力强' },
-    badge: { en: 'Chinese', 'zh-CN': '中文' },
-    default: false,
-  }),
-  choice({
-    vendor: 'qwen',
-    openRouterModel: 'qwen/qwen3-vl-235b-a22b-instruct',
-    description: { en: 'Strongest Qwen vision model', 'zh-CN': '千问视觉能力最强' },
-    badge: { en: 'Strongest', 'zh-CN': '最强' },
-    default: false,
-  }),
-  choice({
-    vendor: 'qwen',
-    openRouterModel: 'qwen/qwen3-vl-8b-instruct',
-    description: { en: 'Fast and cost-effective Qwen vision', 'zh-CN': '快速且性价比高的千问视觉模型' },
-    badge: { en: 'Value', 'zh-CN': '性价比' },
-    default: false,
-  }),
 ]);
+
+export function migrateDeprecatedModel(config: ProviderConfig): ProviderConfig {
+  if (config.provider !== 'openrouter' || !/^qwen\//i.test(config.model)) return config;
+  return Object.freeze({ ...config, model: getDefaultModelChoice().openRouterModel });
+}
 
 function model(provider: ProviderKind, id: string, isDefault = false): CuratedModel {
   return Object.freeze({ provider, id, label: id, default: isDefault });

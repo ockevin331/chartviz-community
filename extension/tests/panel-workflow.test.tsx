@@ -610,16 +610,16 @@ describe('direct Community panel workflow', () => {
     expect(screen.getByRole('combobox', { name: 'Model' })).toHaveProperty('textContent', expect.stringContaining('openai/gpt-5.6-terra'));
 
     await user.click(screen.getByRole('combobox', { name: 'Model' }));
-    await user.click(screen.getByRole('option', { name: /qwen\/qwen3\.7-plus/i }));
+    await user.click(screen.getByRole('option', { name: /openai\/gpt-5\.6-luna/i }));
     await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
 
     await waitFor(() => expect(saveConfig).toHaveBeenCalledWith({
-      provider: 'openrouter', apiKey: 'existing-key', model: 'qwen/qwen3.7-plus', customModel: false,
+      provider: 'openrouter', apiKey: 'existing-key', model: 'openai/gpt-5.6-luna', customModel: false,
     }));
     expect(screen.queryByRole('dialog', { name: 'Analysis settings' })).toBeNull();
     expect(screen.getByRole('heading', { name: 'Detected chart' })).toBeTruthy();
     expect(createDirectRuntime).toHaveBeenNthCalledWith(1, expect.objectContaining({ model: 'openai/gpt-5.6-terra' }));
-    expect(createDirectRuntime).toHaveBeenNthCalledWith(2, expect.objectContaining({ model: 'qwen/qwen3.7-plus' }));
+    expect(createDirectRuntime).toHaveBeenNthCalledWith(2, expect.objectContaining({ model: 'openai/gpt-5.6-luna' }));
     expect(firstRuntime.cancel).not.toHaveBeenCalled();
   });
 
@@ -707,7 +707,7 @@ describe('direct Community panel workflow', () => {
     await screen.findByRole('heading', { name: 'Detected chart' });
     await user.click(screen.getByRole('button', { name: 'Settings' }));
     await user.click(screen.getByRole('combobox', { name: 'Model' }));
-    await user.click(screen.getByRole('option', { name: /qwen\/qwen3\.7-plus/i }));
+    await user.click(screen.getByRole('option', { name: /openai\/gpt-5\.6-luna/i }));
     await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
 
     act(() => {
@@ -739,7 +739,7 @@ describe('direct Community panel workflow', () => {
       model: 'openai/gpt-5.6-terra', customModel: false,
     };
     const saveConfig = vi.fn(async (config: ProviderConfig) => {
-      if (config.model === 'qwen/qwen3.7-plus') await oldestSave.promise;
+      if (config.model === 'openai/gpt-5.6-luna') await oldestSave.promise;
       if (config.model === 'anthropic/claude-sonnet-5') await newestSave.promise;
       persistedConfig = config;
     });
@@ -768,7 +768,7 @@ describe('direct Community panel workflow', () => {
     await screen.findByRole('heading', { name: 'Detected chart' });
     await user.click(screen.getByRole('button', { name: 'Settings' }));
     await user.click(screen.getByRole('combobox', { name: 'Model' }));
-    await user.click(screen.getByRole('option', { name: /qwen\/qwen3\.7-plus/i }));
+    await user.click(screen.getByRole('option', { name: /openai\/gpt-5\.6-luna/i }));
     await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
     await waitFor(() => expect(saveConfig).toHaveBeenCalledTimes(1));
 
@@ -836,7 +836,7 @@ describe('direct Community panel workflow', () => {
       model: 'openai/gpt-5.6-terra', customModel: false,
     };
     const saveConfig = vi.fn(async (config: ProviderConfig) => {
-      if (config.model === 'qwen/qwen3.7-plus') await supersededSave.promise;
+      if (config.model === 'openai/gpt-5.6-luna') await supersededSave.promise;
       if (config.model === 'anthropic/claude-sonnet-5') await latestSave.promise;
       persistedConfig = config;
     });
@@ -860,7 +860,7 @@ describe('direct Community panel workflow', () => {
     await screen.findByRole('heading', { name: 'Detected chart' });
     await user.click(screen.getByRole('button', { name: 'Settings' }));
     await user.click(screen.getByRole('combobox', { name: 'Model' }));
-    await user.click(screen.getByRole('option', { name: /qwen\/qwen3\.7-plus/i }));
+    await user.click(screen.getByRole('option', { name: /openai\/gpt-5\.6-luna/i }));
     await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
     await waitFor(() => expect(saveConfig).toHaveBeenCalledTimes(1));
 
@@ -1248,7 +1248,7 @@ describe('direct Community panel workflow', () => {
     await screen.findByRole('heading', { name: 'Detected chart' });
     await user.click(screen.getByRole('button', { name: 'Settings' }));
     await user.click(screen.getByRole('combobox', { name: 'Model' }));
-    await user.click(screen.getByRole('option', { name: /qwen\/qwen3\.7-plus/i }));
+    await user.click(screen.getByRole('option', { name: /openai\/gpt-5\.6-luna/i }));
     await user.click(screen.getByRole('button', { name: 'Save and set as default' }));
     await user.click(screen.getByRole('button', { name: 'Refresh' }));
 

@@ -107,6 +107,14 @@ describe('OpenAI Responses analyze', () => {
     expect(JSON.stringify(body)).not.toContain(config.apiKey);
   });
 
+  it('accepts one pure JSON code fence and still applies the strict report schema', async () => {
+    const fetchImpl = vi.fn(async () => successfulResponse(`\n\`\`\`json\n${JSON.stringify(validReport)}\n\`\`\`\n`));
+    const provider = providerWithFetch(fetchImpl);
+
+    await expect(provider.generateStructured(config, request())).resolves.toEqual(validReport);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
     [400, 'model_not_multimodal'],
     [401, 'invalid_api_key'],
@@ -217,6 +225,27 @@ describe('OpenAI Responses analyze', () => {
     expect(timeoutFetch).toHaveBeenCalledTimes(1);
   });
 
+  it('uses a request-specific timeout without changing the provider default', async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn((_url: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('timeout detail', 'AbortError')));
+    }));
+    const provider = providerWithFetch(fetchImpl, 25);
+    const overriddenRequest = { ...request(), timeoutMs: 40 } as StructuredGenerationRequest<CommunityReportV3> & { timeoutMs: number };
+    const operation = provider.generateStructured(config, overriddenRequest);
+    let settled = false;
+    void operation.finally(() => { settled = true; }).catch(() => undefined);
+
+    await vi.advanceTimersByTimeAsync(25);
+    expect(settled).toBe(false);
+
+    const timeoutAssertion = expect(operation).rejects.toMatchObject({ code: 'network_timeout' });
+    await vi.advanceTimersByTimeAsync(15);
+
+    await timeoutAssertion;
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
     ['invalid outer JSON', () => new Response('{', { status: 200 })],
     ['SDK convenience only', () => envelopeResponse({ status: 'completed', output_text: JSON.stringify(validReport), output: [] })],
@@ -263,7 +292,7 @@ describe('OpenAI Responses analyze', () => {
         content: [{ type: 'output_text', text: JSON.stringify(validReport), functionCall: { name: 'tool' } }],
       }],
     })],
-    ['markdown-wrapped JSON', () => successfulResponse(`\`\`\`json\n${JSON.stringify(validReport)}\n\`\`\``)],
+    ['prose around markdown-wrapped JSON', () => successfulResponse(`Here is the result:\n\`\`\`json\n${JSON.stringify(validReport)}\n\`\`\``)],
     ['schema-invalid JSON', () => successfulResponse(JSON.stringify({ ...validReport, schemaVersion: 'legacy' }))],
   ])('rejects %s without repair, fallback, or a second fetch', async (_name, response) => {
     const fetchImpl = vi.fn(async () => response());

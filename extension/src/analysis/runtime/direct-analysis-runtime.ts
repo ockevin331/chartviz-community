@@ -96,6 +96,7 @@ export class DirectAnalysisRuntime implements AnalysisRuntime {
     const startedAt = this.dependencies.now();
     const requestId = this.dependencies.createRequestId();
     this.activeController = controller;
+    const warnings: Parameters<NonNullable<ThreeStageAnalysisInput['onWarning']>>[0][] = [];
 
     try {
       const provider = this.dependencies.getProvider(this.config.provider);
@@ -114,6 +115,7 @@ export class DirectAnalysisRuntime implements AnalysisRuntime {
         outputLanguage: input.outputLanguage,
         signal: controller.signal,
         onProgress: input.onProgress,
+        onWarning: (warning) => warnings.push(warning),
       });
 
       let presentation: PresentationBundle;
@@ -147,7 +149,10 @@ export class DirectAnalysisRuntime implements AnalysisRuntime {
           { stage: 'annotation_rendering', issues: [] },
         );
       }
-      return { captures: [capture], presentation: presentation.report, annotations };
+      return {
+        captures: [capture], presentation: presentation.report, annotations,
+        ...(warnings.length === 0 ? {} : { warnings: Object.freeze([...warnings]) }),
+      };
     } catch (error) {
       if (controller.signal.aborted) {
         throw new AnalysisRuntimeFailure('cancelled');

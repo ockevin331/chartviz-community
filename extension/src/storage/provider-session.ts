@@ -1,6 +1,7 @@
 import { browser } from 'wxt/browser';
 import { ProviderError } from '../providers/provider-errors';
 import { normalizeProviderConfig, type ProviderConfig } from '../providers/provider-types';
+import { migrateDeprecatedModel } from '../providers/model-catalog';
 
 const storageKey = 'providerConfig';
 
@@ -22,7 +23,11 @@ export async function saveProviderConfig(config: ProviderConfig): Promise<void> 
 
 export async function loadProviderConfig(): Promise<ProviderConfig | null> {
   const stored = await browser.storage.session.get(storageKey);
-  return normalizeProviderConfig(stored[storageKey]);
+  const normalized = normalizeProviderConfig(stored[storageKey]);
+  if (normalized === null) return null;
+  const migrated = migrateDeprecatedModel(normalized);
+  if (migrated !== normalized) await browser.storage.session.set({ [storageKey]: migrated });
+  return migrated;
 }
 
 export async function clearProviderConfig(): Promise<void> {

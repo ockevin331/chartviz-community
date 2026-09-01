@@ -105,6 +105,23 @@ describe('DirectAnalysisRuntime', () => {
     expect(progress).toHaveBeenCalledWith('reviewing_clues');
   });
 
+  it('returns non-blocking analysis warnings emitted by the pipeline', async () => {
+    const warning = {
+      code: 'output_language_mismatch' as const,
+      path: ['patterns', 0, 'name'] as const,
+      valuePreview: 'Custom visible structure',
+    };
+    const runAnalysis = vi.fn(async (input: any) => {
+      input.onWarning?.(warning);
+      return communityReport;
+    });
+    const { runtime } = setup({ runAnalysis });
+
+    const outcome = await runtime.analyze({ captures: [capture], outputLanguage: 'zh-CN' });
+
+    expect(outcome.warnings).toEqual([warning]);
+  });
+
   it('rejects multiple captures before resolving or calling a provider', async () => {
     const { runtime, getProvider, runAnalysis, buildAnnotations } = setup();
 

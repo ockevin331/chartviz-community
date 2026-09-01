@@ -114,7 +114,7 @@ describe('ProviderSetup', () => {
     }));
   });
 
-  it('groups every approved model by vendor and keeps Anthropic and Qwen on OpenRouter', async () => {
+  it('groups every approved model by vendor and keeps Anthropic on OpenRouter', async () => {
     const user = userEvent.setup();
     render(<ProviderSetup language="en" saveConfig={async () => undefined} testConnection={async () => undefined} onConfigured={() => undefined} />);
 
@@ -127,14 +127,12 @@ describe('ProviderSetup', () => {
       'anthropic/claude-sonnet-5',
       'anthropic/claude-opus-5',
       'anthropic/claude-haiku-4.5',
-      'qwen/qwen3.7-plus',
-      'qwen/qwen3-vl-235b-a22b-instruct',
-      'qwen/qwen3-vl-8b-instruct',
     ]) expect(screen.getByRole('option', { name: new RegExp(modelId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) })).toBeTruthy();
     expect(screen.getByText('OpenAI')).toBeTruthy();
     expect(screen.getByText('Anthropic')).toBeTruthy();
     expect(screen.queryByText('Google')).toBeNull();
-    expect(screen.getByText('Qwen')).toBeTruthy();
+    expect(screen.queryByText('Qwen')).toBeNull();
+    expect(screen.queryByRole('option', { name: /qwen/i })).toBeNull();
     expect(screen.queryByRole('option', { name: /google|gemini/i })).toBeNull();
 
     await user.click(screen.getByRole('option', { name: /anthropic\/claude-sonnet-5/i }));
@@ -162,8 +160,8 @@ describe('ProviderSetup', () => {
     ],
     [
       'OpenRouter',
-      { provider: 'openrouter', apiKey: 'router-key', model: 'qwen/qwen3.7-plus', customModel: false },
-      'qwen/qwen3.7-plus',
+      { provider: 'openrouter', apiKey: 'router-key', model: 'anthropic/claude-sonnet-5', customModel: false },
+      'anthropic/claude-sonnet-5',
       true,
     ],
   ] as const)('restores an existing %s configuration', (_name, initialConfig, modelLabel, openRouter) => {

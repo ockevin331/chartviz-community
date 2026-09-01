@@ -73,7 +73,7 @@ export class OpenAiProvider implements StructuredVisionProvider {
       request.schemaName,
       request.jsonSchema,
     );
-    const payload = await this.send(config, request.signal, body);
+    const payload = await this.send(config, request.signal, body, request.timeoutMs);
     return parseStructuredResponse(this.kind, extractOpenAiStructuredValue(payload), request.parse);
   }
 
@@ -119,6 +119,7 @@ export class OpenAiProvider implements StructuredVisionProvider {
     config: ProviderConfig,
     suppliedSignal: AbortSignal,
     body: Record<string, unknown>,
+    requestTimeoutMs?: number,
   ): Promise<unknown> {
     if (suppliedSignal.aborted) {
       throw new ProviderError('cancelled', { params: { provider: this.kind } });
@@ -126,7 +127,7 @@ export class OpenAiProvider implements StructuredVisionProvider {
     const controller = new AbortController();
     const cancel = () => controller.abort();
     suppliedSignal.addEventListener('abort', cancel, { once: true });
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), requestTimeoutMs ?? this.timeoutMs);
 
     try {
       let response: Response;

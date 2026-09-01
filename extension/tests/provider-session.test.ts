@@ -84,4 +84,19 @@ describe('session-only provider configuration', () => {
 
     await expect(loadProviderConfig()).resolves.toBeNull();
   });
+
+  it('migrates a deprecated Qwen session to the recommended OpenRouter model', async () => {
+    storageState.value = {
+      provider: 'openrouter', apiKey: 'router-key', model: 'qwen/qwen3.7-plus', customModel: false,
+    };
+
+    await expect(loadProviderConfig()).resolves.toEqual({
+      provider: 'openrouter', apiKey: 'router-key', model: 'openai/gpt-5.6-terra', customModel: false,
+    });
+    expect(browserMock.storage.session.set).toHaveBeenCalledWith({
+      providerConfig: {
+        provider: 'openrouter', apiKey: 'router-key', model: 'openai/gpt-5.6-terra', customModel: false,
+      },
+    });
+  });
 });

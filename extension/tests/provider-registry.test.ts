@@ -14,6 +14,11 @@ import {
 import { providerRegistry } from '../src/providers/provider-registry';
 
 describe('provider registry and curated catalog', () => {
+  it('does not publish deprecated Qwen models', () => {
+    expect(MODEL_CATALOG_VERSION).toBe('community-models-4');
+    expect(modelChoices.some(({ vendor, openRouterModel }) => vendor === ('qwen' as never) || /qwen/i.test(openRouterModel))).toBe(false);
+    expect(curatedModels.some(({ id }) => /qwen/i.test(id))).toBe(false);
+  });
   it('registers exactly the supported Community adapters', () => {
     expect(providerRegistry.kinds()).toEqual(['openrouter', 'openai']);
     expect(providerRegistry.get('openrouter').kind).toBe('openrouter');
@@ -23,7 +28,7 @@ describe('provider registry and curated catalog', () => {
   });
 
   it('publishes the approved multimodal catalog without Google models', () => {
-    expect(MODEL_CATALOG_VERSION).toBe('community-models-3');
+    expect(MODEL_CATALOG_VERSION).toBe('community-models-4');
     expect(curatedModels).toEqual([
       {
         provider: 'openrouter',
@@ -62,24 +67,6 @@ describe('provider registry and curated catalog', () => {
         default: false,
       },
       {
-        provider: 'openrouter',
-        id: 'qwen/qwen3.7-plus',
-        label: 'qwen/qwen3.7-plus',
-        default: false,
-      },
-      {
-        provider: 'openrouter',
-        id: 'qwen/qwen3-vl-235b-a22b-instruct',
-        label: 'qwen/qwen3-vl-235b-a22b-instruct',
-        default: false,
-      },
-      {
-        provider: 'openrouter',
-        id: 'qwen/qwen3-vl-8b-instruct',
-        label: 'qwen/qwen3-vl-8b-instruct',
-        default: false,
-      },
-      {
         provider: 'openai',
         id: 'gpt-5.6-terra',
         label: 'gpt-5.6-terra',
@@ -98,8 +85,8 @@ describe('provider registry and curated catalog', () => {
         default: false,
       },
     ]);
-    expect(getModelsForProvider('openrouter')).toEqual(curatedModels.slice(0, 9));
-    expect(getModelsForProvider('openai')).toEqual(curatedModels.slice(9, 12));
+    expect(getModelsForProvider('openrouter')).toEqual(curatedModels.slice(0, 6));
+    expect(getModelsForProvider('openai')).toEqual(curatedModels.slice(6, 9));
     expect(getDefaultModel('openrouter')?.id).toBe('openai/gpt-5.6-terra');
     expect(getDefaultModel('openai')?.id).toBe('gpt-5.6-terra');
     expect(curatedModels.some(({ id }) => /google|gemini/i.test(id))).toBe(false);
@@ -110,7 +97,6 @@ describe('provider registry and curated catalog', () => {
     expect(modelChoices.map(({ vendor }) => vendor)).toEqual([
       'openai', 'openai', 'openai',
       'anthropic', 'anthropic', 'anthropic',
-      'qwen', 'qwen', 'qwen',
     ]);
     expect(modelChoices.every(({ description }) => description.en !== '' && description['zh-CN'] !== '')).toBe(true);
     expect(modelChoices.some(({ openRouterModel }) => /google|gemini/i.test(openRouterModel))).toBe(false);

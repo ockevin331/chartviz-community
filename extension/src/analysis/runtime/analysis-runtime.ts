@@ -3,7 +3,7 @@ import type { ProcessedImage } from '../../capture/image-types';
 import type { AnalysisDiagnostic } from '../../providers/provider-diagnostics';
 import type { AnalysisErrorCode } from '../../providers/provider-errors';
 import type { ReportPresentationModel } from '../../presentation/report-presentation-model';
-import type { OutputLanguage, StagePageContext } from '../stages/shared-stage-types';
+import type { AnalysisWarning, OutputLanguage, StagePageContext } from '../stages/shared-stage-types';
 import type { AnalysisMode } from '../analysis-mode';
 
 export type ProgressMessage =
@@ -38,6 +38,7 @@ export type AnalysisRuntimeOutcome = Readonly<{
   captures: readonly AnalysisCapture[];
   presentation: ReportPresentationModel;
   annotations: PresentationAnnotatedImages;
+  warnings?: readonly AnalysisWarning[];
 }>;
 
 export type AnalysisRuntimeErrorCode = AnalysisErrorCode
