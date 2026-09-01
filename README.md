@@ -83,13 +83,13 @@ Multi-timeframe capture uses the ordered timeframes returned by the account's Cl
 
 ### Direct model
 
-Direct mode is single-timeframe only. Select a curated vision model grouped by OpenAI, Anthropic, or Qwen; optionally use OpenRouter; then enter a key issued by that service. Saving configuration makes no provider request. **Test connection** makes exactly one real request and may consume provider quota.
+Direct mode is single-timeframe only. Select a curated vision model grouped by OpenAI or Anthropic; optionally use OpenRouter; then enter a key issued by that service. Saving configuration makes no provider request. **Test connection** makes exactly one real request and may consume provider quota.
 
 Each Direct analysis makes three sequential requests. The first two inspect the same screenshot from complementary chart-reading and trade-signal perspectives; the third receives normalized evidence instead of the image and prepares the validated report. A failed request stops immediately and is never retried silently. Direct mode rejects multiple captures before contacting a provider.
 
 Keys and Direct settings are stored only in `browser.storage.session`. They are not written to local/sync storage, logs, reports, downloads, copied diagnostics, or page scripts. Fully quitting and restarting the browser clears the session key.
 
-The curated catalog includes `openai/gpt-5.6-terra`, `openai/gpt-5.6-sol`, `openai/gpt-5.6-luna`, Claude 5/4.5 variants, and Qwen 3.7/VL variants. Only models in this catalog are supported; arbitrary model IDs and custom API origins are rejected.
+The curated catalog includes `openai/gpt-5.6-terra`, `openai/gpt-5.6-sol`, `openai/gpt-5.6-luna`, and Claude 5/4.5 variants. Only models in this catalog are supported; arbitrary model IDs and custom API origins are rejected.
 
 ## Capture and page guidance
 
