@@ -1,3 +1,5 @@
+import type { ProviderTrace } from './openrouter-trace';
+
 export type ProviderKind = 'openrouter' | 'openai';
 
 export type ProviderConfig = {
@@ -22,6 +24,7 @@ export type StructuredGenerationRequest<T> = {
   jsonSchema: Record<string, unknown>;
   parse(value: unknown): T;
   signal: AbortSignal;
+  onTrace?(trace: ProviderTrace): void;
 };
 
 export type ValidationResult =

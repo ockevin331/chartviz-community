@@ -166,6 +166,7 @@ export async function runThreeStageAnalysis(input: ThreeStageAnalysisInput): Pro
       jsonSchema: communityVisualFactsJsonSchema,
       parse: parseCommunityVisualFacts,
       signal: input.signal,
+      onTrace: (trace) => { visualStage.providerTrace = trace; },
     });
   } catch (error) {
     return classifiedError(error, input, 'visual_extraction_transport', 'visual_extraction_shape', 'visual_extraction_semantics', failureSnapshot(input, stages));
@@ -190,6 +191,7 @@ export async function runThreeStageAnalysis(input: ThreeStageAnalysisInput): Pro
       jsonSchema: communitySignalFactsJsonSchema,
       parse: parseCommunitySignalFacts,
       signal: input.signal,
+      onTrace: (trace) => { signalStage.providerTrace = trace; },
     });
   } catch (error) {
     return classifiedError(error, input, 'signal_extraction_transport', 'signal_extraction_shape', 'signal_extraction_semantics', failureSnapshot(input, stages));
@@ -216,6 +218,7 @@ export async function runThreeStageAnalysis(input: ThreeStageAnalysisInput): Pro
       jsonSchema: communityReportV3JsonSchema,
       parse: parseCommunityReportV3Shape,
       signal: input.signal,
+      onTrace: (trace) => { reasoningStage.providerTrace = trace; },
     });
   } catch (error) {
     return classifiedError(error, input, 'evidence_reasoning_transport', 'report_shape', 'report_semantics', failureSnapshot(input, stages));

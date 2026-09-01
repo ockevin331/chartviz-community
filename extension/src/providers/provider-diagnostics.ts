@@ -1,4 +1,5 @@
 import type { ProviderError } from './provider-errors';
+import type { ProviderTrace } from './openrouter-trace';
 import type { ProviderKind } from './provider-types';
 import {
   COMMUNITY_ANALYSIS_PIPELINE_VERSION,
@@ -39,6 +40,7 @@ export type AnalysisStageSnapshot = Readonly<{
   systemPrompt: string;
   userPrompt: string;
   output?: unknown;
+  providerTrace?: ProviderTrace;
 }>;
 
 export type AnalysisFailureSnapshot = Readonly<{
