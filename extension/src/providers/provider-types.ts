@@ -20,6 +20,7 @@ export type StructuredGenerationRequest<T> = {
   systemPrompt: string;
   userPrompt: string;
   image?: ProviderImage;
+  timeoutMs?: number;
   schemaName: string;
   jsonSchema: Record<string, unknown>;
   parse(value: unknown): T;

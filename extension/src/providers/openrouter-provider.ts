@@ -1,13 +1,22 @@
 import testCardDataUrl from '../../assets/provider-test-card.png?inline';
+import { toAnthropicTransportSchema } from './anthropic-transport-schema';
 import { getModelsForProvider } from './model-catalog';
 import { ProviderError, type AnalysisErrorCode } from './provider-errors';
 import { attachProviderFailureDetail } from './provider-diagnostics';
-import { normalizeProviderConfig, type ProviderConfig, type StructuredGenerationRequest, type StructuredVisionProvider, type ValidationResult } from './provider-types';
-import { assertOpenRouterConnectionResponse, extractOpenRouterStructuredValue } from './response-parser';
+import { parseOpenRouterTrace } from './openrouter-trace';
+import { normalizeProviderConfig, type ProviderConfig, type ProviderImage, type StructuredGenerationRequest, type StructuredVisionProvider, type ValidationResult } from './provider-types';
+import {
+  assertOpenRouterAnthropicConnectionResponse,
+  assertOpenRouterConnectionResponse,
+  extractOpenRouterAnthropicStructuredValue,
+  extractOpenRouterStructuredValue,
+} from './response-parser';
 import { parseStructuredResponse } from './structured-response';
 
-const openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
-const defaultTimeoutMs = 45_000;
+const openRouterChatUrl = 'https://openrouter.ai/api/v1/chat/completions';
+const openRouterAnthropicUrl = 'https://openrouter.ai/api/v1/messages';
+const defaultTimeoutMs = 120_000;
+const anthropicMaxTokens = 32_000;
 
 const connectionSchema = {
   type: 'object',
@@ -25,8 +34,33 @@ type RequestContent = Array<
   | { type: 'image_url'; image_url: { url: string } }
 >;
 
+type OpenRouterRequest = Readonly<{
+  url: typeof openRouterChatUrl | typeof openRouterAnthropicUrl;
+  body: Record<string, unknown>;
+  extract(payload: unknown): unknown;
+}>;
+
 function invalidField(config: ProviderConfig): 'apiKey' | 'model' {
   return typeof config.apiKey !== 'string' || config.apiKey.trim() === '' ? 'apiKey' : 'model';
+}
+
+function isAnthropicModel(model: string): boolean {
+  return /^anthropic\//.test(model);
+}
+
+function anthropicImageBlock(image: ProviderImage): Record<string, unknown> {
+  const prefix = `data:${image.mediaType};base64,`;
+  if (!image.dataUrl.startsWith(prefix) || image.dataUrl.length === prefix.length) {
+    throw new ProviderError('invalid_image', { params: { provider: 'openrouter' } });
+  }
+  return {
+    type: 'image',
+    source: {
+      type: 'base64',
+      media_type: image.mediaType,
+      data: image.dataUrl.slice(prefix.length),
+    },
+  };
 }
 
 function statusCode(status: number): AnalysisErrorCode {
@@ -95,6 +129,16 @@ function explicitlyRejectsImageInput(message: string | undefined): boolean {
   return mentionsImage && rejectsCapability;
 }
 
+function transportError(code: 'network_timeout' | 'network_error'): ProviderError {
+  return attachProviderFailureDetail(
+    new ProviderError(code, { params: { provider: 'openrouter' } }),
+    {
+      stage: 'transport',
+      issues: [{ path: 'provider.transport', code }],
+    },
+  );
+}
+
 async function openRouterRejection(response: Response): Promise<ProviderError> {
   let message: string | undefined;
   try {
@@ -136,66 +180,95 @@ export class OpenRouterProvider implements StructuredVisionProvider {
   }
 
   async generateStructured<T>(config: ProviderConfig, request: StructuredGenerationRequest<T>): Promise<T> {
-    const userContent: RequestContent = [{ type: 'text', text: request.userPrompt }];
-    if (request.image) {
-      userContent.push({ type: 'image_url', image_url: { url: request.image.dataUrl } });
-    }
-    const body = this.buildBody(
+    const outgoing = this.buildRequest(
       config,
       request.systemPrompt,
-      userContent,
+      request.userPrompt,
+      request.image,
       request.schemaName,
       request.jsonSchema,
     );
-    const payload = await this.send(config, request.signal, body);
-    return parseStructuredResponse(this.kind, extractOpenRouterStructuredValue(payload), request.parse);
+    const payload = await this.send(config, request.signal, outgoing.url, outgoing.body, request.timeoutMs);
+    const trace = parseOpenRouterTrace(payload);
+    if (trace !== null) request.onTrace?.(trace);
+    return parseStructuredResponse(this.kind, outgoing.extract(payload), request.parse);
   }
 
   async testConnection(config: ProviderConfig, signal: AbortSignal): Promise<void> {
-    const body = this.buildBody(
+    const outgoing = this.buildRequest(
       config,
       'Verify only whether the supplied test-card image is visible.',
-      [
-        { type: 'text', text: 'Return seenImage true only when the bundled ChartViz test card is visible.' },
-        { type: 'image_url', image_url: { url: testCardDataUrl } },
-      ],
+      'Return seenImage true only when the bundled ChartViz test card is visible.',
+      { mediaType: 'image/png', dataUrl: testCardDataUrl },
       'connection_test',
       connectionSchema,
     );
-    const payload = await this.send(config, signal, body);
-    assertOpenRouterConnectionResponse(payload);
+    const payload = await this.send(config, signal, outgoing.url, outgoing.body);
+    if (isAnthropicModel(config.model.trim())) assertOpenRouterAnthropicConnectionResponse(payload);
+    else assertOpenRouterConnectionResponse(payload);
   }
 
-  private buildBody(
+  private buildRequest(
     config: ProviderConfig,
     systemPrompt: string,
-    userContent: RequestContent,
+    userPrompt: string,
+    image: ProviderImage | undefined,
     schemaName: string,
     schema: Record<string, unknown>,
-  ): Record<string, unknown> {
+  ): OpenRouterRequest {
     const validation = this.validateConfig(config);
     if (!validation.ok) {
       throw new ProviderError('invalid_config', { params: { field: validation.field } });
     }
     const model = config.model.trim();
+    if (isAnthropicModel(model)) {
+      const content: Record<string, unknown>[] = [{ type: 'text', text: userPrompt }];
+      if (image) content.push(anthropicImageBlock(image));
+      return {
+        url: openRouterAnthropicUrl,
+        extract: extractOpenRouterAnthropicStructuredValue,
+        body: {
+          model,
+          max_tokens: anthropicMaxTokens,
+          system: systemPrompt,
+          messages: [{ role: 'user', content }],
+          output_config: {
+            format: {
+              type: 'json_schema',
+              schema: toAnthropicTransportSchema(schema),
+            },
+          },
+          provider: { require_parameters: true },
+        },
+      };
+    }
+
+    const userContent: RequestContent = [{ type: 'text', text: userPrompt }];
+    if (image) userContent.push({ type: 'image_url', image_url: { url: image.dataUrl } });
     return {
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userContent },
-      ],
-      response_format: {
-        type: 'json_schema',
-        json_schema: { name: schemaName, strict: true, schema },
+      url: openRouterChatUrl,
+      extract: extractOpenRouterStructuredValue,
+      body: {
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userContent },
+        ],
+        response_format: {
+          type: 'json_schema',
+          json_schema: { name: schemaName, strict: true, schema },
+        },
+        provider: { require_parameters: true },
       },
-      provider: { require_parameters: true },
     };
   }
 
   private async send(
     config: ProviderConfig,
     suppliedSignal: AbortSignal,
+    url: OpenRouterRequest['url'],
     body: Record<string, unknown>,
+    requestTimeoutMs?: number,
   ): Promise<unknown> {
     if (suppliedSignal.aborted) {
       throw new ProviderError('cancelled', { params: { provider: this.kind } });
@@ -206,16 +279,17 @@ export class OpenRouterProvider implements StructuredVisionProvider {
     suppliedSignal.addEventListener('abort', cancel, { once: true });
     const timer = setTimeout(() => {
       controller.abort();
-    }, this.timeoutMs);
+    }, requestTimeoutMs ?? this.timeoutMs);
 
     try {
       let response: Response;
       try {
-        response = await globalThis.fetch(openRouterUrl, {
+        response = await globalThis.fetch(url, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${config.apiKey.trim()}`,
             'Content-Type': 'application/json',
+            'X-OpenRouter-Metadata': 'enabled',
           },
           body: JSON.stringify(body),
           signal: controller.signal,
@@ -224,7 +298,7 @@ export class OpenRouterProvider implements StructuredVisionProvider {
         if (suppliedSignal.aborted) {
           throw new ProviderError('cancelled', { params: { provider: this.kind } });
         }
-        throw new ProviderError('network_timeout', { params: { provider: this.kind } });
+        throw transportError(controller.signal.aborted ? 'network_timeout' : 'network_error');
       }
 
       if (!response.ok) {
@@ -245,7 +319,7 @@ export class OpenRouterProvider implements StructuredVisionProvider {
           throw new ProviderError('cancelled', { params: { provider: this.kind } });
         }
         if (controller.signal.aborted) {
-          throw new ProviderError('network_timeout', { params: { provider: this.kind } });
+          throw transportError('network_timeout');
         }
         const providerOutput = await rawBody;
         throw attachProviderFailureDetail(

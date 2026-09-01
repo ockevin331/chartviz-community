@@ -10,6 +10,9 @@ export type AnalysisErrorCode =
   | 'rate_limited'
   | 'invalid_image'
   | 'network_timeout'
+  | 'network_error'
+  | 'provider_refusal'
+  | 'output_truncated'
   | 'invalid_response'
   | 'cancelled';
 
