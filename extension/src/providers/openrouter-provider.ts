@@ -206,6 +206,9 @@ export class OpenRouterProvider implements StructuredVisionProvider {
     const transportSchema = isAnthropicModel(model)
       ? toAnthropicTransportSchema(schema)
       : schema;
+    const providerPreferences = isAnthropicModel(model)
+      ? { require_parameters: true, only: ['anthropic'], allow_fallbacks: false }
+      : { require_parameters: true };
     return {
       url: openRouterChatUrl,
       extract: extractOpenRouterStructuredValue,
@@ -219,7 +222,7 @@ export class OpenRouterProvider implements StructuredVisionProvider {
           type: 'json_schema',
           json_schema: { name: schemaName, strict: true, schema: transportSchema },
         },
-        provider: { require_parameters: true },
+        provider: providerPreferences,
       },
     };
   }

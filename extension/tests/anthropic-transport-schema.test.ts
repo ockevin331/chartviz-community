@@ -4,6 +4,7 @@ import { toAnthropicTransportSchema } from '../src/providers/anthropic-transport
 describe('Claude transport schema', () => {
   it('removes unsupported constraints recursively without mutating the application schema', () => {
     const applicationSchema = {
+      $schema: 'https://json-schema.org/draft/2020-12/schema',
       type: 'object',
       description: 'Root object.',
       properties: {
@@ -41,6 +42,7 @@ describe('Claude transport schema', () => {
 
     expect(transported).not.toBe(applicationSchema);
     expect(applicationSchema).toEqual(original);
+    expect(transported).not.toHaveProperty('$schema');
     for (const keyword of [
       'minimum', 'maximum', 'exclusiveMinimum', 'multipleOf',
       'minLength', 'maxLength', 'pattern', 'minItems', 'maxItems',
@@ -139,4 +141,3 @@ describe('Claude transport schema', () => {
     });
   });
 });
-

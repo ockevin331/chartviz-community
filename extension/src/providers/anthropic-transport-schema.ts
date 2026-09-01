@@ -46,7 +46,7 @@ function transformNode(value: unknown): unknown {
   const transformed: JsonRecord = {};
 
   for (const [key, entry] of Object.entries(value)) {
-    if (unsupportedConstraintKeywords.has(key) || key === 'description') continue;
+    if (unsupportedConstraintKeywords.has(key) || key === 'description' || key === '$schema') continue;
     transformed[key] = transformNode(entry);
   }
 
@@ -65,4 +65,3 @@ export function toAnthropicTransportSchema(
 ): Record<string, unknown> {
   return transformNode(schema) as Record<string, unknown>;
 }
-

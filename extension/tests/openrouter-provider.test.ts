@@ -162,7 +162,11 @@ describe('OpenRouter analyze', () => {
           },
         },
       },
-      provider: { require_parameters: true },
+      provider: {
+        require_parameters: true,
+        only: ['anthropic'],
+        allow_fallbacks: false,
+      },
     });
     expect(applicationSchema).toEqual(originalSchema);
   });
@@ -569,7 +573,11 @@ describe('OpenRouter connection test card', () => {
         },
       },
     });
-    expect(body.provider).toEqual({ require_parameters: true });
+    expect(body.provider).toEqual({
+      require_parameters: true,
+      only: ['anthropic'],
+      allow_fallbacks: false,
+    });
   });
 
   it('bundles the exact 64x64 icon-derived PNG and requests seenImage true with one call', async () => {
