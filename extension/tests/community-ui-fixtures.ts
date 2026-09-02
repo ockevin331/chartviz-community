@@ -64,6 +64,9 @@ export const annotatedImages: AnnotatedReportImages = {
 };
 
 export const presentationAnnotatedImages: PresentationAnnotatedImages = {
+  structure: {
+    C01: { id: 'structure-C01', kind: 'structure', title: 'Market structure', dataUrl: 'data:image/png;base64,STRUCTURE', width: 640, height: 360 },
+  },
   levels: {
     C01: { ...annotatedImages.levels!, id: 'levels-C01' },
   },

@@ -160,7 +160,11 @@ export function ChartCaptureSource({
     </div>}
     {!loading && captureError && <AnalysisError
       language={language}
-      errorCode={captureError.code === 'task_cancelled' ? 'unknown' : captureError.code}
+      errorCode={captureError.code === 'task_cancelled'
+        ? 'unknown'
+        : captureError.code === 'invalid_report_version'
+          ? 'incompatible_report_schema'
+          : captureError.code}
       params={captureError.params}
       pricingUrl={captureError.pricingUrl}
       onBack={() => setCaptureError(null)}

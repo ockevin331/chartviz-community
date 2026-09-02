@@ -86,6 +86,18 @@ export function ReportView({ language, presentation: report, captures, annotatio
       {report.marketExplanation.indicators.length > 0 && <div className="indicator-explanation"><h3>{t.technicalIndicators}</h3>{report.marketExplanation.indicators.map((indicator) => <article key={indicator.id}><p><b>{indicator.name}:</b> {indicator.state}</p><p><b>{t.implication}:</b> {indicator.implication}</p><small>{t.visibleAt}: {indicator.timeAnchor}</small></article>)}</div>}
     </section>
 
+    {report.context.captures.some(({ captureId }) => annotations.structure[captureId]) && <section className="market-structure" data-report-section="marketStructure">
+      <h2>{t.marketStructure}</h2>
+      {report.context.captures.map((metadata) => {
+        const image = annotations.structure[metadata.captureId];
+        if (!image) return null;
+        const title = multipleCaptures
+          ? `${t.marketStructure} · ${metadata.timeframe ?? metadata.captureId}`
+          : t.marketStructure;
+        return <div className="structure-annotation" data-structure-capture-id={metadata.captureId} key={metadata.captureId}><AnnotatedImage language={language} image={{ ...image, title }} filename={multipleCaptures ? `chartviz-structure-${metadata.captureId}.png` : 'chartviz-structure.png'} onZoom={zoom} downloadImage={downloadImage} /></div>;
+      })}
+    </section>}
+
     {report.levels.length > 0 && <section data-report-section="levels"><h2>{t.supportResistance}</h2><div className="level-list visual-levels">{report.levels.map((level) => <article className={level.type} key={level.id}><span>{metric(level.type, language)} · {metric(level.tier, language)}</span><strong>{level.priceLabel}</strong><p>{level.reason}</p><small>{t.levelStatus}: {metric(level.status, language)} · {t.visibleAt}: {level.timeAnchor} · {Math.round(level.confidence * 100)}%</small></article>)}</div>{report.context.captures.map((metadata) => {
       const image = annotations.levels[metadata.captureId];
       if (!image) return null;

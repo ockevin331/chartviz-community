@@ -9,6 +9,6 @@
     "fixtures/quota-error.json": "fc058a7cea0cfa74d10793eab412861d4cad7d83a422c6d84438ff66ac1f7d23",
     "fixtures/single-completed-task.json": "06a8617ba3b7947bd762964eb09908cf139e91082fc2751b0799bd5a90d50a80",
     "fixtures/two-completed-task.json": "bcc06a3dc28e9abe30796141251f5b110ec6632eb24fe13054bc67436c17a8c1",
-    "openapi.json": "0507a64f9d92bf9ef22d64da44092647a99fbe89d89fe606c34ab293831a34bb"
+    "openapi.json": "b18ed0ea6a1f5f83c4b4cf2dfff46280f5c0e9470f93d55968188629fc41e919"
   }
 }

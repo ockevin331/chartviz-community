@@ -172,6 +172,22 @@ export function adaptCloudPresentation(report: ExtensionReport): PresentationBun
     });
   }
 
+  for (const source of nativeDrawings.filter((drawing) => (
+    drawing.layer === 'structure'
+    && drawing.refId === drawing.captureId
+    && validNativeDrawing(drawing, ['trend_line', 'channel', 'range', 'marker'])
+  ))) {
+    addDrawing({
+      captureId: source.captureId,
+      layer: 'structure',
+      refId: source.captureId,
+      meaning: 'structure',
+      caption: null,
+      tool: source.tool,
+      points: normalizedPoints(source.points),
+    });
+  }
+
   return parsePresentationBundle({
     report: {
       schemaVersion: 'presentation-1.0',

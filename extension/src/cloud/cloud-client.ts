@@ -32,7 +32,7 @@ const errorCodeSchema = z.enum([
   'multi_timeframe_requires_advance',
   'invalid_image', 'invalid_chart_image', 'unsupported_timeframe', 'task_not_found',
   'task_failed', 'task_cancelled', 'incompatible_api_version',
-  'incompatible_report_schema', 'service_unavailable',
+  'incompatible_report_schema', 'invalid_report_version', 'service_unavailable',
 ]);
 const errorSchema = z.object({
   code: errorCodeSchema,
@@ -102,10 +102,14 @@ async function request(
     method?: 'GET' | 'POST';
     body?: BodyInit;
     signal?: AbortSignal;
+    reportVersion?: 'extension-report-1.1';
   }> = {},
 ): Promise<unknown> {
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (token !== undefined) headers.Authorization = `Bearer ${token}`;
+  if (options.reportVersion !== undefined) {
+    headers['X-ChartViz-Report-Version'] = options.reportVersion;
+  }
   const init: RequestInit = { headers };
   if (options.method && options.method !== 'GET') init.method = options.method;
   if (options.body !== undefined) init.body = options.body;
@@ -336,7 +340,7 @@ export function createCloudClient(fetcher: typeof fetch = fetch): CloudClient {
         fetcher,
         `/v1/extension/analysis-tasks/${encodeURIComponent(requestId)}`,
         token,
-        { signal },
+        { signal, reportVersion: 'extension-report-1.1' },
       );
       return parseTask(body);
     },

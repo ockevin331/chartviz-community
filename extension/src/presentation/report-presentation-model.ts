@@ -129,10 +129,11 @@ const drawingPointSchema = z.object({
 const drawingSchema = z.object({
   id: z.string().regex(/^D\d{2}$/),
   captureId: z.string().regex(/^C\d{2}$/),
-  layer: z.enum(['levels', 'signal', 'pattern']),
-  refId: z.string().regex(/^[LSP]\d{2}$/),
+  layer: z.enum(['levels', 'signal', 'pattern', 'structure']),
+  refId: z.string().regex(/^[LSPC]\d{2}$/),
   meaning: z.enum([
-    'support', 'resistance', 'long_entry', 'short_entry', 'stop', 'target', 'pattern',
+    'support', 'resistance', 'long_entry', 'short_entry', 'stop', 'target',
+    'pattern', 'structure',
   ]),
   caption: nullableText,
   tool: z.enum([
@@ -179,6 +180,10 @@ function drawingGeometryIsValid(drawing: z.infer<typeof drawingSchema>): boolean
 }
 
 function toolMatchesMeaning(drawing: z.infer<typeof drawingSchema>): boolean {
+  if (drawing.meaning === 'structure') {
+    return drawing.layer === 'structure'
+      && ['trend_line', 'channel', 'range', 'marker'].includes(drawing.tool);
+  }
   if (drawing.meaning === 'support' || drawing.meaning === 'resistance') {
     return drawing.layer === 'levels' && (drawing.tool === 'horizontal_line' || drawing.tool === 'zone');
   }
@@ -230,8 +235,15 @@ const bundleSchema = z.object({
     }
     const referenced = drawing.layer === 'levels'
       ? levels.get(drawing.refId)
-      : drawing.layer === 'signal' ? signals.get(drawing.refId) : patterns.get(drawing.refId);
-    if (!referenced || referenced.captureId !== drawing.captureId) {
+      : drawing.layer === 'signal'
+        ? signals.get(drawing.refId)
+        : drawing.layer === 'pattern'
+          ? patterns.get(drawing.refId)
+          : undefined;
+    const validStructureReference = drawing.layer === 'structure'
+      && drawing.refId === drawing.captureId
+      && captures.has(drawing.captureId);
+    if (!validStructureReference && (!referenced || referenced.captureId !== drawing.captureId)) {
       context.addIssue({ code: 'custom', path: ['drawings', index, 'refId'], message: 'invalid_drawing_reference' });
     }
     if (!toolMatchesMeaning(drawing)) {

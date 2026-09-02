@@ -63,6 +63,8 @@ const drawings: PresentationDrawing[] = [
   { id: 'D10', captureId: 'C02', layer: 'pattern', refId: 'P02', meaning: 'pattern', caption: 'Range', tool: 'range', points: [point(0.2, 0.3), point(0.8, 0.3), point(0.2, 0.7), point(0.8, 0.7)] },
   { id: 'D11', captureId: 'C99', layer: 'levels', refId: 'L99', meaning: 'support', caption: null, tool: 'horizontal_line', points: [point(null, 0.5, 'missing')] },
   { id: 'D12', captureId: 'C01', layer: 'signal', refId: 'S03', meaning: 'long_entry', caption: null, tool: 'entry_arrow', points: [point(0.5, 0.5, 'incomplete')] },
+  { id: 'D13', captureId: 'C01', layer: 'structure', refId: 'C01', meaning: 'structure', caption: null, tool: 'trend_line', points: [point(0.15, 0.75), point(0.85, 0.35)] },
+  { id: 'D14', captureId: 'C01', layer: 'structure', refId: 'C01', meaning: 'structure', caption: null, tool: 'range', points: [point(0.2, 0.25), point(0.8, 0.25), point(0.2, 0.7), point(0.8, 0.7)] },
 ];
 
 describe('buildPresentationAnnotations', () => {
@@ -72,6 +74,7 @@ describe('buildPresentationAnnotations', () => {
     const result = await buildPresentationAnnotations(captures, drawings, dependencies);
 
     expect(Object.keys(result.levels)).toEqual(['C01', 'C02']);
+    expect(Object.keys(result.structure)).toEqual(['C01']);
     expect(Object.keys(result.signals)).toEqual(['S01', 'S02']);
     expect(Object.keys(result.patterns)).toEqual(['P01', 'P02']);
     expect(result.levels.C01).toMatchObject({ id: 'levels-C01', width: 800, height: 600 });
@@ -79,16 +82,25 @@ describe('buildPresentationAnnotations', () => {
     expect(result.signals.S01).toMatchObject({ id: 'S01', title: 'LONG signal' });
     expect(result.signals.S02).toMatchObject({ id: 'S02', title: 'SHORT signal' });
     expect(result.signals.S03).toBeUndefined();
-    expect(canvases).toHaveLength(6);
-    expect(canvases.filter((operations) => operations.some((operation) => operation[1] === 'data:image/png;base64,C01'))).toHaveLength(3);
+    expect(result.structure.C01).toMatchObject({
+      id: 'structure-C01', kind: 'structure', title: 'Market structure', width: 800, height: 600,
+    });
+    expect(canvases).toHaveLength(7);
+    expect(canvases.filter((operations) => operations.some((operation) => operation[1] === 'data:image/png;base64,C01'))).toHaveLength(4);
     expect(canvases.filter((operations) => operations.some((operation) => operation[1] === 'data:image/png;base64,C02'))).toHaveLength(3);
     expect(canvases.some((operations) => operations.some((operation) => operation[1] === 'missing'))).toBe(false);
+    const structureLabels = canvases
+      .flatMap((operations) => operations)
+      .filter(([name]) => name === 'fillText')
+      .map(([, label]) => label);
+    expect(structureLabels).toEqual(expect.arrayContaining(['M1', 'M2']));
+    expect(structureLabels).not.toEqual(expect.arrayContaining(['D13', 'D14', 'C01']));
   });
 
   it('returns stable empty maps without canvas work', async () => {
     const { canvases, dependencies } = recordingCanvases();
     await expect(buildPresentationAnnotations(captures, [], dependencies)).resolves.toEqual({
-      levels: {}, signals: {}, patterns: {},
+      structure: {}, levels: {}, signals: {}, patterns: {},
     });
     expect(canvases).toEqual([]);
   });

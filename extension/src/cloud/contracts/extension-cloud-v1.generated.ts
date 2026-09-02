@@ -175,7 +175,7 @@ export interface components {
              * Code
              * @enum {string}
              */
-            code: "authentication_required" | "invalid_token" | "token_revoked" | "token_expired" | "insufficient_scope" | "free_trial_exhausted" | "subscription_required" | "subscription_expired" | "quota_exhausted" | "active_analysis_limit_reached" | "multi_timeframe_requires_advance" | "invalid_image" | "invalid_chart_image" | "unsupported_timeframe" | "task_not_found" | "task_failed" | "task_cancelled" | "incompatible_api_version" | "incompatible_report_schema" | "service_unavailable";
+            code: "authentication_required" | "invalid_token" | "token_revoked" | "token_expired" | "insufficient_scope" | "free_trial_exhausted" | "subscription_required" | "subscription_expired" | "quota_exhausted" | "active_analysis_limit_reached" | "multi_timeframe_requires_advance" | "invalid_image" | "invalid_chart_image" | "unsupported_timeframe" | "task_not_found" | "task_failed" | "task_cancelled" | "incompatible_api_version" | "incompatible_report_schema" | "invalid_report_version" | "service_unavailable";
             /**
              * Limit
              * @default null
@@ -329,7 +329,7 @@ export interface components {
              * Layer
              * @enum {string}
              */
-            layer: "levels" | "pattern" | "signal";
+            layer: "levels" | "pattern" | "signal" | "structure";
             /** Points */
             points: components["schemas"]["ExtensionDrawingPoint"][];
             /** Refid */
@@ -507,9 +507,9 @@ export interface components {
             /**
              * Schemaversion
              * @default extension-report-1.0
-             * @constant
+             * @enum {string}
              */
-            schemaVersion: "extension-report-1.0";
+            schemaVersion: "extension-report-1.0" | "extension-report-1.1";
             /** Timeframeviews */
             timeframeViews: components["schemas"]["ExtensionTimeframeView"][];
             tradePlan: components["schemas"]["ExtensionTradePlan"];
