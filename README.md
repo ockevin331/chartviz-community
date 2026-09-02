@@ -1,6 +1,6 @@
 # ChartViz
 
-ChartViz 1.0.12 is an open-source Chrome and Edge extension that helps people read candlestick charts. It detects a supported chart page, captures the visible chart, and presents evidence-based price-action analysis with separate annotated images. It is an educational chart-reading tool, not financial advice.
+ChartViz 1.0.13 is an open-source Chrome and Edge extension that helps people read candlestick charts. It detects a supported chart page, captures the visible chart, and presents evidence-based price-action analysis with separate annotated images. It is an educational chart-reading tool, not financial advice.
 
 For the hosted ChartViz Cloud experience, visit [chartviz.xyz](https://www.chartviz.xyz).
 
@@ -15,10 +15,10 @@ There is no bundled backend, account/login flow, analytics, report history, news
 
 [**Download the latest ChartViz release**](https://github.com/ockevin331/chartviz-community/releases/latest)
 
-Current v1.0.12 packages:
+Current v1.0.13 packages:
 
-- [Download for Chrome](https://github.com/ockevin331/chartviz-community/releases/download/v1.0.12/chartviz-extension-v1.0.12-chrome.zip)
-- [Download for Edge](https://github.com/ockevin331/chartviz-community/releases/download/v1.0.12/chartviz-extension-v1.0.12-edge.zip)
+- [Download for Chrome](https://github.com/ockevin331/chartviz-community/releases/download/v1.0.13/chartviz-extension-v1.0.13-chrome.zip)
+- [Download for Edge](https://github.com/ockevin331/chartviz-community/releases/download/v1.0.13/chartviz-extension-v1.0.13-edge.zip)
 
 Unzip the downloaded package, then:
 

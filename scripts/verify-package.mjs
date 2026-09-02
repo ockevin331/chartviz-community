@@ -270,7 +270,7 @@ function verifyManifest(entries, label) {
   );
   assert.equal(manifest.manifest_version, 3, `${label} must use Manifest V3`);
   assert.equal(manifest.name, 'ChartViz', `${label} has an unexpected name`);
-  assert.equal(manifest.version, '1.0.12', `${label} has an unexpected version`);
+  assert.equal(manifest.version, '1.0.13', `${label} has an unexpected version`);
   assert.deepEqual(manifest.permissions, expectedPermissions, `${label} has unexpected permissions`);
   assert.deepEqual(
     manifest.host_permissions,
