@@ -17,6 +17,51 @@ describe('presentation-1.0 contract', () => {
     ]);
   });
 
+  it('accepts capture-scoped market-structure geometry', () => {
+    const value = clone();
+    value.drawings.push({
+      id: 'D06',
+      captureId: 'C01',
+      layer: 'structure',
+      refId: 'C01',
+      meaning: 'structure',
+      caption: null,
+      tool: 'range',
+      points: [
+        { xRatio: 0.15, yRatio: 0.25, priceLabel: null, timeAnchor: null },
+        { xRatio: 0.85, yRatio: 0.25, priceLabel: null, timeAnchor: null },
+        { xRatio: 0.15, yRatio: 0.75, priceLabel: null, timeAnchor: null },
+        { xRatio: 0.85, yRatio: 0.75, priceLabel: null, timeAnchor: null },
+      ],
+    });
+
+    expect(parsePresentationBundle(value).drawings.at(-1)).toMatchObject({
+      layer: 'structure',
+      refId: 'C01',
+      meaning: 'structure',
+      tool: 'range',
+    });
+  });
+
+  it.each([
+    ['another capture reference', (drawing: any) => { drawing.refId = 'C02'; }],
+    ['a non-structure tool', (drawing: any) => { drawing.tool = 'horizontal_line'; }],
+  ])('rejects structure geometry with %s', (_name, mutate) => {
+    const value = clone();
+    const drawing = {
+      id: 'D06', captureId: 'C01', layer: 'structure', refId: 'C01',
+      meaning: 'structure', caption: null, tool: 'trend_line',
+      points: [
+        { xRatio: 0.2, yRatio: 0.7, priceLabel: null, timeAnchor: null },
+        { xRatio: 0.8, yRatio: 0.3, priceLabel: null, timeAnchor: null },
+      ],
+    };
+    mutate(drawing);
+    value.drawings.push(drawing);
+
+    expect(() => parsePresentationBundle(value)).toThrow();
+  });
+
   it.each([
     ['duplicate capture IDs', (value: any) => value.report.context.captures.push({ ...value.report.context.captures[0] })],
     ['duplicate item IDs', (value: any) => value.report.levels.push({ ...value.report.levels[0] })],
@@ -35,4 +80,3 @@ describe('presentation-1.0 contract', () => {
     expect(() => parsePresentationBundle(value)).toThrow();
   });
 });
-

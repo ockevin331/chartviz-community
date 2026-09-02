@@ -136,6 +136,21 @@ function arrowPathCoordinates(operations: Operation[]): Array<[number, number]> 
 }
 
 describe('renderSignal', () => {
+  it('draws the entry price line at its price coordinate and the arrow at the candle anchor', async () => {
+    const input = signal({
+      entry: { priceLabel: '105', xRatio: 0.5, yRatio: 0.4 },
+      takeProfits: [{ priceLabel: '110', yRatio: 0.2 }],
+    });
+    const drawings = signalDrawings(input);
+    drawings[0]!.points[0]!.priceYRatio = 0.3;
+    const { dependencies, operations } = recordingCanvas('data:image/png;base64,c3BsaXQ=');
+
+    await renderPresentationSignal(image, drawings, dependencies);
+
+    expect(priceLineYs(operations)[0]).toBe(180);
+    expect(arrowPathCoordinates(operations)).toContainEqual([400, 240]);
+  });
+
   it('draws one long signal with a compact arrow below entry and every trade field visible', async () => {
     // Breaks on: combining overlays, omitting a target/RR, failing to clamp a ratio,
     // or drawing a long arrow above/away from the entry candle.

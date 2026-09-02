@@ -176,6 +176,7 @@
               "task_cancelled",
               "incompatible_api_version",
               "incompatible_report_schema",
+              "invalid_report_version",
               "service_unavailable"
             ],
             "title": "Code",
@@ -586,7 +587,8 @@
             "enum": [
               "levels",
               "pattern",
-              "signal"
+              "signal",
+              "structure"
             ],
             "title": "Layer",
             "type": "string"
@@ -601,7 +603,7 @@
             "type": "array"
           },
           "refId": {
-            "pattern": "^(L|P|S)\\d{2}$",
+            "pattern": "^(L|P|S|C)\\d{2}$",
             "title": "Refid",
             "type": "string"
           },
@@ -1096,8 +1098,11 @@
             "type": "string"
           },
           "schemaVersion": {
-            "const": "extension-report-1.0",
             "default": "extension-report-1.0",
+            "enum": [
+              "extension-report-1.0",
+              "extension-report-1.1"
+            ],
             "title": "Schemaversion",
             "type": "string"
           },

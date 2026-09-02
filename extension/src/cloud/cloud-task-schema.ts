@@ -156,8 +156,8 @@ const drawingPointSchema = z.object({
 const drawingSchema = z.object({
   id: z.string().regex(/^D\d{2}$/),
   captureId: captureIdSchema,
-  layer: z.enum(['levels', 'pattern', 'signal']),
-  refId: z.string().regex(/^(L|P|S)\d{2}$/),
+  layer: z.enum(['levels', 'pattern', 'signal', 'structure']),
+  refId: z.string().regex(/^(L|P|S|C)\d{2}$/),
   tool: z.enum([
     'horizontal_line', 'zone', 'trend_line', 'channel', 'range', 'entry_arrow',
     'stop_line', 'target_line', 'marker',
@@ -166,7 +166,7 @@ const drawingSchema = z.object({
 }).strict();
 
 const reportSchema = z.object({
-  schemaVersion: z.literal('extension-report-1.0'),
+  schemaVersion: z.enum(['extension-report-1.0', 'extension-report-1.1']),
   context: z.object({
     instrument: nullableShortString,
     venue: nullableShortString,
@@ -259,6 +259,21 @@ const reportSchema = z.object({
     references.set(pattern.id, { layer: 'pattern', captureId: pattern.captureId });
   }
   for (const drawing of report.drawings) {
+    if (drawing.layer === 'structure') {
+      const structureTools = new Set(['trend_line', 'channel', 'range', 'marker']);
+      if (
+        report.schemaVersion !== 'extension-report-1.1'
+        || drawing.refId !== drawing.captureId
+        || !structureTools.has(drawing.tool)
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['drawings', drawing.id],
+          message: 'drawing_reference_mismatch',
+        });
+      }
+      continue;
+    }
     const target = references.get(drawing.refId);
     if (!target || target.layer !== drawing.layer || target.captureId !== drawing.captureId) {
       context.addIssue({
@@ -278,7 +293,7 @@ const errorSchema = z.object({
     'multi_timeframe_requires_advance',
     'invalid_image', 'invalid_chart_image', 'unsupported_timeframe', 'task_not_found',
     'task_failed', 'task_cancelled', 'incompatible_api_version',
-    'incompatible_report_schema', 'service_unavailable',
+    'incompatible_report_schema', 'invalid_report_version', 'service_unavailable',
   ]),
   message: z.string().nullable().optional(),
   params: z.record(z.string(), z.union([

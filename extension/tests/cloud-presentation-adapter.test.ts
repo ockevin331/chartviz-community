@@ -10,6 +10,23 @@ function report() {
   return task.report;
 }
 
+function reportWithStructure() {
+  const value: any = structuredClone(fixture);
+  value.report.schemaVersion = 'extension-report-1.1';
+  value.report.drawings.push({
+    id: 'D10', captureId: 'C01', layer: 'structure', refId: 'C01', tool: 'channel',
+    points: [
+      { xRatio: 0.2, yRatio: 0.45, priceLabel: null, timeAnchor: 'left' },
+      { xRatio: 0.8, yRatio: 0.2, priceLabel: null, timeAnchor: 'right' },
+      { xRatio: 0.2, yRatio: 0.7, priceLabel: null, timeAnchor: 'left' },
+      { xRatio: 0.8, yRatio: 0.45, priceLabel: null, timeAnchor: 'right' },
+    ],
+  });
+  const task = parseExtensionAnalysisTask(value);
+  if (!task.report) throw new Error('structure report missing');
+  return task.report;
+}
+
 describe('Cloud presentation adapter', () => {
   it('adapts the valid two-capture setup_and_trigger role', () => {
     const task = parseExtensionAnalysisTask(structuredClone(twoFixture));
@@ -50,7 +67,13 @@ describe('Cloud presentation adapter', () => {
   });
 
   it('normalizes native drawings and completes signal lines only from explicit report coordinates', () => {
-    const bundle = adaptCloudPresentation(report());
+    const value = report();
+    const signal = value.tradeSignals![0]!;
+    signal.entry.yRatio = 0.42;
+    const entryArrow = value.drawings!.find(({ tool }) => tool === 'entry_arrow')!;
+    entryArrow.points[0]!.yRatio = 0.58;
+
+    const bundle = adaptCloudPresentation(value);
 
     expect(bundle.drawings.map(({ refId, meaning, tool }) => ({ refId, meaning, tool }))).toEqual([
       { refId: 'L01', meaning: 'support', tool: 'horizontal_line' },
@@ -63,11 +86,35 @@ describe('Cloud presentation adapter', () => {
     ]);
     expect(bundle.drawings[2]).toMatchObject({
       caption: 'Approximately 1:2',
-      points: [{ xRatio: 0.9, yRatio: 0.31, priceLabel: '65,350' }],
+      points: [{
+        xRatio: 0.9,
+        yRatio: 0.58,
+        priceYRatio: 0.42,
+        priceLabel: '65,350',
+      }],
     });
     expect(bundle.drawings[3]?.points).toEqual([{
       xRatio: null, yRatio: 0.43, priceLabel: '64,900', timeAnchor: null,
     }]);
+  });
+
+  it('maps Cloud market structure to capture-scoped presentation geometry', () => {
+    const bundle = adaptCloudPresentation(reportWithStructure());
+
+    expect(bundle.drawings.at(-1)).toMatchObject({
+      captureId: 'C01',
+      layer: 'structure',
+      refId: 'C01',
+      meaning: 'structure',
+      caption: null,
+      tool: 'channel',
+      points: [
+        { xRatio: 0.2, yRatio: 0.45 },
+        { xRatio: 0.8, yRatio: 0.2 },
+        { xRatio: 0.2, yRatio: 0.7 },
+        { xRatio: 0.8, yRatio: 0.45 },
+      ],
+    });
   });
 
   it('uses explicit item coordinates as a deterministic fallback but never invents missing geometry', () => {

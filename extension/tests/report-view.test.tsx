@@ -36,7 +36,7 @@ describe('ReportView presentation-1.0 visible structure', () => {
     const { container } = render(<ReportView language="en" presentation={presentation} captures={[sourceCapture()]} annotations={presentationAnnotatedImages} />);
 
     expect(Array.from(container.querySelectorAll('[data-report-section]')).map((node) => node.getAttribute('data-report-section'))).toEqual([
-      'conclusion', 'marketExplanation', 'levels', 'tradePlan', 'tradeSignals', 'patterns', 'riskNotice',
+      'conclusion', 'marketExplanation', 'marketStructure', 'levels', 'tradePlan', 'tradeSignals', 'patterns', 'riskNotice',
     ]);
     expect(screen.getByRole('heading', { name: 'LONG' })).toBeTruthy();
     expect(screen.queryByText('Current view')).toBeNull();
@@ -45,6 +45,7 @@ describe('ReportView presentation-1.0 visible structure', () => {
     expect(container.querySelector('[data-report-section="conclusion"]')?.textContent).toContain('Higher highs and higher lows');
     expect(container.querySelector('[data-report-section="conclusion"]')?.textContent?.match(/LONG/g)).toHaveLength(1);
     expect(screen.getByRole('heading', { name: 'Market explanation' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Market structure' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Support and resistance' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Trade plan' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Trade signals' })).toBeTruthy();
@@ -60,12 +61,14 @@ describe('ReportView presentation-1.0 visible structure', () => {
     expect(screen.queryByText('当前观点')).toBeNull();
     expect(container.querySelector('[data-report-section="conclusion"]')?.textContent).toContain('中等');
     expect(container.querySelector('[data-report-section="conclusion"]')?.textContent).toContain('高点和低点逐步抬高');
+    expect(screen.getByRole('heading', { name: '市场结构标注' })).toBeTruthy();
   });
 
   it('places the levels image under levels and each signal/pattern image under its own explanation', () => {
     const { container } = render(<ReportView language="en" presentation={directPresentation} captures={[sourceCapture()]} annotations={presentationAnnotatedImages} />);
 
     expect(container.querySelector('[data-report-section="levels"] img[src$="LEVELS"]')).toBeTruthy();
+    expect(container.querySelector('[data-report-section="marketStructure"] img[src$="STRUCTURE"]')).toBeTruthy();
     expect(container.querySelector('[data-signal-id="S01"] img[src$="SIGNAL"]')).toBeTruthy();
     expect(container.querySelector('[data-pattern-id="P01"] img[src$="PATTERN"]')).toBeTruthy();
     expect(container.querySelector('[data-signal-id="S01"]')?.textContent).toContain('Breakout and retest');
@@ -78,8 +81,8 @@ describe('ReportView presentation-1.0 visible structure', () => {
     const postMessage = vi.spyOn(window.parent, 'postMessage');
     render(<ReportView language="en" presentation={directPresentation} captures={[sourceCapture()]} annotations={presentationAnnotatedImages} downloadImage={download} />);
 
-    expect(screen.getAllByRole('button', { name: /Download image/ })).toHaveLength(4);
-    for (const title of ['Original screenshot', 'Support and resistance', 'S01 · LONG', 'Rising channel']) {
+    expect(screen.getAllByRole('button', { name: /Download image/ })).toHaveLength(5);
+    for (const title of ['Original screenshot', 'Market structure', 'Support and resistance', 'S01 · LONG', 'Rising channel']) {
       await user.click(screen.getByRole('button', { name: `Zoom: ${title}` }));
       expect(screen.getByRole('dialog', { name: title })).toBeTruthy();
       const close = screen.getByRole('button', { name: 'Close' });
@@ -126,6 +129,9 @@ describe('ReportView presentation-1.0 visible structure', () => {
       sourceCapture({ ...processedImage, dataUrl: 'data:image/png;base64,C03SOURCE' }, '15m'),
     ];
     const annotations = {
+      structure: {
+        C01: { ...presentationAnnotatedImages.structure.C01!, dataUrl: 'data:image/png;base64,C01STRUCTURE' },
+      },
       levels: {
         C01: { ...presentationAnnotatedImages.levels.C01!, dataUrl: 'data:image/png;base64,C01LEVELS' },
         C02: { ...presentationAnnotatedImages.levels.C01!, id: 'levels-C02', dataUrl: 'data:image/png;base64,C02LEVELS' },
@@ -149,6 +155,9 @@ describe('ReportView presentation-1.0 visible structure', () => {
     expect(Array.from(container.querySelectorAll('[data-levels-capture-id]')).map((node) => (
       node.getAttribute('data-levels-capture-id')
     ))).toEqual(['C01', 'C02', 'C03']);
+    expect(Array.from(container.querySelectorAll('[data-structure-capture-id]')).map((node) => (
+      node.getAttribute('data-structure-capture-id')
+    ))).toEqual(['C01']);
     expect(Array.from(container.querySelectorAll('[data-original-capture-id] img')).map((node) => (
       node.getAttribute('src')
     ))).toEqual(captures.map(({ image }) => image.dataUrl));
@@ -163,11 +172,14 @@ describe('ReportView presentation-1.0 visible structure', () => {
       .toBe(annotations.signals.S01.dataUrl);
     expect(container.querySelector('[data-pattern-id="P01"] img')?.getAttribute('src'))
       .toBe(annotations.patterns.P01.dataUrl);
+    expect(container.querySelector('[data-structure-capture-id="C01"] img')?.getAttribute('src'))
+      .toBe(annotations.structure.C01.dataUrl);
 
     for (const [title, dataUrl] of [
       ['Original screenshot · 4h', captures[0]!.image.dataUrl],
       ['Original screenshot · 1h', captures[1]!.image.dataUrl],
       ['Original screenshot · 15m', captures[2]!.image.dataUrl],
+      ['Market structure · 4h', annotations.structure.C01.dataUrl],
       ['Support and resistance · 4h', annotations.levels.C01.dataUrl],
       ['Support and resistance · 1h', annotations.levels.C02.dataUrl],
       ['Support and resistance · 15m', annotations.levels.C03.dataUrl],

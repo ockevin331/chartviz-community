@@ -25,7 +25,7 @@ const LABEL_SPACING = 18;
 type RenderableSignal = {
   id: string;
   direction: 'long' | 'short';
-  entry: { priceLabel: string; xRatio: number; yRatio: number };
+  entry: { priceLabel: string; xRatio: number; yRatio: number; priceYRatio: number };
   stopLoss: { priceLabel: string; yRatio: number };
   takeProfits: Array<{ priceLabel: string; yRatio: number }>;
   riskReward: string | null;
@@ -127,7 +127,7 @@ async function renderSignalShape(
   const dataUrl = await drawOnSourceImage(image, dependencies, (surface) => {
     const priceLabels = [
       {
-        key: 'entry', yRatio: signal.entry.yRatio, color: ENTRY_COLOR,
+        key: 'entry', yRatio: signal.entry.priceYRatio, color: ENTRY_COLOR,
         text: `Entry ${signal.entry.priceLabel}`,
       },
       {
@@ -206,6 +206,7 @@ export async function renderPresentationSignal(
       priceLabel: entryPoint.priceLabel ?? '',
       xRatio: entryPoint.xRatio,
       yRatio: entryPoint.yRatio,
+      priceYRatio: entryPoint.priceYRatio ?? entryPoint.yRatio,
     },
     stopLoss: { priceLabel: stopPoint.priceLabel ?? '', yRatio: stopPoint.yRatio },
     takeProfits: targetPoints.map((point) => ({

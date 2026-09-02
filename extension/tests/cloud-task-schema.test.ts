@@ -46,6 +46,51 @@ describe('strict C4 extension task parser', () => {
     expect(() => parseExtensionAnalysisTask(value)).toThrow();
   });
 
+  it('accepts an extension-report-1.1 market-structure drawing scoped to its capture', () => {
+    const value = fixture();
+    value.report.schemaVersion = 'extension-report-1.1';
+    value.report.drawings.push({
+      id: 'D10',
+      captureId: 'C01',
+      layer: 'structure',
+      refId: 'C01',
+      tool: 'trend_line',
+      points: [
+        { xRatio: 0.2, yRatio: 0.7, priceLabel: '63,900', timeAnchor: 'left' },
+        { xRatio: 0.8, yRatio: 0.3, priceLabel: '65,200', timeAnchor: 'right' },
+      ],
+    });
+
+    const task = parseExtensionAnalysisTask(value);
+
+    expect(task.report?.schemaVersion).toBe('extension-report-1.1');
+    expect(task.report?.drawings?.at(-1)).toMatchObject({
+      captureId: 'C01',
+      layer: 'structure',
+      refId: 'C01',
+      tool: 'trend_line',
+    });
+  });
+
+  it('rejects market-structure drawings on extension-report-1.0', () => {
+    const value = fixture();
+    value.report.drawings.push({
+      id: 'D10',
+      captureId: 'C01',
+      layer: 'structure',
+      refId: 'C01',
+      tool: 'range',
+      points: [
+        { xRatio: 0.2, yRatio: 0.3, priceLabel: '65,200', timeAnchor: 'left' },
+        { xRatio: 0.8, yRatio: 0.3, priceLabel: '65,200', timeAnchor: 'right' },
+        { xRatio: 0.2, yRatio: 0.7, priceLabel: '63,900', timeAnchor: 'left' },
+        { xRatio: 0.8, yRatio: 0.7, priceLabel: '63,900', timeAnchor: 'right' },
+      ],
+    });
+
+    expect(() => parseExtensionAnalysisTask(value)).toThrow();
+  });
+
   it.each([
     [
       'two-completed-task.json',

@@ -364,6 +364,24 @@ describe('fixed-origin ChartViz Cloud client', () => {
     expect((fetcher.mock.calls[1]?.[1] as RequestInit).method).toBe('POST');
   });
 
+  it('requests extension-report-1.1 only when reading an analysis task', async () => {
+    const fetcher = vi.fn().mockImplementation(async () => jsonResponse(taskFixture));
+    const token = `cv_live_${'r'.repeat(43)}`;
+
+    await createCloudClient(fetcher).task(token, 'c_20260828_123');
+
+    expect(fetcher).toHaveBeenCalledWith(
+      `${CLOUD_API_BASE_URL}/v1/extension/analysis-tasks/c_20260828_123`,
+      {
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+          'X-ChartViz-Report-Version': 'extension-report-1.1',
+        },
+      },
+    );
+  });
+
   it('maps malformed tasks to an incompatible report schema without leaking payloads', async () => {
     const token = `cv_live_${'z'.repeat(43)}`;
     const secretImage = 'data:image/png;base64,SECRET';

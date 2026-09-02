@@ -1,6 +1,6 @@
 export type AnnotatedImage = {
   id: string;
-  kind: 'levels' | 'signal' | 'pattern';
+  kind: 'levels' | 'signal' | 'pattern' | 'structure';
   title: string;
   dataUrl: string;
   width: number;
@@ -14,6 +14,7 @@ export type AnnotatedReportImages = {
 };
 
 export type PresentationAnnotatedImages = {
+  structure: Record<string, AnnotatedImage>;
   levels: Record<string, AnnotatedImage>;
   signals: Record<string, AnnotatedImage>;
   patterns: Record<string, AnnotatedImage>;

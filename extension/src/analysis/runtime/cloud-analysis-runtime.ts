@@ -83,6 +83,9 @@ const cloudCapabilities = Object.freeze({
 
 function cloudFailure(error: CloudConnectionError): AnalysisRuntimeFailure {
   if (error.code === 'task_cancelled') return new AnalysisRuntimeFailure('cancelled');
+  if (error.code === 'invalid_report_version') {
+    return new AnalysisRuntimeFailure('incompatible_report_schema');
+  }
   return new AnalysisRuntimeFailure(error.code, null, {
     params: error.params,
     pricingUrl: error.pricingUrl,
@@ -93,6 +96,9 @@ function taskFailure(task: ExtensionAnalysisTask): AnalysisRuntimeFailure {
   const error = task.error;
   if (!error) return new AnalysisRuntimeFailure('task_failed');
   if (error.code === 'task_cancelled') return new AnalysisRuntimeFailure('cancelled');
+  if (error.code === 'invalid_report_version') {
+    return new AnalysisRuntimeFailure('incompatible_report_schema');
+  }
   return new AnalysisRuntimeFailure(error.code, null, {
     params: error.params,
     pricingUrl: error.pricingUrl,

@@ -19,7 +19,7 @@ const image = {
   width: 640,
   height: 360,
 };
-const annotations = { levels: {}, signals: {}, patterns: {} };
+const annotations = { structure: {}, levels: {}, signals: {}, patterns: {} };
 
 function runtimeWith(analyze: AnalysisRuntime['analyze']): AnalysisRuntime {
   return {

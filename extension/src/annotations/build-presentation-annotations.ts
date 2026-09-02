@@ -8,6 +8,7 @@ import {
 import { renderPresentationLevels } from './render-levels';
 import { renderPresentationPattern } from './render-pattern';
 import { renderPresentationSignal } from './render-signal';
+import { renderPresentationStructure } from './render-structure';
 
 export type PresentationSourceCapture = {
   captureId: string;
@@ -30,11 +31,24 @@ export async function buildPresentationAnnotations(
   dependencies: AnnotationCanvasDependencies = browserAnnotationCanvasDependencies,
 ): Promise<PresentationAnnotatedImages> {
   const sources = new Map(captures.map((capture) => [capture.captureId, capture.image]));
-  const result: PresentationAnnotatedImages = { levels: {}, signals: {}, patterns: {} };
+  const result: PresentationAnnotatedImages = {
+    structure: {}, levels: {}, signals: {}, patterns: {},
+  };
 
   for (const capture of captures) {
     if (capture.image.width < 320 || capture.image.height < 180) continue;
     const scoped = drawings.filter((drawing) => drawing.captureId === capture.captureId);
+    const structureImage = await renderPresentationStructure(
+      capture.image,
+      scoped.filter(({ layer }) => layer === 'structure'),
+      dependencies,
+    );
+    if (structureImage) {
+      result.structure[capture.captureId] = {
+        ...structureImage,
+        id: `structure-${capture.captureId}`,
+      };
+    }
     const levelImage = await renderPresentationLevels(
       capture.image,
       scoped.filter(({ layer }) => layer === 'levels'),
