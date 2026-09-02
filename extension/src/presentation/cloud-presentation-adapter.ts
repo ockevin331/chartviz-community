@@ -86,6 +86,11 @@ export function adaptCloudPresentation(report: ExtensionReport): PresentationBun
   for (const signal of report.tradeSignals ?? []) {
     const entry = native('signal', signal.id, ['entry_arrow']);
     if (entry) {
+      const points = normalizedPoints(entry.points).map((point) => ({
+        ...point,
+        priceYRatio: signal.entry.yRatio,
+        priceLabel: signal.entry.priceLabel,
+      }));
       addDrawing({
         captureId: signal.captureId,
         layer: 'signal',
@@ -93,7 +98,7 @@ export function adaptCloudPresentation(report: ExtensionReport): PresentationBun
         meaning: `${signal.direction}_entry`,
         caption: signal.riskReward,
         tool: 'entry_arrow',
-        points: normalizedPoints(entry.points),
+        points,
       });
     } else if (signal.entry.xRatio !== null) {
       addDrawing({
@@ -106,6 +111,7 @@ export function adaptCloudPresentation(report: ExtensionReport): PresentationBun
         points: [{
           xRatio: signal.entry.xRatio,
           yRatio: signal.entry.yRatio,
+          priceYRatio: signal.entry.yRatio,
           priceLabel: signal.entry.priceLabel,
           timeAnchor: signal.signalTime,
         }],

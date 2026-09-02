@@ -121,6 +121,7 @@ const timeframeViewSchema = z.object({
 const drawingPointSchema = z.object({
   xRatio: ratio.nullable(),
   yRatio: ratio,
+  priceYRatio: ratio.nullable().optional(),
   priceLabel: nullableText,
   timeAnchor: nullableText,
 }).strict();
