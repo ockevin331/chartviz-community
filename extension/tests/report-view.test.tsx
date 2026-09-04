@@ -38,12 +38,13 @@ describe('ReportView presentation-1.0 visible structure', () => {
     expect(Array.from(container.querySelectorAll('[data-report-section]')).map((node) => node.getAttribute('data-report-section'))).toEqual([
       'conclusion', 'marketExplanation', 'marketStructure', 'levels', 'tradePlan', 'tradeSignals', 'patterns', 'riskNotice',
     ]);
-    expect(screen.getByRole('heading', { name: 'LONG' })).toBeTruthy();
-    expect(screen.queryByText('Current view')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Bullish' })).toBeTruthy();
+    expect(screen.getByText('Current view')).toBeTruthy();
+    expect(screen.queryByText('Direction')).toBeNull();
     expect(container.querySelector('[data-report-section="conclusion"]')?.textContent).toContain('78%');
     expect(container.querySelector('[data-report-section="conclusion"]')?.textContent).toContain('Moderate');
     expect(container.querySelector('[data-report-section="conclusion"]')?.textContent).toContain('Higher highs and higher lows');
-    expect(container.querySelector('[data-report-section="conclusion"]')?.textContent?.match(/LONG/g)).toHaveLength(1);
+    expect(container.querySelector('[data-report-section="conclusion"]')?.textContent?.match(/Bullish/g)).toHaveLength(1);
     expect(screen.getByRole('heading', { name: 'Market explanation' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Market structure' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Support and resistance' })).toBeTruthy();
@@ -57,11 +58,31 @@ describe('ReportView presentation-1.0 visible structure', () => {
   it('uses the same direct conclusion semantics in Chinese', () => {
     const { container } = render(<ReportView language="zh-CN" presentation={directPresentation} captures={[sourceCapture()]} annotations={presentationAnnotatedImages} />);
 
-    expect(screen.getByRole('heading', { level: 2, name: '做多' })).toBeTruthy();
-    expect(screen.queryByText('当前观点')).toBeNull();
+    expect(screen.getByRole('heading', { level: 2, name: '上涨' })).toBeTruthy();
+    expect(screen.getByText('当前观点')).toBeTruthy();
+    expect(screen.queryByText('方向')).toBeNull();
     expect(container.querySelector('[data-report-section="conclusion"]')?.textContent).toContain('中等');
     expect(container.querySelector('[data-report-section="conclusion"]')?.textContent).toContain('高点和低点逐步抬高');
     expect(screen.getByRole('heading', { name: '市场结构标注' })).toBeTruthy();
+  });
+
+  it('shows a bearish current view when a waiting decision is encoded as sideways', () => {
+    const waitingBearish = parseReportPresentationModel({
+      ...structuredClone(validPresentationBundle.report),
+      conclusion: {
+        ...structuredClone(validPresentationBundle.report.conclusion),
+        direction: 'sideways',
+        trend: 'bearish',
+      },
+    });
+
+    const { container } = render(<ReportView language="zh-CN" presentation={waitingBearish} captures={[sourceCapture()]} annotations={presentationAnnotatedImages} />);
+    const conclusion = container.querySelector('[data-report-section="conclusion"]');
+    if (!(conclusion instanceof HTMLElement)) throw new Error('Conclusion section missing');
+
+    expect(screen.getByRole('heading', { level: 2, name: '下跌' })).toBeTruthy();
+    expect(within(conclusion).queryByText('震荡')).toBeNull();
+    expect(within(conclusion).queryByText('等待')).toBeNull();
   });
 
   it('places the levels image under levels and each signal/pattern image under its own explanation', () => {
@@ -201,10 +222,11 @@ describe('ReportView presentation-1.0 visible structure', () => {
     const copied = copy.mock.calls[0]?.[0] as string;
 
     for (const value of [
-      'LONG', 'Higher lows remain visible.', 'Market explanation', 'Visible lows step upward.',
+      'Bullish', 'Higher lows remain visible.', 'Market explanation', 'Visible lows step upward.',
       'Price & volume', 'Technical indicators', 'Support and resistance', '63,900', 'Trade plan',
       'Trade signals', 'S01', 'Breakout and retest', 'Chart patterns', 'Rising channel', 'Risk notice',
     ]) expect(copied, value).toContain(value);
-    expect(copied).not.toMatch(/Current view|schemaVersion|evidenceIds|xRatio|yRatio|Limitations/i);
+    expect(copied.split('\n')[0]).toBe('ChartViz — Bullish');
+    expect(copied).not.toMatch(/schemaVersion|evidenceIds|xRatio|yRatio|Limitations/i);
   });
 });

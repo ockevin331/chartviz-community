@@ -10,10 +10,10 @@ describe('reportToText presentation export', () => {
     const text = reportToText(presentation, 'en');
 
     expect(text.split('\n').slice(0, 6)).toEqual([
-      'ChartViz — LONG',
+      'ChartViz — Bullish',
       'Instrument: BTC/USDT',
       'Timeframe: 15m',
-      'Trend: Bullish · Structure: Higher highs and higher lows · Strength: Moderate · Confidence: 78%',
+      'Structure: Higher highs and higher lows · Strength: Moderate · Confidence: 78%',
       'Higher lows remain visible.',
       'Primary risk: Resistance may reject price.',
     ]);
@@ -26,10 +26,10 @@ describe('reportToText presentation export', () => {
     const text = reportToText(presentation, 'zh-CN');
 
     expect(text.split('\n').slice(0, 4)).toEqual([
-      'ChartViz — 做多',
+      'ChartViz — 上涨',
       '交易品种: BTC/USDT',
       '周期: 15m',
-      '当前走势: 上涨 · 市场结构: 高点和低点逐步抬高 · 强度: 中等 · 置信度: 78%',
+      '市场结构: 高点和低点逐步抬高 · 强度: 中等 · 置信度: 78%',
     ]);
     expect(text).toContain('交易信号解读: S01 · 做多 · Breakout and retest');
     expect(text).toContain('图表形态: Rising channel · 形成中 · 上涨');

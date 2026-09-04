@@ -52,7 +52,7 @@ export function ReportView({ language, presentation: report, captures, annotatio
     return source ? [{ metadata, source }] : [];
   });
   const multipleCaptures = report.context.captures.length > 1;
-  const directionClass = report.conclusion.direction === 'long' ? 'bullish' : report.conclusion.direction === 'short' ? 'bearish' : 'neutral';
+  const directionClass = report.conclusion.trend === 'bullish' ? 'bullish' : report.conclusion.trend === 'bearish' ? 'bearish' : 'neutral';
 
   return <div className="report-view">
     <section className="original-screenshot">
@@ -72,10 +72,9 @@ export function ReportView({ language, presentation: report, captures, annotatio
     </section>
 
     <section className={`decision decision-${directionClass}`} data-report-section="conclusion">
-      <div className="decision-heading"><div><span>{t.direction}</span><h2>{metric(report.conclusion.direction, language)}</h2></div><strong>{Math.round(report.conclusion.confidence * 100)}%</strong></div>
-      <div className="grid conclusion-metrics"><article><span>{t.trend}</span><strong>{metric(report.conclusion.trend, language)}</strong></article><article><span>{t.strength}</span><strong>{metric(report.conclusion.strength, language)}</strong></article></div>
+      <div className="decision-heading"><div><span>{t.currentView}</span><h2>{metric(report.conclusion.trend, language)}</h2></div><strong>{Math.round(report.conclusion.confidence * 100)}%</strong></div>
+      <div className="grid conclusion-metrics"><article><span>{t.structure}</span><strong>{metric(report.conclusion.structure, language)}</strong></article><article><span>{t.strength}</span><strong>{metric(report.conclusion.strength, language)}</strong></article></div>
       <p className="decision-summary">{report.conclusion.summary}</p>
-      <p><b>{t.structure}:</b> {metric(report.conclusion.structure, language)}</p>
       <p><b>{t.primaryRisk}:</b> {report.conclusion.primaryRisk}</p>
     </section>
 
