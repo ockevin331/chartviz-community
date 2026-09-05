@@ -57,15 +57,11 @@ describe('safe provider response diagnostics', () => {
   });
 
   it.each([
-    ['output_language_mismatch', ['conclusion', 'summary']],
-    ['internal_evidence_id_exposed', ['tradePlan', 'summary']],
     ['unknown_level_id', ['levels']],
     ['unknown_indicator_id', ['marketExplanation', 'indicators']],
     ['unknown_pattern_id', ['patterns']],
     ['signal_set_mismatch', ['tradeSignals']],
     ['price_scale_not_monotonic', ['priceScaleAnchors', 1]],
-    ['multiple_timeframes', ['chart', 'timeframe']],
-    ['external_source_claim', ['conclusion', 'summary']],
     ['duplicate_id', ['levels', 1, 'id']],
     ['invalid_price_panel_bounds', ['pricePanelBounds']],
   ])('preserves the stable semantic code %s', (code, path) => {
@@ -99,7 +95,7 @@ describe('safe provider response diagnostics', () => {
     const detail = validationFailureDetail({ issues: [{
       path: ['tradePlan', 'short', 'targets', 0],
       code: 'custom',
-      message: 'output_language_mismatch',
+      message: 'unknown_level_id',
       params: { valuePreview: '  previous\n  low  ' },
     }] });
 
@@ -107,7 +103,7 @@ describe('safe provider response diagnostics', () => {
       stage: 'report_semantics',
       issues: [{
         path: 'tradePlan.short.targets.0',
-        code: 'output_language_mismatch',
+        code: 'unknown_level_id',
         valuePreview: 'previous low',
       }],
     });
@@ -121,13 +117,13 @@ describe('safe provider response diagnostics', () => {
     const detail = validationFailureDetail({ issues: [{
       path: ['conclusion', 'summary'],
       code: 'custom',
-      message: 'output_language_mismatch',
+      message: 'unknown_level_id',
       params: { valuePreview },
     }] });
 
     expect(detail.issues).toEqual([{
       path: 'conclusion.summary',
-      code: 'output_language_mismatch',
+      code: 'unknown_level_id',
     }]);
   });
 });

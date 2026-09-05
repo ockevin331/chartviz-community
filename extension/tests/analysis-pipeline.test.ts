@@ -163,7 +163,7 @@ describe('three-stage analysis pipeline', () => {
 
   it('attaches each provider trace only to the stage that produced it', async () => {
     const malformedReport = clone(validReportV3) as any;
-    malformedReport.tradePlan.summary = 'The 1h chart confirms this 15m chart.';
+    malformedReport.levels[0].id = 'L99';
     const traces: ProviderTrace[] = [
       Object.freeze({ generationId: 'gen-visual', returnedModel: 'model-visual' }),
       Object.freeze({ generationId: 'gen-signal', returnedModel: 'model-signal' }),
@@ -415,18 +415,22 @@ describe('three-stage analysis pipeline', () => {
     expect(provider.calls).toHaveLength(3);
   });
 
-  it('reports the exact visible field that exposes an internal evidence id', async () => {
+  it('returns internal evidence ids as advisory warnings', async () => {
     const alteredReport = clone(validReportV3) as any;
     alteredReport.tradePlan.summary = 'Wait while L01 remains under review.';
     const provider = new FixtureProvider([validVisualFacts, validSignalFacts, alteredReport]);
-    let caught: unknown;
+    const warnings: unknown[] = [];
 
-    try { await runThreeStageAnalysis(input(provider)); }
-    catch (error) { caught = error; }
+    const report = await runThreeStageAnalysis({
+      ...input(provider), onWarning: (warning) => warnings.push(warning),
+    });
 
-    expect(getProviderFailureDetail(caught)).toMatchObject({
-      stage: 'report_semantics',
-      issues: [{ path: 'tradePlan.summary', code: 'internal_evidence_id_exposed' }],
+    expect(report.tradePlan.summary).toBe('Wait while L01 remains under review.');
+    expect(warnings).toContainEqual({
+      stage: 'evidence_reasoning',
+      code: 'internal_id_exposed',
+      path: ['tradePlan', 'summary'],
+      valuePreview: 'Wait while L01 remains under review.',
     });
     expect(provider.calls).toHaveLength(3);
   });
@@ -483,9 +487,64 @@ describe('three-stage analysis pipeline', () => {
     expect(provider.calls).toHaveLength(3);
   });
 
-  it('preserves the exact offending field and three-stage failure snapshot', async () => {
+  it('returns other-timeframe prose as a warning instead of a report failure', async () => {
     const alteredReport = clone(validReportV3) as any;
     alteredReport.tradePlan.summary = 'The 1h chart confirms this 15m chart.';
+    const provider = new FixtureProvider([validVisualFacts, validSignalFacts, alteredReport]);
+    const warnings: unknown[] = [];
+
+    const report = await runThreeStageAnalysis({
+      ...input(provider), onWarning: (warning) => warnings.push(warning),
+    });
+
+    expect(report.tradePlan.summary).toBe('The 1h chart confirms this 15m chart.');
+    expect(warnings).toContainEqual({
+      stage: 'evidence_reasoning',
+      code: 'possible_timeframe_reference',
+      path: ['tradePlan', 'summary'],
+      valuePreview: 'The 1h chart confirms this 15m chart.',
+    });
+    expect(provider.calls).toHaveLength(3);
+  });
+
+  it('keeps a Chinese calendar date in the report without treating it as another timeframe', async () => {
+    const alteredReport = chineseReport();
+    alteredReport.levels[0].timeAnchor = '9月4日图表高点';
+    const provider = new FixtureProvider([validVisualFacts, validSignalFacts, alteredReport]);
+
+    const report = await runThreeStageAnalysis({
+      ...input(provider), outputLanguage: 'zh-CN',
+    });
+
+    expect(report.levels[0]?.timeAnchor).toBe('9月4日图表高点');
+    expect(provider.calls).toHaveLength(3);
+  });
+
+  it('collects advisory source claims from all three stages', async () => {
+    const visual = clone(validVisualFacts) as any;
+    visual.priceAction.summary = 'Binance API is mentioned in generated extraction prose.';
+    const signals = clone(validSignalFacts) as any;
+    signals.signals[0].thesisAtSignal = 'External data appears in generated signal prose.';
+    const report = clone(validReportV3) as any;
+    report.marketExplanation.priceAction.summary = 'News reports appear in generated reasoning prose.';
+    const provider = new FixtureProvider([visual, signals, report]);
+    const warnings: unknown[] = [];
+
+    await runThreeStageAnalysis({
+      ...input(provider), onWarning: (warning) => warnings.push(warning),
+    });
+
+    expect(warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ stage: 'visual_extraction', code: 'unexpected_source_claim' }),
+      expect.objectContaining({ stage: 'signal_extraction', code: 'unexpected_source_claim' }),
+      expect.objectContaining({ stage: 'evidence_reasoning', code: 'unexpected_source_claim' }),
+    ]));
+    expect(provider.calls).toHaveLength(3);
+  });
+
+  it('keeps unknown evidence references as hard failures', async () => {
+    const alteredReport = clone(validReportV3) as any;
+    alteredReport.levels[0].id = 'L99';
     const provider = new FixtureProvider([validVisualFacts, validSignalFacts, alteredReport]);
     let caught: unknown;
 
@@ -494,37 +553,9 @@ describe('three-stage analysis pipeline', () => {
 
     expect(getProviderFailureDetail(caught)).toMatchObject({
       stage: 'report_semantics',
-      issues: [{
-        path: 'tradePlan.summary',
-        code: 'multiple_timeframes',
-        valuePreview: 'The 1h chart confirms this 15m chart.',
-      }],
-      snapshot: {
-        context,
-        outputLanguage: 'en',
-        stages: [
-          {
-            stage: 'visual_extraction', promptVersion: 'visual-2.0',
-            schemaName: 'community_visual_wire', hasImage: true,
-            output: validVisualFacts,
-          },
-          {
-            stage: 'signal_extraction', promptVersion: 'signals-1.2',
-            schemaName: 'community_signal_facts', hasImage: true,
-            output: validSignalFacts,
-          },
-          {
-            stage: 'evidence_reasoning', promptVersion: 'reasoning-1.3',
-            schemaName: 'community_report_v3', hasImage: false,
-            output: alteredReport,
-          },
-        ],
-      },
+      issues: [{ path: 'levels', code: 'unknown_level_id' }],
     });
-    const snapshot = (getProviderFailureDetail(caught) as any)?.snapshot;
-    expect(snapshot.stages[2].systemPrompt).toContain('price-action analyst');
-    expect(snapshot.stages[2].userPrompt).toContain('Validated evidence');
-    expect(JSON.stringify(snapshot)).not.toMatch(/data:image|api.?key|bearer\s|sk-[A-Za-z0-9_-]{8,}/i);
+    expect(provider.calls).toHaveLength(3);
   });
 
   it('starts a fresh three-call sequence when the caller retries explicitly', async () => {

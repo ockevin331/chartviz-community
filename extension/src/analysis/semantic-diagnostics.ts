@@ -1,13 +1,9 @@
 export const semanticDiagnosticCodes = [
-  'output_language_mismatch',
-  'internal_evidence_id_exposed',
   'unknown_level_id',
   'unknown_indicator_id',
   'unknown_pattern_id',
   'signal_set_mismatch',
   'price_scale_not_monotonic',
-  'multiple_timeframes',
-  'external_source_claim',
   'duplicate_id',
   'invalid_price_panel_bounds',
   'unclassified_semantic_error',

@@ -114,7 +114,7 @@ describe('OpenRouter trace diagnostics', () => {
 
   it('attaches each trace only to the analysis stage that produced it', async () => {
     const malformedReport = structuredClone(validReportV3) as any;
-    malformedReport.tradePlan.summary = 'The 1h chart confirms this 15m chart.';
+    malformedReport.levels[0].id = 'L99';
     const traces: ProviderTrace[] = [
       Object.freeze({ generationId: 'gen-visual', returnedModel: 'model-visual' }),
       Object.freeze({ generationId: 'gen-signal', returnedModel: 'model-signal' }),

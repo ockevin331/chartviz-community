@@ -14,6 +14,7 @@ import { mergeCommunityEvidence } from './evidence-bundle';
 import { buildEvidenceReasoningPrompt } from './evidence-reasoning-prompt';
 import { normalizeCommunitySignalFacts } from './normalize-signals';
 import { normalizeCommunityVisualFacts, toCommunityVisualFacts } from './normalize-visual-facts';
+import { collectReportQualityWarnings } from './report-quality-warnings';
 import { validateCommunityReportV3Semantics } from './report-semantics-v3';
 import { communitySignalFactsJsonSchema, parseCommunitySignalFacts } from './signal-facts';
 import { buildSignalExtractionPrompt } from './signal-extraction-prompt';
@@ -159,6 +160,15 @@ function failureSnapshot(
 
 export async function runThreeStageAnalysis(input: ThreeStageAnalysisInput): Promise<CommunityReportV3> {
   const stages: MutableStageSnapshot[] = [];
+  const emittedWarnings = new Set<string>();
+  const emitWarnings = (warnings: readonly AnalysisWarning[]): void => {
+    warnings.forEach((warning) => {
+      const key = `${warning.stage}:${warning.code}:${JSON.stringify(warning.path)}`;
+      if (emittedWarnings.has(key)) return;
+      emittedWarnings.add(key);
+      input.onWarning?.(warning);
+    });
+  };
   assertActive(input);
   input.onProgress?.('preparing');
   input.onProgress?.('reading_chart');
@@ -185,6 +195,11 @@ export async function runThreeStageAnalysis(input: ThreeStageAnalysisInput): Pro
   let visualFacts;
   try { visualFacts = normalizeCommunityVisualFacts(toCommunityVisualFacts(visualRaw, input.context)); }
   catch (error) { return semanticError(error, input, 'visual_extraction_semantics', failureSnapshot(input, stages)); }
+  emitWarnings(collectReportQualityWarnings({
+    stage: 'visual_extraction',
+    value: visualFacts,
+    declaredTimeframe: visualFacts.chart.timeframe,
+  }));
 
   assertActive(input);
   input.onProgress?.('reviewing_clues');
@@ -211,6 +226,11 @@ export async function runThreeStageAnalysis(input: ThreeStageAnalysisInput): Pro
   let signalFacts;
   try { signalFacts = normalizeCommunitySignalFacts(signalRaw, visualFacts); }
   catch (error) { return semanticError(error, input, 'signal_extraction_semantics', failureSnapshot(input, stages)); }
+  emitWarnings(collectReportQualityWarnings({
+    stage: 'signal_extraction',
+    value: signalFacts,
+    declaredTimeframe: visualFacts.chart.timeframe,
+  }));
 
   const evidence = mergeCommunityEvidence(visualFacts, signalFacts);
   assertActive(input);
@@ -237,9 +257,10 @@ export async function runThreeStageAnalysis(input: ThreeStageAnalysisInput): Pro
   }
   reasoningStage.output = reportRaw;
   try {
-    const report = validateCommunityReportV3Semantics(
-      reportRaw, evidence, input.outputLanguage, input.onWarning,
+    const { report, warnings } = validateCommunityReportV3Semantics(
+      reportRaw, evidence, input.outputLanguage,
     );
+    emitWarnings(warnings);
     input.onProgress?.('preparing_result');
     return report;
   }
