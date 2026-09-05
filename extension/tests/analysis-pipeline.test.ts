@@ -365,7 +365,8 @@ describe('three-stage analysis pipeline', () => {
 
     expect(report.patterns[0]?.name).toBe('Custom visible structure');
     expect(warnings).toEqual([{
-      code: 'output_language_mismatch', path: ['patterns', 0, 'name'], valuePreview: 'Custom visible structure',
+      stage: 'evidence_reasoning', code: 'output_language_mismatch',
+      path: ['patterns', 0, 'name'], valuePreview: 'Custom visible structure',
     }]);
   });
 
@@ -390,7 +391,7 @@ describe('three-stage analysis pipeline', () => {
 
     expect(report.conclusion.summary).toBe('Price is rotating between visible support and resistance.');
     expect(warnings).toContainEqual({
-      path: ['conclusion', 'summary'], code: 'output_language_mismatch',
+      stage: 'evidence_reasoning', path: ['conclusion', 'summary'], code: 'output_language_mismatch',
       valuePreview: 'Price is rotating between visible support and resistance.',
     });
     expect(provider.calls).toHaveLength(3);
@@ -408,7 +409,7 @@ describe('three-stage analysis pipeline', () => {
 
     expect(result.tradePlan.short.targets).toEqual(['previous low']);
     expect(warnings).toContainEqual({
-      path: ['tradePlan', 'short', 'targets', 0], code: 'output_language_mismatch',
+      stage: 'evidence_reasoning', path: ['tradePlan', 'short', 'targets', 0], code: 'output_language_mismatch',
       valuePreview: 'previous low',
     });
     expect(provider.calls).toHaveLength(3);

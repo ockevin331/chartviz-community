@@ -1,0 +1,13 @@
+{
+  "policyVersion": "deterministic-1.0",
+  "cases": [
+    {"name":"zh-calendar-day","kind":"prose","text":"9月4日图表高点","hardFailure":false},
+    {"name":"zh-full-date","kind":"prose","text":"2026年9月4日低点","hardFailure":false},
+    {"name":"en-calendar-day","kind":"prose","text":"Sep 4 chart high","hardFailure":false},
+    {"name":"other-timeframe-prose","kind":"prose","text":"The prose mentions a 4h chart.","hardFailure":false,"warning":"possible_timeframe_reference"},
+    {"name":"mixed-language","kind":"prose","text":"价格 remains sideways","hardFailure":false,"warning":"output_language_mismatch"},
+    {"name":"source-claim","kind":"prose","text":"Binance API confirms the move.","hardFailure":false,"warning":"unexpected_source_claim"},
+    {"name":"single-context","kind":"captures","timeframes":["1h"],"mode":"single","hardFailure":false},
+    {"name":"conflicting-single-context","kind":"captures","timeframes":["1h","4h"],"mode":"single","hardFailure":true,"error":"trusted_timeframe_conflict"}
+  ]
+}

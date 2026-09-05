@@ -1,7 +1,15 @@
+import type { AnalysisWarningCode } from '../analysis-quality-diagnostics';
+
 export type OutputLanguage = 'en' | 'zh-CN';
 
+export type AnalysisWarningStage =
+  | 'visual_extraction'
+  | 'signal_extraction'
+  | 'evidence_reasoning';
+
 export type AnalysisWarning = Readonly<{
-  code: 'output_language_mismatch';
+  stage: AnalysisWarningStage;
+  code: AnalysisWarningCode;
   path: readonly (string | number)[];
   valuePreview: string;
 }>;

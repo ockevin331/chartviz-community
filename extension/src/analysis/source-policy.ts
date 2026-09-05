@@ -121,12 +121,15 @@ function collectCanonicalTimeframes(text: string, declaredTimeframe = false): st
   return mentions;
 }
 
-export function assertScreenshotOnlyText(text: string): void {
+export type UnexpectedSourceClaim = Readonly<{ label: string }>;
+
+export function findUnexpectedSourceClaim(text: string): UnexpectedSourceClaim | null {
   for (const { label, pattern } of prohibitedSourceClaims) {
     if (pattern.test(text)) {
-      throw new Error(`Report text must not claim ${label} evidence`);
+      return { label };
     }
   }
+  return null;
 }
 
 export type TimeframeConflict = Readonly<{
@@ -159,10 +162,4 @@ export function findSingleTimeframeConflict(
     detected.forEach((timeframe) => mentions.add(timeframe));
   }
   return null;
-}
-
-export function assertSingleTimeframe(texts: readonly string[], declaredTimeframe: string | null): void {
-  if (findSingleTimeframeConflict(texts, declaredTimeframe) !== null) {
-    throw new Error('Report must describe exactly one visible timeframe');
-  }
 }

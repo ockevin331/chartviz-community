@@ -48,13 +48,13 @@ function languageWarnings(report: CommunityReportV3, outputLanguage: OutputLangu
   const warnings: AnalysisWarning[] = [];
   for (const { text, path } of narratives(report)) {
     if (outputLanguage === 'en' && /\p{Script=Han}/u.test(text)) {
-      warnings.push({ code: 'output_language_mismatch', path, valuePreview: text });
+      warnings.push({ stage: 'evidence_reasoning', code: 'output_language_mismatch', path, valuePreview: text });
     }
     if (outputLanguage === 'zh-CN'
       && /[A-Za-z]{4,}/.test(text)
       && !/\p{Script=Han}/u.test(text)
       && !supportedTechnicalLabels.test(text)) {
-      warnings.push({ code: 'output_language_mismatch', path, valuePreview: text });
+      warnings.push({ stage: 'evidence_reasoning', code: 'output_language_mismatch', path, valuePreview: text });
     }
   }
   return warnings;
