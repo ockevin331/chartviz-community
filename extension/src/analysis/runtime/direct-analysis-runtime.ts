@@ -16,8 +16,16 @@ import type {
   StructuredVisionProvider,
 } from '../../providers/provider-types';
 import { saveLastAnalysisFailure } from '../../storage/analysis-failure-storage';
+import {
+  clearLastAnalysisQuality,
+  saveLastAnalysisQuality,
+} from '../../storage/analysis-quality-storage';
 import { adaptDirectPresentation } from '../../presentation/direct-presentation-adapter';
 import type { PresentationBundle, PresentationDrawing } from '../../presentation/report-presentation-model';
+import {
+  createAnalysisQualityDiagnostic,
+  type AnalysisQualityDiagnostic,
+} from '../analysis-quality-diagnostics';
 import {
   runThreeStageAnalysis,
   type ThreeStageAnalysisInput,
@@ -44,6 +52,8 @@ export type DirectAnalysisRuntimeDependencies = Readonly<{
   createRequestId(): string;
   now(): number;
   saveFailureDiagnostic(diagnostic: AnalysisDiagnostic): Promise<void>;
+  saveQualityDiagnostic(diagnostic: AnalysisQualityDiagnostic): Promise<void>;
+  clearQualityDiagnostic(): Promise<void>;
 }>;
 
 function createRequestId(): string {
@@ -61,6 +71,8 @@ const defaultDependencies: DirectAnalysisRuntimeDependencies = {
   createRequestId,
   now: () => Date.now(),
   saveFailureDiagnostic: saveLastAnalysisFailure,
+  saveQualityDiagnostic: saveLastAnalysisQuality,
+  clearQualityDiagnostic: clearLastAnalysisQuality,
 };
 
 const directCapabilities = Object.freeze({
@@ -148,6 +160,23 @@ export class DirectAnalysisRuntime implements AnalysisRuntime {
           }),
           { stage: 'annotation_rendering', issues: [] },
         );
+      }
+      try {
+        if (warnings.length === 0) {
+          await this.dependencies.clearQualityDiagnostic();
+        } else {
+          const finishedAt = this.dependencies.now();
+          await this.dependencies.saveQualityDiagnostic(createAnalysisQualityDiagnostic({
+            requestId,
+            provider: this.config.provider,
+            model: this.config.model,
+            startedAt,
+            finishedAt,
+            warnings,
+          }));
+        }
+      } catch {
+        // Quality telemetry must never turn a successful analysis into a failure.
       }
       return {
         captures: [capture], presentation: presentation.report, annotations,

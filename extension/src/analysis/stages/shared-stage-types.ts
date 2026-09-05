@@ -1,18 +1,9 @@
-import type { AnalysisWarningCode } from '../analysis-quality-diagnostics';
+export type {
+  AnalysisWarning,
+  AnalysisWarningStage,
+} from '../analysis-quality-diagnostics';
 
 export type OutputLanguage = 'en' | 'zh-CN';
-
-export type AnalysisWarningStage =
-  | 'visual_extraction'
-  | 'signal_extraction'
-  | 'evidence_reasoning';
-
-export type AnalysisWarning = Readonly<{
-  stage: AnalysisWarningStage;
-  code: AnalysisWarningCode;
-  path: readonly (string | number)[];
-  valuePreview: string;
-}>;
 
 export type StagePageContext = {
   instrument: string | null;

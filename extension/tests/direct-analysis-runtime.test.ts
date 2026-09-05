@@ -34,6 +34,8 @@ function setup(overrides: Record<string, unknown> = {}) {
   const runAnalysis = vi.fn(async () => communityReport);
   const adaptPresentation = vi.fn(() => parsePresentationBundle(structuredClone(validPresentationBundle)));
   const buildAnnotations = vi.fn(async () => presentationAnnotatedImages);
+  const saveQualityDiagnostic = vi.fn(async () => undefined);
+  const clearQualityDiagnostic = vi.fn(async () => undefined);
   const runtime = new DirectAnalysisRuntime(config, {
     getProvider,
     runAnalysis,
@@ -41,9 +43,19 @@ function setup(overrides: Record<string, unknown> = {}) {
     buildAnnotations,
     createRequestId: () => 'runtime-request-id',
     now: () => 1_000,
+    saveQualityDiagnostic,
+    clearQualityDiagnostic,
     ...overrides,
   });
-  return { runtime, getProvider, runAnalysis, adaptPresentation, buildAnnotations };
+  return {
+    runtime,
+    getProvider,
+    runAnalysis,
+    adaptPresentation,
+    buildAnnotations,
+    saveQualityDiagnostic,
+    clearQualityDiagnostic,
+  };
 }
 
 describe('DirectAnalysisRuntime', () => {
@@ -107,6 +119,7 @@ describe('DirectAnalysisRuntime', () => {
 
   it('returns non-blocking analysis warnings emitted by the pipeline', async () => {
     const warning = {
+      stage: 'evidence_reasoning' as const,
       code: 'output_language_mismatch' as const,
       path: ['patterns', 0, 'name'] as const,
       valuePreview: 'Custom visible structure',
@@ -115,11 +128,52 @@ describe('DirectAnalysisRuntime', () => {
       input.onWarning?.(warning);
       return communityReport;
     });
-    const { runtime } = setup({ runAnalysis });
+    const { runtime, saveQualityDiagnostic, clearQualityDiagnostic } = setup({ runAnalysis });
 
     const outcome = await runtime.analyze({ captures: [capture], outputLanguage: 'zh-CN' });
 
     expect(outcome.warnings).toEqual([warning]);
+    expect(saveQualityDiagnostic).toHaveBeenCalledWith({
+      source: 'extension_local',
+      pipelineVersion: 'community-3.0',
+      validationPolicyVersion: 'deterministic-1.0',
+      requestId: 'runtime-request-id',
+      provider: 'openrouter',
+      model: 'openai/gpt-5.6-terra',
+      occurredAt: '1970-01-01T00:00:01.000Z',
+      durationMs: 0,
+      warnings: [warning],
+    });
+    expect(clearQualityDiagnostic).not.toHaveBeenCalled();
+  });
+
+  it('clears stale successful warning diagnostics after a clean analysis', async () => {
+    const { runtime, saveQualityDiagnostic, clearQualityDiagnostic } = setup();
+
+    await runtime.analyze({ captures: [capture], outputLanguage: 'en' });
+
+    expect(clearQualityDiagnostic).toHaveBeenCalledTimes(1);
+    expect(saveQualityDiagnostic).not.toHaveBeenCalled();
+  });
+
+  it('does not fail a successful analysis when quality storage is unavailable', async () => {
+    const warning = {
+      stage: 'evidence_reasoning' as const,
+      code: 'output_language_mismatch' as const,
+      path: ['patterns', 0, 'name'] as const,
+      valuePreview: 'Custom visible structure',
+    };
+    const runAnalysis = vi.fn(async (input: any) => {
+      input.onWarning?.(warning);
+      return communityReport;
+    });
+    const { runtime } = setup({
+      runAnalysis,
+      saveQualityDiagnostic: vi.fn(async () => { throw new Error('storage unavailable'); }),
+    });
+
+    await expect(runtime.analyze({ captures: [capture], outputLanguage: 'zh-CN' }))
+      .resolves.toMatchObject({ warnings: [warning] });
   });
 
   it('rejects multiple captures before resolving or calling a provider', async () => {
