@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { assertScreenshotOnlyText, assertSingleTimeframe } from '../source-policy';
 import { patternGeometrySchema } from './pattern-geometry-schema';
 
 const text = z.string().trim().min(1);
@@ -83,13 +82,6 @@ const reportV3Shape = z.object({
   riskNotice: text,
 }).strict();
 
-function collectStrings(value: unknown, result: string[] = []): string[] {
-  if (typeof value === 'string') result.push(value);
-  else if (Array.isArray(value)) value.forEach((item) => collectStrings(item, result));
-  else if (value !== null && typeof value === 'object') Object.values(value).forEach((item) => collectStrings(item, result));
-  return result;
-}
-
 function uniqueIds(items: readonly { id: string }[], path: string, context: z.RefinementCtx): void {
   const seen = new Set<string>();
   items.forEach(({ id }, index) => {
@@ -103,17 +95,6 @@ export const communityReportV3Schema = reportV3Shape.superRefine((report, contex
   uniqueIds(report.levels, 'levels', context);
   uniqueIds(report.tradeSignals, 'tradeSignals', context);
   uniqueIds(report.patterns, 'patterns', context);
-  const strings = collectStrings(report);
-  strings.forEach((value) => {
-    try { assertScreenshotOnlyText(value); }
-    catch {
-      context.addIssue({ code: 'custom', path: [], message: 'external_source_claim' });
-    }
-  });
-  try { assertSingleTimeframe(strings, report.chart.timeframe); }
-  catch {
-    context.addIssue({ code: 'custom', path: ['chart', 'timeframe'], message: 'multiple_timeframes' });
-  }
 });
 
 export type CommunityReportV3 = z.infer<typeof communityReportV3Schema>;

@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { assertScreenshotOnlyText, assertSingleTimeframe } from '../source-policy';
 import { canonicalPatternTypeSchema } from './pattern-types';
 
 const text = (description: string) => z.string().trim().min(1).describe(description);
@@ -117,13 +116,6 @@ const wireShape = z.object({
   }).strict().describe('One internal price-action segment.')).min(2).max(8).describe('Required internal segmentation of the visible price action.'),
 }).strict();
 
-function collectStrings(value: unknown, result: string[] = []): string[] {
-  if (typeof value === 'string') result.push(value);
-  else if (Array.isArray(value)) value.forEach((item) => collectStrings(item, result));
-  else if (value !== null && typeof value === 'object') Object.values(value).forEach((item) => collectStrings(item, result));
-  return result;
-}
-
 function uniqueIds(items: readonly { id: string }[], path: string, context: z.RefinementCtx): void {
   const seen = new Set<string>();
   items.forEach(({ id }, index) => {
@@ -142,13 +134,6 @@ export const communityVisualWireSchema = wireShape.superRefine((facts, context) 
       || facts.pricePanelBounds.topRatio >= facts.pricePanelBounds.bottomRatio)) {
     context.addIssue({ code: 'custom', path: ['pricePanelBounds'], message: 'invalid_price_panel_bounds' });
   }
-  const strings = collectStrings(facts);
-  strings.forEach((value) => {
-    try { assertScreenshotOnlyText(value); }
-    catch { context.addIssue({ code: 'custom', path: [], message: 'external_source_claim' }); }
-  });
-  try { assertSingleTimeframe(strings, facts.chart?.timeframe ?? null); }
-  catch { context.addIssue({ code: 'custom', path: ['chart', 'timeframe'], message: 'multiple_timeframes' }); }
 });
 
 export type CommunityVisualWireFacts = z.infer<typeof communityVisualWireSchema>;

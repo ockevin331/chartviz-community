@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { assertScreenshotOnlyText, assertSingleTimeframe } from '../source-policy';
 import { patternGeometrySchema, patternPointSchema } from './pattern-geometry-schema';
 import { canonicalPatternTypeSchema } from './pattern-types';
 
@@ -80,13 +79,6 @@ const visualFactsShape = z.object({
   }).strict()).min(2).max(8),
 }).strict();
 
-function collectStrings(value: unknown, result: string[] = []): string[] {
-  if (typeof value === 'string') result.push(value);
-  else if (Array.isArray(value)) value.forEach((item) => collectStrings(item, result));
-  else if (value !== null && typeof value === 'object') Object.values(value).forEach((item) => collectStrings(item, result));
-  return result;
-}
-
 function uniqueIds(items: readonly { id: string }[], path: string, context: z.RefinementCtx): void {
   const seen = new Set<string>();
   items.forEach(({ id }, index) => {
@@ -104,17 +96,6 @@ export const communityVisualFactsSchema = visualFactsShape.superRefine((facts, c
     && (facts.pricePanelBounds.leftRatio >= facts.pricePanelBounds.rightRatio
       || facts.pricePanelBounds.topRatio >= facts.pricePanelBounds.bottomRatio)) {
     context.addIssue({ code: 'custom', path: ['pricePanelBounds'], message: 'invalid_price_panel_bounds' });
-  }
-  const strings = collectStrings(facts);
-  strings.forEach((value) => {
-    try { assertScreenshotOnlyText(value); }
-    catch {
-      context.addIssue({ code: 'custom', path: [], message: 'external_source_claim' });
-    }
-  });
-  try { assertSingleTimeframe(strings, facts.chart.timeframe); }
-  catch {
-    context.addIssue({ code: 'custom', path: ['chart', 'timeframe'], message: 'multiple_timeframes' });
   }
 });
 

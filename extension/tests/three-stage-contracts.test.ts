@@ -161,14 +161,29 @@ describe('three-stage analysis contracts', () => {
     expect(() => parseCommunityReportV3(empty)).toThrow();
   });
 
-  it('rejects external-source and second-timeframe claims in the final report', () => {
+  it('never turns generated prose into a hard schema failure', () => {
+    const wire = clone(validVisualWireFacts) as any;
+    wire.chart = { instrument: 'BTCUSDT', timeframe: '1h' };
+    wire.levels[0].timeAnchor = '9月4日图表高点';
+    wire.priceAction.summary = 'Binance API is mentioned by generated prose.';
+
+    const visual = clone(validVisualFacts) as any;
+    visual.chart.timeframe = '1h';
+    visual.levels[0].timeAnchor = '9月4日图表高点';
+
+    const signals = clone(validSignalFacts) as any;
+    signals.signals[0].thesisAtSignal = 'External data appears in model wording.';
+
     const external = clone(validReportV3) as any;
     external.marketExplanation.priceAction.summary = 'Binance API confirms this move.';
-    expect(() => parseCommunityReportV3(external)).toThrow();
+    external.chart.timeframe = '1h';
+    external.levels[0].timeAnchor = '9月4日图表高点';
+    external.tradePlan.summary = 'The prose also mentions a 4h chart.';
 
-    const multiple = clone(validReportV3) as any;
-    multiple.tradePlan.summary = 'The 1h chart confirms this 15m chart.';
-    expect(() => parseCommunityReportV3(multiple)).toThrow();
+    expect(parseCommunityVisualWireFacts(wire)).toBeTruthy();
+    expect(parseCommunityVisualFacts(visual)).toBeTruthy();
+    expect(parseCommunitySignalFacts(signals)).toBeTruthy();
+    expect(parseCommunityReportV3(external)).toBeTruthy();
   });
 
   it('merges validated facts and signals into an immutable evidence bundle', () => {

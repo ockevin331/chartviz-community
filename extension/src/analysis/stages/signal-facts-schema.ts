@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { assertScreenshotOnlyText } from '../source-policy';
 import { signalTypeSchema } from './signal-types';
 
 const text = z.string().trim().min(1);
@@ -32,24 +31,11 @@ const signalFactsShape = z.object({
   }).strict()).max(4),
 }).strict();
 
-function collectStrings(value: unknown, result: string[] = []): string[] {
-  if (typeof value === 'string') result.push(value);
-  else if (Array.isArray(value)) value.forEach((item) => collectStrings(item, result));
-  else if (value !== null && typeof value === 'object') Object.values(value).forEach((item) => collectStrings(item, result));
-  return result;
-}
-
 export const communitySignalFactsSchema = signalFactsShape.superRefine((facts, context) => {
   const ids = new Set<string>();
   facts.signals.forEach(({ id }, index) => {
     if (ids.has(id)) context.addIssue({ code: 'custom', path: ['signals', index, 'id'], message: 'duplicate_id' });
     ids.add(id);
-  });
-  collectStrings(facts).forEach((value) => {
-    try { assertScreenshotOnlyText(value); }
-    catch {
-      context.addIssue({ code: 'custom', path: [], message: 'external_source_claim' });
-    }
   });
 });
 
